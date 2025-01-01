@@ -3,7 +3,7 @@
 An experimental way of sorting mods for the game The binding of Isaac: Repentance+ 
 
 > [!WARNING]
-> This is a command line tool for now, a GUI will be worked on when the script achieves feature completion.
+> **This is a command line tool for now, a GUI will be worked on when the script achieves feature completion.**
 
 ## Why?
 
