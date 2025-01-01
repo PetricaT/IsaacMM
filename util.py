@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import toml
+import sys
 import os
 import re
 
@@ -46,6 +47,7 @@ class util:
         f.write('[paths]')
         f.write("mods='C:\Path\To\Your\Mod\Folder'")
         print('Please set the mod folder path in `config.toml`')
+      sys.exit()
   
   def setMods(self, mods_folder_path: Path) -> None:
     SETTINGS['paths']['mods'] = str(mods_folder_path)
