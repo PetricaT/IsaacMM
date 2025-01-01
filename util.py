@@ -5,6 +5,7 @@ import os
 import re
 
 sorted_pattern = re.compile(r'[0-9]{3}\s{1}.*')
+sep = '|~|'
 
 class log:
   def debug(TEXT: str):
@@ -88,17 +89,17 @@ class util:
     # Write mods.txt with current mod order, leaving unsorted at the bottom
     with open('mods.txt', 'w') as f:
       for item in mlist:
-        f.write(f'{item[1]:<{max_mod_name}}|{item[2]:<{max_mod_steam_name}}|{item[3]}\n')
+        f.write(f'{item[1]:<{max_mod_name}}{sep}{item[2]:<{max_mod_steam_name}}{sep}{item[3]}\n')
 
   def printList(self, list):
     for i in list:
-      print(i)
+      log.error(i)
   
   def useOrder(self, modlist):
     if not os.path.exists('mods.txt'):
       log.warn('MODS.TXT does not exit, generating now...')
       mods.genOrder(mod_list=modlist)
-      log.warn('MODS.TXT has been generated, go and sort the mods')
+      log.warn('MODS.TXT has been generated, go and sort the mods; Don\'t forget to rerun after sorting!')
       return
     else:
       log.info('Applying sorted list')
@@ -107,11 +108,11 @@ class util:
       with open('mods.txt', 'r') as f:
         lines = f.readlines()
         for line in lines:
-          line = line.split('|')
+          line = line.split(sep)
           rank_str = f'{rank:0>3}'
           NAME = line[0].strip()
           FOLDER_NAME = line[1].strip()
-          PATH = line[2].replace('\n', '')
+          PATH = line[2].replace('\n', '').strip()
           sorted_list.append((rank_str, NAME, FOLDER_NAME, PATH))
           rank += 1
     self.applyList(sorted_list)
@@ -134,6 +135,9 @@ class util:
       if name_element is not None:
         name_element.text = new_name
       tree.write(mod[3] + '\\' + 'metadata.xml')
+    
+    # Cleanup
+    os.remove('mods.txt')
         
 mods = util()
 mlist = mods.loadMods()
