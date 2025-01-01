@@ -4,29 +4,44 @@ import toml
 import os
 import re
 
-settings = toml.load('config.toml')
-MODS_PATH = Path(settings['paths']['mods']) 
-MODS = os.listdir(MODS_PATH)
-sorted_pattern = re.compile(r'[A-Z]{2}\s{1}.*')
+sorted_pattern = re.compile(r'[0-9]{3}\s{1}.*')
 
 
 class util:
-  def setmods(mods_folder_path: Path):
-    
-    pass
+  '''Utility class for TboI mod sorter'''
+  def __init__(self):
+    super().__init__()
+    # Check if config exists, otherwise write it.
+    if os.path.exists('config.toml'):
+      global SETTINGS
+      SETTINGS = toml.load('config.toml')
+      try:
+        global MODS_PATH
+        MODS_PATH = Path(SETTINGS['paths']['mods'])
+      except:
+        print("Error reading MODS_PATH from TOML")
+    else:
+      with open('config.toml', 'w') as f:
+        f.write('[paths]')
+        f.write("mods='C:\Path\To\Your\Mod\Folder'")
+        print('Please set the mod folder path in `config.toml`')
   
-  def loadmods(mods_folder_path: Path):
+  def setmods(mods_folder_path: Path) -> None:
+    SETTINGS['paths']['mods'] = str(mods_folder_path)
+  
+  def loadmods(self):
     # +------------+----------+------+----------+
     # │ Sort Order │ Mod name │ Path │ XML Name │
     # +------------+----------+------+----------+
-    
-    for item in os.listdir(mods_folder_path):
+    print(MODS_PATH)
+    for item in os.listdir(MODS_PATH):
       xml_config_path = Path(str(MODS_PATH) + '\\' + item + '\\' + 'metadata.xml')
       xml_config = ET.parse(xml_config_path)
       root = xml_config.getroot()[0].text
       print(root)
 
-util.loadmods(MODS_PATH)
+mods = util()
+mods.loadmods()
 
 # XML
 # {metadata} -> {name}
