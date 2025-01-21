@@ -1,4 +1,4 @@
-# <img src="icon.png" width="25" height="25" alt="isaac thumbs up"> The binding of Isaac - Mod Sorter 
+# <img src="assets/icon.png" width="25" height="25" alt="isaac thumbs up"> The binding of Isaac - Mod Sorter 
 
 An experimental way of sorting mods for the game The binding of Isaac: Repentance+ 
 

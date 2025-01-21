@@ -1,1 +1,0 @@
-objects = ['banana', 'apple', 'orange', 'grape']
