@@ -1,9 +1,10 @@
 from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import (Qt, QStringListModel, QModelIndex,
-                          QMimeData, QByteArray, QDataStream, QIODevice)
-from PySide6.QtWidgets import (QApplication, QMainWindow, QListView, QAbstractItemView, QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtCore import Qt, QStringListModel, QModelIndex, QMimeData, QByteArray, QDataStream, QIODevice
+from PySide6.QtWidgets import QApplication, QMainWindow, QListView, QAbstractItemView, QPushButton, QWidget, QVBoxLayout, QGridLayout, QLabel
+from PySide6.QtGui import QIcon
 import xml.etree.ElementTree as ET
 import sys
+from matplotlib.image import thumbnail
 import toml
 import os
 import re 
@@ -97,13 +98,25 @@ class DragApp(QWidget):
     def __init__(self, parent=None):
         super(DragApp, self).__init__(parent)
 
-        self.setWindowTitle('drag&drop in PySide6')
+        self.setWindowTitle('Tboi Mod Sorter')
         self.resize(480, 320)
 
         self.initUi()
 
     def initUi(self):
-        self.vLayout = QVBoxLayout(self)
+        self.baseLayout = QGridLayout(self)
+        # +----------+----------+
+        # | ListView | Mod Info |
+        # +----------+----------+
+        self.modListWidget()
+
+        self.baseLayout.addWidget(self.listView, 0, 0)
+        self.baseLayout.addWidget(self.applyOrder, 1, 0)
+        self.baseLayout.addWidget(self.refreshOrder, 1, 1)
+        self.applyOrder.clicked.connect(self.printModel)
+        self.refreshOrder.clicked.connect(self.getModList)
+
+    def modListWidget(self):
         self.listView = QListView(self)
         self.listView.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.listView.setDragEnabled(True)
@@ -117,12 +130,6 @@ class DragApp(QWidget):
         self.applyOrder = QPushButton("Apply Sort Order")
         self.refreshOrder = QPushButton("Refresh")
 
-        self.vLayout.addWidget(self.listView)
-        self.vLayout.addWidget(self.applyOrder)
-        self.vLayout.addWidget(self.refreshOrder)
-
-        self.applyOrder.clicked.connect(self.printModel)
-        self.refreshOrder.clicked.connect(self.getModList)
 
     def printModel(self):
         # print(self.ddm.data(self.listView.currentIndex()))
@@ -136,6 +143,7 @@ class DragApp(QWidget):
             mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
             root = mod_xml.getroot()
             real_mod_name.append(root.find("name").text)
+        
         real_mod_name.sort()
 
         self.ddm.setStringList([mod for mod in real_mod_name])
@@ -144,6 +152,7 @@ class DragApp(QWidget):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('fusion')
+    app.setWindowIcon(QIcon('assets/icon.png'))
     window = DragApp()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

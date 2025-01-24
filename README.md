@@ -1,9 +1,9 @@
-# <img src="assets/icon.png" width="25" height="25" alt="isaac thumbs up"> The binding of Isaac - Mod Sorter 
+# <img src="assets/icon.png" width="25" height="25" alt="isaac thumbs up"> The binding of Isaac - Mod Manager 
 
 An experimental way of sorting mods for the game The binding of Isaac: Repentance+ 
 
 > [!WARNING]
-> **This is a command line tool for now, a GUI will be worked on when the script achieves feature completion.**
+> **This is a command line tool for now, a GUI is being worked on!**
 
 ## HOW TO USE
 
@@ -16,7 +16,7 @@ An experimental way of sorting mods for the game The binding of Isaac: Repentanc
 Download this repository by clicking the green button at the top that says `Code` and `Download ZIP`.
 
 ``` sh
-git clone https://github.com/PetricaT/TboI_Modsort.git
+git clone https://github.com/PetricaT/IsaacMM.git
 ```
 
 Now simply run the script to generate the config file *(the util.py file is the main way of running for now)*
@@ -25,7 +25,7 @@ Now simply run the script to generate the config file *(the util.py file is the 
 python3 util.py
 ```
 
-This will generate a file called `config.toml`, edit it to point towards your `mods` folder inside the binding of isaac. The path should look something like this: `A:\SteamLibrary\steamapps\common\The Binding of Isaac Rebirth\mods`
+This will generate a file called `config.toml`, edit it to point towards your `mods` folder inside the binding of isaac. The path should look something like this: `C:\SteamLibrary\steamapps\common\The Binding of Isaac Rebirth\mods`
 
 Now run the script again to generate your current installed mods list
 
