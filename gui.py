@@ -1,10 +1,10 @@
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, QStringListModel, QModelIndex, QMimeData, QByteArray, QDataStream, QIODevice
-from PySide6.QtWidgets import QApplication, QMainWindow, QListView, QAbstractItemView, QPushButton, QWidget, QVBoxLayout, QGridLayout, QLabel
-from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication, QMainWindow, QListView, QAbstractItemView, QPushButton, QWidget, QVBoxLayout, QGridLayout
+from PySide6.QtGui import QIcon, QPalette
 import xml.etree.ElementTree as ET
+import winreg
 import sys
-from matplotlib.image import thumbnail
 import toml
 import os
 import re 
@@ -112,8 +112,10 @@ class DragApp(QWidget):
 
         self.baseLayout.addWidget(self.listView, 0, 0)
         self.baseLayout.addWidget(self.applyOrder, 1, 0)
-        self.baseLayout.addWidget(self.refreshOrder, 1, 1)
+        self.baseLayout.addWidget(self.autoSort, 1, 1)
+        self.baseLayout.addWidget(self.refreshOrder, 2, 1)
         self.applyOrder.clicked.connect(self.printModel)
+        # self.autoSort.clicked.connect(self.autoSortMods)
         self.refreshOrder.clicked.connect(self.getModList)
 
     def modListWidget(self):
@@ -126,8 +128,11 @@ class DragApp(QWidget):
         self.listView.setModel(self.ddm)
 
         self.getModList()
-
         self.applyOrder = QPushButton("Apply Sort Order")
+        self.accent_color = self.get_accent_color_hex()
+        self.applyOrder.setStyleSheet(f"background-color : {self.accent_color}; color : white;") 
+        self.autoSort = QPushButton("Auto Sort")
+
         self.refreshOrder = QPushButton("Refresh")
 
 
@@ -148,11 +153,28 @@ class DragApp(QWidget):
 
         self.ddm.setStringList([mod for mod in real_mod_name])
 
+    def get_accent_color_hex(self):
+        app = QApplication.instance()
+        if not app:
+            app = QApplication([])
+        palette = app.palette()
+        accent_color = palette.color(QPalette.ColorRole.Highlight)
+        return accent_color.name()
+
+def set_icon(app):
+    if sys.platform == 'win32':
+        app.setWindowIcon(QIcon('assets/icon.ico'))
+    elif sys.platform == 'darwin':
+        app.setWindowIcon(QIcon('assets/icon.icns'))
+    else:
+        app.setWindowIcon(QIcon('assets/icon.png'))
+    app.setWindowIcon(QIcon('assets/icon.png'))
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('fusion')
-    app.setWindowIcon(QIcon('assets/icon.png'))
+    set_icon(app)
     window = DragApp()
     window.show()
     sys.exit(app.exec())
