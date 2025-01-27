@@ -3,7 +3,6 @@ from PySide6.QtCore import Qt, QStringListModel, QModelIndex, QMimeData, QByteAr
 from PySide6.QtWidgets import QApplication, QMainWindow, QListView, QAbstractItemView, QPushButton, QWidget, QVBoxLayout, QGridLayout
 from PySide6.QtGui import QIcon, QPalette
 import xml.etree.ElementTree as ET
-import winreg
 import sys
 import toml
 import os
@@ -98,7 +97,7 @@ class DragApp(QWidget):
     def __init__(self, parent=None):
         super(DragApp, self).__init__(parent)
 
-        self.setWindowTitle('Tboi Mod Sorter')
+        self.setWindowTitle('Tboi Mod Manager')
         self.resize(480, 320)
 
         self.initUi()
