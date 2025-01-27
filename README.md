@@ -1,9 +1,15 @@
 # <img src="assets/icon.png" width="25" height="25" alt="isaac thumbs up"> The binding of Isaac - Mod Manager 
 
-An experimental way of sorting mods for the game The binding of Isaac: Repentance+ 
+An experimental way of sorting mods for the game The binding of Isaac: Rebirth (with support for any DLC) 
 
 > [!WARNING]
 > **This is a command line tool for now, a GUI is being worked on!**
+
+### Chapters
+* [How to use](#how-to-use)
+* [Why?](#why)
+* [How it works](#how-it-works)
+* [Contributing](#how-to-help)
 
 ## HOW TO USE
 
@@ -66,3 +72,15 @@ TboI sorts mods as follows:
 > * 003 MOD_NAME_3
 
 I don't expect people to have more than 999 mods for this game, but if that proves wrong, the limit can be changed.
+
+## How to help
+
+If you want to aid in the development of this, pull the repo locally and install the requierments (PyQt6, PySide6, toml) 
+
+``` sh
+pip install -r requierments.txt
+```
+
+Create a pull request with your changes and I will approve them.
+
+Currently need help with the GUI, but any help is appreciated.
