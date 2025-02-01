@@ -11,7 +11,7 @@ import re
 
 sorted_pattern = re.compile(r'[0-9]{3}\s{1}.*')
 
-cfg_file = toml.load("config.toml")
+cfg_file = toml.load("./config.toml")
 mods_path = cfg_file["paths"]["mods"]
 
 class DragDropListModel(QStringListModel):

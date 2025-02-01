@@ -1,2 +1,8 @@
-config.toml
-mods.txt
+build/
+dist/
+
+.DS_Store
+
+*.toml
+*.txt
+*.spec
