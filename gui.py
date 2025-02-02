@@ -15,7 +15,7 @@ sorted_pattern = re.compile(r'[0-9]{3}\s{1}.*')
 mods_path = ''
 cfg_file = ''
 
-version = '0.1.0'
+version = 'v0.1.0'
 
 try:
     cfg_file = toml.load("./config.toml")
