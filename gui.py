@@ -1,18 +1,40 @@
-from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import Qt, QStringListModel, QModelIndex, QMimeData, QByteArray, QDataStream, QIODevice
-from PySide6.QtWidgets import QApplication, QMainWindow, QListView, QAbstractItemView, QPushButton, QWidget, QVBoxLayout, QGridLayout
 from PySide6.QtGui import QIcon, QPalette
+from PySide6.QtWidgets import QApplication, QMainWindow, QListView, QAbstractItemView, QPushButton, QWidget, QGridLayout, QFileDialog
+from PySide6.QtCore import Qt, QStringListModel, QModelIndex, QMimeData, QByteArray, QDataStream, QIODevice
+from PySide6 import QtCore, QtGui, QtWidgets
 import xml.etree.ElementTree as ET
-import sys
+import getpass
 import toml
+import sys
 import os
 import re 
 
 
 sorted_pattern = re.compile(r'[0-9]{3}\s{1}.*')
 
-cfg_file = toml.load("./config.toml")
-mods_path = cfg_file["paths"]["mods"]
+mods_path = ''
+cfg_file = ''
+
+
+try:
+    cfg_file = toml.load("./config.toml")
+    try:
+        mods_path = cfg_file["paths"]["mods"]
+    except:
+        print("Mods path malformed, check if path is correct")
+        mods_path = ''
+except:
+    print("Config file not found")
+    with open('./config.toml', 'w') as f:
+        f.write("[paths]\n")
+        if sys.platform == 'darwin':
+            # official MacOS support was dropped, so we know the path is permanently this, we can just guess it.
+            f.write(f"mods='/Users/{getpass.getuser()}/Library/Application Support/Binding of Isaac Afterbirth+ Mods'")
+        else:
+            # Sadly, Linux support is weird, and Windows is a shot in the dark.
+            f.write("mods=''")
+        f.close
+
 
 class DragDropListModel(QStringListModel):
     def __init__(self, parent=None):
@@ -94,6 +116,9 @@ class DragDropListModel(QStringListModel):
 
 
 class DragApp(QWidget):
+    global loaded_mods
+    loaded_mods = []
+
     def __init__(self, parent=None):
         super(DragApp, self).__init__(parent)
 
@@ -113,11 +138,14 @@ class DragApp(QWidget):
         self.baseLayout.addWidget(self.applyOrder, 1, 0)
         self.baseLayout.addWidget(self.autoSort, 1, 1)
         self.baseLayout.addWidget(self.refreshOrder, 2, 1)
-        self.applyOrder.clicked.connect(self.printModel)
+        self.baseLayout.addWidget(self.pickModsPath, 2, 0)
+        self.applyOrder.clicked.connect(self.applyModOrder)
         # self.autoSort.clicked.connect(self.autoSortMods)
         self.refreshOrder.clicked.connect(self.getModList)
+        self.pickModsPath.clicked.connect(self.setModsPath)
 
     def modListWidget(self):
+        self.accent_color = self.get_accent_color_hex()
         self.listView = QListView(self)
         self.listView.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.listView.setDragEnabled(True)
@@ -128,29 +156,67 @@ class DragApp(QWidget):
 
         self.getModList()
         self.applyOrder = QPushButton("Apply Sort Order")
-        self.accent_color = self.get_accent_color_hex()
-        self.applyOrder.setStyleSheet(f"background-color : {self.accent_color}; color : white;") 
         self.autoSort = QPushButton("Auto Sort")
-
         self.refreshOrder = QPushButton("Refresh")
+        self.pickModsPath = QPushButton("Select Mods Folder")
+
+        self.applyOrder.setStyleSheet(f"background-color : {self.accent_color}; color : white;") 
+
+        if mods_path == '':
+            self.pickModsPath.setStyleSheet(f"background-color : red; color : white;")
+        else:
+            self.pickModsPath.setStyleSheet(f"background-color: auto; color: auto")
+
+    def setModsPath(self):
+        print('Presenting file dialog')
+        cfg_file = toml.load("./config.toml")
+        mods_path = QFileDialog.getExistingDirectory(self)
+        cfg_file["paths"]["mods"] = mods_path
 
 
-    def printModel(self):
+    def applyModOrder(self):
         # print(self.ddm.data(self.listView.currentIndex()))
-        print(self.ddm.stringList())
+        # print(f"Actively sorted list: {self.ddm.stringList()}")
+        i = 1
+        names_array = []
+        for mod in loaded_mods:
+            names_array.append(mod[0])
+        for mod in self.ddm.stringList():
+            mod_index = names_array.index(mod) # index of mod in big array
+            mod_path = loaded_mods[mod_index][1]
+            if sorted_pattern.match(mod):
+                # Mod was sorted previously, replace prefix
+                mod_name = f'{f'{i}':0>3} {mod[4:]}'
+            else:
+                mod_name = f'{f'{i}':0>3} {mod}'
+
+            mod_xml = ET.parse(f"{mods_path}/{mod_path}/metadata.xml")
+            root = mod_xml.getroot()
+
+            # print(f'Setting {mod_xml} with {mod_name}')
+            root.find("name").text = mod_name
+            mod_xml.write(f"{mods_path}/{mod_path}/metadata.xml", encoding='utf-8', xml_declaration=True)
+
+            i += 1
+        
+        self.getModList()
+
 
     def getModList(self):
         # Get list of Isaac mods
+        if mods_path == '': return
         mod_list = os.listdir(mods_path)
-        real_mod_name = []
+
+        if loaded_mods != []:
+            loaded_mods.clear()
         for mod in mod_list:
             mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
             root = mod_xml.getroot()
-            real_mod_name.append(root.find("name").text)
+            if [root.find("name").text, mod] not in loaded_mods:
+                loaded_mods.append([root.find("name").text, mod])
         
-        real_mod_name.sort()
-
-        self.ddm.setStringList([mod for mod in real_mod_name])
+        loaded_mods.sort()
+        self.ddm.setStringList([mod[0] for mod in loaded_mods])
 
     def get_accent_color_hex(self):
         app = QApplication.instance()
@@ -167,7 +233,6 @@ def set_icon(app):
         app.setWindowIcon(QIcon('assets/icon.icns'))
     else:
         app.setWindowIcon(QIcon('assets/icon.png'))
-    app.setWindowIcon(QIcon('assets/icon.png'))
 
 
 if __name__ == '__main__':
