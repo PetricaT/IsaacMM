@@ -16,6 +16,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - id: get_version
+        name: Get version
+        uses: jannemattila/get-version-from-tag@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -31,18 +35,18 @@ jobs:
         run: |
           pip install pyinstaller
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            pyinstaller -i ./assets/icon.png --onefile gui.py --name TboiMM-${{ env.VERSION }}-windows.exe
+            pyinstaller -i ./assets/icon.ico --name TboiMM-${{ steps.get_version.outputs.version }}-windows.exe --onefile gui.py 
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            pyinstaller -i ./assets/icon.png --onefile gui.py --name TboiMM-${{ env.VERSION }}-macos
+            pyinstaller -i ./assets/icon.icns --name TboiMM-${{ steps.get_version.outputs.version }}-macos --onefile gui.py
           else
-            pyinstaller -i ./assets/icon.png --onefile gui.py --name TboiMM-${{ env.VERSION }}-linux
+            pyinstaller -i ./assets/icon.png --name TboiMM-${{ steps.get_version.outputs.version }}-linux --onefile gui.py
           fi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
-          path: dist/TboiMM-${{ env.VERSION }}-*
+          path: dist/TboiMM-${{ steps.get_version.outputs.version }}-*
 
   release:
     needs: build
