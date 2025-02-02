@@ -1,9 +1,6 @@
 name: Build release
 
-on:
-  push:
-    tags:
-      - "v*.*.0"
+on: workflow_dispatch
 
 jobs:
   build:
