@@ -15,7 +15,7 @@ sorted_pattern = re.compile(r'[0-9]{3}\s{1}.*')
 mods_path = ''
 cfg_file = ''
 
-version = 'v0.1.0'
+version = 'v0.1.1'
 
 try:
     cfg_file = toml.load("./config.toml")
@@ -86,16 +86,11 @@ class DragDropListModel(QStringListModel):
 
         beginRow = -1
         if row != -1:
-            print("case 1: ROW IS NOT -1, meaning inserting in between, above or below an existing node")
             beginRow = row
         elif parent.isValid():
-            print("case 2: place item above parent")
             beginRow = parent.row()
         else:
-            print("case 3: PARENT IS INVALID, inserting to root, "
-                  "can change to 0 if you want it to appear at the top")
             beginRow = self.rowCount(QModelIndex())
-        print(f"row={row}, beginRow={beginRow}")
 
         encodedData = data.data(self.myMimeTypes)
         stream = QDataStream(encodedData, QIODevice.ReadOnly)
@@ -168,6 +163,7 @@ class DragApp(QWidget):
         else:
             self.pickModsPath.setStyleSheet(f"background-color: auto; color: auto")
 
+
     def setModsPath(self):
         print('Presenting file dialog')
         cfg_file = toml.load("./config.toml")
@@ -176,8 +172,6 @@ class DragApp(QWidget):
 
 
     def applyModOrder(self):
-        # print(self.ddm.data(self.listView.currentIndex()))
-        # print(f"Actively sorted list: {self.ddm.stringList()}")
         i = 1
         names_array = []
         for mod in loaded_mods:
@@ -190,16 +184,11 @@ class DragApp(QWidget):
                 mod_name = f'{f'{i}':0>3} {mod[4:]}'
             else:
                 mod_name = f'{f'{i}':0>3} {mod}'
-
             mod_xml = ET.parse(f"{mods_path}/{mod_path}/metadata.xml")
             root = mod_xml.getroot()
-
-            # print(f'Setting {mod_xml} with {mod_name}')
             root.find("name").text = mod_name
             mod_xml.write(f"{mods_path}/{mod_path}/metadata.xml", encoding='utf-8', xml_declaration=True)
-
             i += 1
-        
         self.getModList()
 
 
@@ -207,7 +196,6 @@ class DragApp(QWidget):
         # Get list of Isaac mods
         if mods_path == '': return
         mod_list = os.listdir(mods_path)
-
         if loaded_mods != []:
             loaded_mods.clear()
         for mod in mod_list:
@@ -219,6 +207,7 @@ class DragApp(QWidget):
         loaded_mods.sort()
         self.ddm.setStringList([mod[0] for mod in loaded_mods])
 
+
     def get_accent_color_hex(self):
         app = QApplication.instance()
         if not app:
@@ -226,6 +215,7 @@ class DragApp(QWidget):
         palette = app.palette()
         accent_color = palette.color(QPalette.ColorRole.Highlight)
         return accent_color.name()
+
 
 def set_icon(app):
     if sys.platform == 'win32':
