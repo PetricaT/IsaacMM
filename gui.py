@@ -174,11 +174,11 @@ class DragApp(QWidget):
         self.pickModsPath = QPushButton("Select Mods Folder")
 
         self.applyOrder.setStyleSheet(
-            f"background-color : {self.accent_color}; color : white;"
+            f"background-color : {self.accent_color}; color : auto;"
         )
 
         if mods_path == "":
-            self.pickModsPath.setStyleSheet("background-color : red; color : white;")
+            self.pickModsPath.setStyleSheet("background-color : red; color : auto;")
         else:
             self.pickModsPath.setStyleSheet("background-color: auto; color: auto")
 
