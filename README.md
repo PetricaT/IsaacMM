@@ -1,5 +1,7 @@
 # <img src="assets/icon.png" width="25" height="25" alt="isaac thumbs up"> The binding of Isaac - Mod Manager 
 
+[![Build release](https://github.com/PetricaT/IsaacMM/actions/workflows/python-build.yml/badge.svg)](https://github.com/PetricaT/IsaacMM/actions/workflows/python-build.yml)
+
 An experimental way of sorting mods for the game The binding of Isaac: Rebirth (with support for any DLC) 
 
 > [!WARNING]
