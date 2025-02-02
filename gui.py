@@ -15,6 +15,7 @@ sorted_pattern = re.compile(r'[0-9]{3}\s{1}.*')
 mods_path = ''
 cfg_file = ''
 
+version = '0.1.0'
 
 try:
     cfg_file = toml.load("./config.toml")
@@ -122,7 +123,7 @@ class DragApp(QWidget):
     def __init__(self, parent=None):
         super(DragApp, self).__init__(parent)
 
-        self.setWindowTitle('Tboi Mod Manager')
+        self.setWindowTitle(f'Tboi Mod Manager [{version}]')
         self.resize(480, 320)
 
         self.initUi()
