@@ -4,8 +4,7 @@
 
 An experimental way of sorting mods for the game The binding of Isaac: Rebirth (with support for any DLC) 
 
-> [!WARNING]
-> **This is a command line tool for now, a GUI is being worked on!**
+<img src="./assets/Windows_Dark.png" alt="Windows GUI Light">
 
 ### Chapters
 * [How to use](#how-to-use)
@@ -19,47 +18,29 @@ An experimental way of sorting mods for the game The binding of Isaac: Rebirth (
 > **BEFORE USING THIS! BACKUP YOUR MODS FOLDER, I AM NOT RESPONSIBLE FOR ANY LOSS OF DATA**
 
 > [!IMPORTANT]
-> You need to make sure you have Python installed.
+> This tool ONLY modifies the "metadata.xml" file, and only 1 field inside, that being "name". My tool does NOTHING else.
 
-Download this repository by clicking the green button at the top that says `Code` and `Download ZIP`.
+Download the executable for your platform from the releases tab (Windows, Linux, MacOS) and run the file.
 
-``` sh
-git clone https://github.com/PetricaT/IsaacMM.git
-```
+It will first generate a config file inside the active running directory, this is used to store the path to your mods folder which you HAVE to set if you're on **Windows** or **Linux**, MacOS gets a free pass for being officially unsupported by Edmund and knowing the path is never going to change.
 
-Now simply run the script to generate the config file *(the util.py file is the main way of running for now)*
+If your list is empty, it means the program didn't find any mods or you haven't set the mods folder.
 
-``` sh
-python3 util.py
-```
+Once your mods are loaded in, simply drag your mods around to order them like so
 
-This will generate a file called `config.toml`, edit it to point towards your `mods` folder inside the binding of isaac. The path should look something like this: `C:\SteamLibrary\steamapps\common\The Binding of Isaac Rebirth\mods`
+![demo_gif](./assets/demo_dnd.gif)
 
-Now run the script again to generate your current installed mods list
-
-``` sh
-python3 util.py
-```
-
-This time it will generate a file called `mods.txt`. Move the mods around up or down to set their load order. The higher a mod is in the list, the more priority it will have over other mods. [1 loads last, 9999 loads first].
-
-Once you are done sorting the mods, run the script.... again.
-
-``` sh
-python3 util.py
-```
-
-This time it will apply the mod order.
-
-If you ever want to reorder your mods, just repeat the last two steps!
+You can now press *Apply Sort Order* to mass-rename all the mods in the defined order.
 
 ## Why?
 
-If you're anything like and use more than 2 mods that change multiple textures, you are bound to encounter overlap. Most of this is solved by merging or renaming mods to be higher/lower on the load order. But this gets annoying, fast.
+If you're anything like and use more than 2 mods that change multiple textures, you are bound to encounter overlap. Most of this is solved by merging or renaming mods to be higher/lower on the load order. But this gets annoying, fast. Introduce, this tool, which makes mass-renaming much more easier by doing it in a visual way. 
+
+I am hoping to expand this a bit further, make it more like LOOT with a master-list of predefined rules, but I am not sure if I will ever dedicate that much effort to this project.
 
 ## How it works
 
-TboI sorts mods as follows:
+Tboi sorts mods as follows:
 
 * Symbols: !@#$%^&*()
 * Numbers: 1234567890
@@ -80,7 +61,7 @@ I don't expect people to have more than 999 mods for this game, but if that prov
 If you want to aid in the development of this, pull the repo locally and install the requierments (PyQt6, PySide6, toml) 
 
 ``` sh
-pip install -r requierments.txt
+pip install -r requirements.txt
 ```
 
 Create a pull request with your changes and I will approve them.
