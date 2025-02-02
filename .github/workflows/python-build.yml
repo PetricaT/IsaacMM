@@ -28,6 +28,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
       - name: Build Executable
+        shell: bash
         run: |
           pip install pyinstaller
           if [[ "$RUNNER_OS" == "Windows" ]]; then
