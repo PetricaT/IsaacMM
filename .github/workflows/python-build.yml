@@ -3,7 +3,7 @@ name: Build release
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*.0"
 
 jobs:
   build:
@@ -24,16 +24,25 @@ jobs:
       - name: Install Dependencies
         run: pip install -r requirements.txt
 
+      - name: Extract Version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
       - name: Build Executable
         run: |
           pip install pyinstaller
-          pyinstaller --onefile gui.py
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            pyinstaller -i ./assets/icon.png --onefile gui.py --name TboiMM-${{ env.VERSION }}-windows.exe
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            pyinstaller -i ./assets/icon.png --onefile gui.py --name TboiMM-${{ env.VERSION }}-macos
+          else
+            pyinstaller -i ./assets/icon.png --onefile gui.py --name TboiMM-${{ env.VERSION }}-linux
+          fi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
-          path: dist/*
+          path: dist/TboiMM-${{ env.VERSION }}-*
 
   release:
     needs: build
@@ -47,6 +56,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/build-*/gui*
+          files: artifacts/build-*/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
