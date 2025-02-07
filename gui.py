@@ -187,6 +187,8 @@ class DragApp(QWidget):
         cfg_file = toml.load("./config.toml")
         mods_path = QFileDialog.getExistingDirectory(self)
         cfg_file["paths"]["mods"] = mods_path
+        with open("./config.toml", "w") as f:
+            toml.dump(cfg_file, f)
 
     def applyModOrder(self):
         i = 1
@@ -219,6 +221,7 @@ class DragApp(QWidget):
         mod_list = os.listdir(mods_path)
         if loaded_mods != []:
             loaded_mods.clear()
+            self.ddm.setStringList([])
         for mod in mod_list:
             mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
             root = mod_xml.getroot()
