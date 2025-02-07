@@ -43,11 +43,21 @@ except:
     print("Config file not found")
     with open("./config.toml", "w") as f:
         f.write("[paths]\n")
+        isaac_folder = re.compile(r".*Binding of Isaac.*")
+        # Linux: /home/USERNAME/.local/share/Steam/steamapps/common/The Binding of Isaac Rebirth/mods/
+        # MacOS: /Users/USERNAME/Library/Application Support/Binding of Isaac Afterbirth+ Mods/
         if sys.platform == "darwin":
             # Official MacOS support was dropped, so we know the path is permanently this, we can just guess it.
             f.write(
                 f"mods='/Users/{getpass.getuser()}/Library/Application Support/Binding of Isaac Afterbirth+ Mods'"
             )
+        elif sys.platform == "linux":
+            # Linux is a bit more complicated, as the path can be different depending on the user's setup.
+            # We can check the Steam library folders to find the correct path.
+            steam_path = os.path.expanduser("~/.steam/steam/steamapps/common/")
+            for folder in os.listdir(steam_path):
+                if isaac_folder.match(folder):
+                    f.write(f"mods='{steam_path}{folder}/mods'")
         else:
             # Sadly, Linux support is weird, and Windows is a shot in the dark.
             f.write("mods=''")
@@ -136,7 +146,7 @@ class DragApp(QWidget):
         super(DragApp, self).__init__(parent)
 
         self.setWindowTitle(f"Tboi Mod Manager [{version}]")
-        self.resize(480, 320)
+        self.resize(490, 320)
 
         self.initUi()
 
@@ -174,13 +184,13 @@ class DragApp(QWidget):
         self.pickModsPath = QPushButton("Select Mods Folder")
 
         self.applyOrder.setStyleSheet(
-            f"background-color : {self.accent_color}; color : auto;"
+            f"background-color : {self.accent_color}"
         )
 
         if mods_path == "":
-            self.pickModsPath.setStyleSheet("background-color : red; color : auto;")
+            self.pickModsPath.setStyleSheet("background-color : red")
         else:
-            self.pickModsPath.setStyleSheet("background-color: auto; color: auto")
+            self.pickModsPath.setStyleSheet("background-color: auto")
 
     def setModsPath(self):
         print("Presenting file dialog")
@@ -216,10 +226,12 @@ class DragApp(QWidget):
 
     def getModList(self):
         # Get list of Isaac mods
+        print("Recieved REFRESH signal")
         if mods_path == "":
             return
         mod_list = os.listdir(mods_path)
         if loaded_mods != []:
+            print("Clearing loaded mods")
             loaded_mods.clear()
             self.ddm.setStringList([])
         for mod in mod_list:
@@ -254,5 +266,6 @@ if __name__ == "__main__":
     app.setStyle("fusion")
     set_icon(app)
     window = DragApp()
+    window.getModList()
     window.show()
     sys.exit(app.exec())

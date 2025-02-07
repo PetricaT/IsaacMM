@@ -34,6 +34,17 @@ You can now press *Apply Sort Order* to mass-rename all the mods in the defined 
 
 ## Why?
 
+<div align="center">
+
+The Problem
+
+![the_problem](./assets/the_problem.png)
+
+The solution
+
+![the_solution](./assets/the_solution.png)
+</div>
+
 If you're anything like and use more than 2 mods that change multiple textures, you are bound to encounter overlap. Most of this is solved by merging or renaming mods to be higher/lower on the load order. But this gets annoying, fast. Introduce, this tool, which makes mass-renaming much more easier by doing it in a visual way. 
 
 I am hoping to expand this a bit further, make it more like LOOT with a master-list of predefined rules, but I am not sure if I will ever dedicate that much effort to this project.
