@@ -22,7 +22,7 @@ An experimental way of sorting mods for the game The binding of Isaac: Rebirth (
 
 Download the executable for your platform from the releases tab (Windows, Linux, MacOS) and run the file.
 
-It will first generate a config file inside the active running directory, this is used to store the path to your mods folder which you HAVE to set if you're on **Windows** or **Linux**, MacOS gets a free pass for being officially unsupported by Edmund and knowing the path is never going to change.
+It will first generate a config file inside the active running directory, this is used to store the path to your mods folder which you HAVE to set if you're on **Windows**, MacOS gets a free pass for being officially unsupported by Edmund and knowing the path is never going to change, and Linux is somewhat more standard, so we guess that the standard directory is also where Isaac is.
 
 If your list is empty, it means the program didn't find any mods or you haven't set the mods folder.
 
