@@ -33,24 +33,24 @@ jobs:
 
       - name: Build Executable (Windows)
         if: runner.os == 'Windows'
-        run: pyinstaller -i ./assets/icon.ico --name TboiMM-windows.exe --onefile gui.py
+        run: pyinstaller -i ./assets/icon.ico --name IsaacMM-Windows.exe --onefile gui.py
         shell: powershell
 
       - name: Build Executable (macOS)
         if: runner.os == 'macOS'
-        run: pyinstaller -i ./assets/icon.icns --name TboiMM-macos --onefile gui.py
+        run: pyinstaller -i ./assets/icon.icns --name IsaacMM-MacOS --onefile gui.py
         shell: bash
 
       - name: Build Executable (Linux)
         if: runner.os == 'Linux'
-        run: pyinstaller -i ./assets/icon.png --name TboiMM-linux --onefile gui.py
+        run: pyinstaller -i ./assets/icon.png --name IsaacMM-Linux.elf --onefile gui.py
         shell: bash
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
-          path: dist/TboiMM-*
+          path: dist/IsaacMM-*
 
   release:
     needs: build
