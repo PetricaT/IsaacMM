@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QGridLayout,
     QFileDialog,
+    QLineEdit,
 )
 from PySide6.QtCore import (
     Qt,
@@ -18,7 +19,6 @@ from PySide6.QtCore import (
     QIODevice,
 )
 import xml.etree.ElementTree as ET
-import getpass
 import toml
 import sys
 import os
@@ -30,7 +30,7 @@ sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
 mods_path = ""
 cfg_file = ""
 
-version = "v0.2.3"
+version = "v0.2.4"
 
 try:
     cfg_file = toml.load("./config.toml")
@@ -49,7 +49,7 @@ except:
         if sys.platform == "darwin":
             # Official MacOS support was dropped, so we know the path is permanently this, we can just guess it.
             f.write(
-                f"mods='/Users/{getpass.getuser()}/Library/Application Support/Binding of Isaac Afterbirth+ Mods'"
+                f"mods='{os.path.expanduser('~/Library/Application Support/Binding of Isaac Afterbirth+ Mods')}'"
             )
         elif sys.platform == "linux":
             # Linux is a bit more complicated, as the path can be different depending on the user's setup.
@@ -162,6 +162,7 @@ class DragApp(QWidget):
         self.baseLayout.addWidget(self.autoSort, 1, 1)
         self.baseLayout.addWidget(self.refreshOrder, 2, 1)
         self.baseLayout.addWidget(self.pickModsPath, 2, 0)
+        self.baseLayout.addWidget(self.currentPath, 3, 0)
         self.applyOrder.clicked.connect(self.applyModOrder)
         # self.autoSort.clicked.connect(self.autoSortMods)
         self.refreshOrder.clicked.connect(self.getModList)
@@ -182,12 +183,12 @@ class DragApp(QWidget):
         self.autoSort = QPushButton("Auto Sort")
         self.refreshOrder = QPushButton("Refresh")
         self.pickModsPath = QPushButton("Select Mods Folder")
+        self.currentPath = QLineEdit(f"{mods_path}")
+        self.currentPath.setReadOnly(True)
 
-        self.applyOrder.setStyleSheet(
-            f"background-color : {self.accent_color}"
-        )
+        self.applyOrder.setStyleSheet(f"background-color : {self.accent_color}")
 
-        if mods_path == "":
+        if mods_path == "" or loaded_mods == []:
             self.pickModsPath.setStyleSheet("background-color : red")
         else:
             self.pickModsPath.setStyleSheet("background-color: auto")
@@ -199,6 +200,7 @@ class DragApp(QWidget):
         cfg_file["paths"]["mods"] = mods_path
         with open("./config.toml", "w") as f:
             toml.dump(cfg_file, f)
+        self.currentPath.setText(f"{mods_path}")
 
     def applyModOrder(self):
         i = 1
@@ -226,22 +228,30 @@ class DragApp(QWidget):
 
     def getModList(self):
         # Get list of Isaac mods
-        print("Recieved REFRESH signal")
+        print("[DEBUG] Recieved REFRESH signal")
         if mods_path == "":
             return
         mod_list = os.listdir(mods_path)
         if loaded_mods != []:
-            print("Clearing loaded mods")
             loaded_mods.clear()
             self.ddm.setStringList([])
-        for mod in mod_list:
-            mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
-            root = mod_xml.getroot()
-            if [root.find("name").text, mod] not in loaded_mods:
-                loaded_mods.append([root.find("name").text, mod])
+        try:
+            for mod in mod_list:
+                mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
+                root = mod_xml.getroot()
+                if [root.find("name").text, mod] not in loaded_mods:
+                    loaded_mods.append([root.find("name").text, mod])
 
-        loaded_mods.sort()
-        self.ddm.setStringList([mod[0] for mod in loaded_mods])
+            loaded_mods.sort()
+            self.ddm.setStringList([mod[0] for mod in loaded_mods])
+        except FileNotFoundError:
+            print("[DEBUG] Current modpath is invalid")
+
+    def disable_unimplemented(self):
+        unimplemented_buttons = [self.autoSort]
+        for button in unimplemented_buttons:
+            button.setEnabled(False)
+            button.setToolTip("Not implemented yet")
 
     def get_accent_color_hex(self):
         app = QApplication.instance()
@@ -267,5 +277,6 @@ if __name__ == "__main__":
     set_icon(app)
     window = DragApp()
     window.getModList()
+    window.disable_unimplemented()
     window.show()
     sys.exit(app.exec())
