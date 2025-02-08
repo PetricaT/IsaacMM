@@ -4,7 +4,7 @@
 
 An experimental way of sorting mods for the game The binding of Isaac: Rebirth (with support for any DLC) 
 
-![Program Window](./assets/Windows_Dark.png)
+![Program Window](./assets/demo_window.png)
 
 ## Chapters
 1. [How to use](#how-to-use)
