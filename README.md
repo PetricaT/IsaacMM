@@ -4,15 +4,15 @@
 
 An experimental way of sorting mods for the game The binding of Isaac: Rebirth (with support for any DLC) 
 
-<img src="./assets/Windows_Dark.png" alt="Windows GUI Light">
+![Program Window](./assets/Windows_Dark.png)
 
-### Chapters
-* [How to use](#how-to-use)
-* [Why?](#why)
-* [How it works](#how-it-works)
-* [Contributing](#how-to-help)
+## Chapters
+1. [How to use](#how-to-use)
+2. [Why?](#why)
+3. [How it works](#how-it-works)
+4. [Contributing](#how-to-help)
 
-## HOW TO USE
+## 1. HOW TO USE
 
 > [!CAUTION]
 > **BEFORE USING THIS! BACKUP YOUR MODS FOLDER, I AM NOT RESPONSIBLE FOR ANY LOSS OF DATA**
@@ -28,11 +28,15 @@ If your list is empty, it means the program didn't find any mods or you haven't 
 
 Once your mods are loaded in, simply drag your mods around to order them like so
 
+<div align="center">
+
 ![demo_gif](./assets/demo_dnd.gif)
+
+</div>
 
 You can now press *Apply Sort Order* to mass-rename all the mods in the defined order.
 
-## Why?
+## 2. Why?
 
 <div align="center">
 
@@ -49,7 +53,7 @@ If you're anything like and use more than 2 mods that change multiple textures, 
 
 I am hoping to expand this a bit further, make it more like LOOT with a master-list of predefined rules, but I am not sure if I will ever dedicate that much effort to this project.
 
-## How it works
+## 3. How it works
 
 Tboi sorts mods as follows:
 
@@ -67,9 +71,9 @@ Tboi sorts mods as follows:
 
 I don't expect people to have more than 999 mods for this game, but if that proves wrong, the limit can be changed.
 
-## How to help
+## 4. How to help
 
-If you want to aid in the development of this, pull the repo locally and install the requierments (PyQt6, PySide6, toml) 
+If you want to aid in the development of this, fork the repo and install the requierments (PyQt6, PySide6, toml) 
 
 ``` sh
 pip install -r requirements.txt
@@ -77,4 +81,4 @@ pip install -r requirements.txt
 
 Create a pull request with your changes and I will approve them.
 
-Currently need help with the GUI, but any help is appreciated.
+If you know how to make Qt based apps, help would be appreciated in making the GUI code cleaner or better.
