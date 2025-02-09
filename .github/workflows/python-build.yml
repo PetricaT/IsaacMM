@@ -33,17 +33,17 @@ jobs:
 
       - name: Build Executable (Windows)
         if: runner.os == 'Windows'
-        run: pyinstaller -i ./assets/icon.ico --name IsaacMM-Windows.exe --onefile gui.py
+        run: pyinstaller IsaacMM-Windows.spec
         shell: powershell
 
       - name: Build Executable (macOS)
         if: runner.os == 'macOS'
-        run: pyinstaller -i ./assets/icon.icns --name IsaacMM-MacOS --onefile gui.py
+        run: pyinstaller IsaacMM-MacOS.spec
         shell: bash
 
       - name: Build Executable (Linux)
         if: runner.os == 'Linux'
-        run: pyinstaller -i ./assets/icon.png --name IsaacMM-Linux.elf --onefile gui.py
+        run: pyinstaller IsaacMM-Linux.spec
         shell: bash
 
       - name: Upload Artifacts
