@@ -26,6 +26,7 @@ import re
 
 
 sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
+exclamation_marks = re.compile(r"\s!{1,12}")
 
 mods_path = ""
 cfg_file = ""
@@ -33,12 +34,20 @@ cfg_file = ""
 version = "v0.2.4"
 
 try:
+    # Global Settings & Vars
+    # Mods path:    str     - Path to mods folder
+    # Remove marks: bool    - Remove exclamation marks from mod names
+    #
     cfg_file = toml.load("./config.toml")
-    try:
-        mods_path = cfg_file["paths"]["mods"]
-    except:
+    mods_path = cfg_file["paths"]["mods"]
+    if mods_path == "":
         print("Mods path malformed, check if path is correct")
         mods_path = ""
+    remove_marks = cfg_file["settings"]["remove_marks"]
+    if remove_marks == "true":
+        remove_marks = True
+    else:
+        remove_marks = False
 except:
     print("Config file not found")
     with open("./config.toml", "w") as f:
@@ -49,7 +58,7 @@ except:
         if sys.platform == "darwin":
             # Official MacOS support was dropped, so we know the path is permanently this, we can just guess it.
             f.write(
-                f"mods='{os.path.expanduser('~/Library/Application Support/Binding of Isaac Afterbirth+ Mods')}'"
+                f"mods='{os.path.expanduser('~/Library/Application Support/Binding of Isaac Afterbirth+ Mods')}'\n"
             )
         elif sys.platform == "linux":
             # Linux is a bit more complicated, as the path can be different depending on the user's setup.
@@ -57,10 +66,12 @@ except:
             steam_path = os.path.expanduser("~/.steam/steam/steamapps/common/")
             for folder in os.listdir(steam_path):
                 if isaac_folder.match(folder):
-                    f.write(f"mods='{steam_path}{folder}/mods'")
+                    f.write(f"mods='{steam_path}{folder}/mods'\n")
         else:
             # Sadly, Linux support is weird, and Windows is a shot in the dark.
-            f.write("mods=''")
+            f.write("mods=''\n")
+        f.write("[settings]\n")
+        f.write("remove_marks=false\n")
         f.close
 
 

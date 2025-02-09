@@ -80,3 +80,6 @@ pip install -r requirements.txt
 Create a pull request with your changes and I will approve them.
 
 If you know how to make Qt based apps, help would be appreciated in making the GUI code cleaner or better.
+
+> [!NOTE]
+> The build scripts assume you have "[uv](https://docs.astral.sh/uv/)" installed, if you don't have it, do yourself a favour and install it.
