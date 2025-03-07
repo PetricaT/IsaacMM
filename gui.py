@@ -20,6 +20,7 @@ from PySide6.QtCore import (
 )
 import xml.etree.ElementTree as ET
 import toml
+import time
 import sys
 import os
 import re
@@ -243,9 +244,17 @@ class DragApp(QWidget):
         if mods_path == "":
             return
         mod_list = os.listdir(mods_path)
+        try:
+            # Hacky macos DS_Store skip
+            ds_index = mod_list.index('.DS_Store')
+            mod_list.pop(ds_index)
+        except:
+            pass
         if loaded_mods != []:
             loaded_mods.clear()
-            self.ddm.setStringList([])
+            # self.ddm.setStringList('')
+            self.ddm.beginResetModel()
+            self.ddm.endResetModel()
         try:
             for mod in mod_list:
                 mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
