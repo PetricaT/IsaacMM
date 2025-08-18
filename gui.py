@@ -1,30 +1,29 @@
-from PySide6.QtGui import QIcon, QPalette
-from PySide6.QtWidgets import (
-    QApplication,
-    QListView,
-    QAbstractItemView,
-    QPushButton,
-    QWidget,
-    QGridLayout,
-    QFileDialog,
-    QLineEdit,
-)
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+import toml
 from PySide6.QtCore import (
-    Qt,
-    QStringListModel,
-    QModelIndex,
-    QMimeData,
     QByteArray,
     QDataStream,
     QIODevice,
+    QMimeData,
+    QModelIndex,
+    QStringListModel,
+    Qt,
 )
-import xml.etree.ElementTree as ET
-import toml
-import time
-import sys
-import os
-import re
-
+from PySide6.QtGui import QIcon, QPalette
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QFileDialog,
+    QGridLayout,
+    QLineEdit,
+    QListView,
+    QPushButton,
+    QWidget,
+)
 
 sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
 exclamation_marks = re.compile(r"\s!{1,12}")
@@ -34,12 +33,21 @@ cfg_file = ""
 
 version = "v0.2.4"
 
+# Try to resolve to .local/share/IsaacMM (if Linux/MacOS), .AppData/IsaacMM (if Windows
+# and .AppData/IsaacMM doesn't exist
+if sys.platform == "win32":
+    appdata = os.path.expanduser("~") + "/AppData/IsaacMM"
+elif sys.platform == "darwin":
+    appdata = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
+else:
+    appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
+
 try:
     # Global Settings & Vars
     # Mods path:    str     - Path to mods folder
     # Remove marks: bool    - Remove exclamation marks from mod names
     #
-    cfg_file = toml.load("./config.toml")
+    cfg_file = toml.load(f"{appdata}/config.toml")
     mods_path = cfg_file["paths"]["mods"]
     if mods_path == "":
         print("Mods path malformed, check if path is correct")
@@ -49,9 +57,10 @@ try:
         remove_marks = True
     else:
         remove_marks = False
-except:
+except FileNotFoundError:
     print("Config file not found")
-    with open("./config.toml", "w") as f:
+    os.makedirs(appdata, exist_ok=True)
+    with open(f"{appdata}/config.toml", "w") as f:
         f.write("[paths]\n")
         isaac_folder = re.compile(r".*Binding of Isaac.*")
         # Linux: /home/USERNAME/.local/share/Steam/steamapps/common/The Binding of Isaac Rebirth/mods/
@@ -207,10 +216,10 @@ class DragApp(QWidget):
 
     def setModsPath(self):
         print("Presenting file dialog")
-        cfg_file = toml.load("./config.toml")
+        cfg_file = toml.load(f"{appdata}/config.toml")
         mods_path = QFileDialog.getExistingDirectory(self)
         cfg_file["paths"]["mods"] = mods_path
-        with open("./config.toml", "w") as f:
+        with open(f"{appdata}/config.toml", "w") as f:
             toml.dump(cfg_file, f)
         self.currentPath.setText(f"{mods_path}")
 
@@ -239,14 +248,15 @@ class DragApp(QWidget):
         self.getModList()
 
     def getModList(self):
+        # Got a new modpath, so redraw the list
+        global loaded_mods
         # Get list of Isaac mods
-        print("[DEBUG] Recieved REFRESH signal")
         if mods_path == "":
             return
         mod_list = os.listdir(mods_path)
         try:
             # Hacky macos DS_Store skip
-            ds_index = mod_list.index('.DS_Store')
+            ds_index = mod_list.index(".DS_Store")
             mod_list.pop(ds_index)
         except:
             pass
