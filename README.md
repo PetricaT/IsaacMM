@@ -82,6 +82,7 @@ root
 ├─ main.py
 ├─ setup.py (cx_Freeze)
 └─ source
+   ├─ folder.py
    └─ config.py
 ```
 

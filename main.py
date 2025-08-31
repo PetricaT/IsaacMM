@@ -5,8 +5,6 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import tomllib
-
 from source.config import config_manager
 
 sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")

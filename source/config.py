@@ -1,6 +1,12 @@
+# ---------------------------------------
+# Config file/folder manager
+#
+# The only purpose this serves is to manage, write and read
+# the configuration file that is used to represent the state
+# of the program.
+
 import logging
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -19,6 +25,9 @@ class config_manager:
         """
         self.config_file = config_directory / "config.toml"
         self.config = self.load_config()
+
+    def get_config(self) -> dict:
+        return self.config
 
     def load_config(self) -> dict:
         if self.config_file.exists():
