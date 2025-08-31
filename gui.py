@@ -248,34 +248,33 @@ class DragApp(QWidget):
         self.getModList()
 
     def getModList(self):
-        # Got a new modpath, so redraw the list
-        global loaded_mods
-        # Get list of Isaac mods
+        # If path is unset, return
         if mods_path == "":
             return
+        # Get list of Isaac mods
         mod_list = os.listdir(mods_path)
         try:
             # Hacky macos DS_Store skip
             ds_index = mod_list.index(".DS_Store")
             mod_list.pop(ds_index)
-        except:
+        except ValueError:
             pass
-        if loaded_mods != []:
+        # If path has changed, refresh the list
+        if mods_path != self.previous_mods_path:
             loaded_mods.clear()
-            # self.ddm.setStringList('')
             self.ddm.beginResetModel()
-            self.ddm.endResetModel()
-        try:
-            for mod in mod_list:
+            self.previous_mods_path = mods_path
+        for mod in mod_list:
+            try:
                 mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
                 root = mod_xml.getroot()
                 if [root.find("name").text, mod] not in loaded_mods:
                     loaded_mods.append([root.find("name").text, mod])
-
-            loaded_mods.sort()
-            self.ddm.setStringList([mod[0] for mod in loaded_mods])
-        except FileNotFoundError:
-            print("[DEBUG] Current modpath is invalid")
+            except FileNotFoundError:
+                continue
+        loaded_mods.sort()
+        self.ddm.endResetModel()
+        self.ddm.setStringList([mod[0] for mod in loaded_mods])
 
     def disable_unimplemented(self):
         unimplemented_buttons = [self.autoSort]

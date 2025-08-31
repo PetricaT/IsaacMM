@@ -71,6 +71,22 @@ I don't expect people to have more than 999 mods for this game, but if that prov
 
 ## 4. How to help
 
+Quick rundown on the files.
+
+The current compiling program: gui.py (yes, the entire file alone)
+
+Work in progress (entire rewrite):
+
+```
+root
+├─ main.py
+├─ setup.py (cx_Freeze)
+└─ source
+   └─ config.py
+```
+
+---
+
 If you want to aid in the development of this, fork the repo and install the requierments (PyQt6, PySide6, toml) 
 
 ``` sh
