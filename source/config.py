@@ -9,11 +9,9 @@ import logging
 import os
 import sys
 from pathlib import Path
-
 import toml
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 STEAM_APPID = 250900
 
@@ -23,6 +21,7 @@ class config_manager:
         """
         Helper class to generate and manage the configuration file
         """
+        logger.debug(f"Config directory: {config_directory}")
         self.config_file = config_directory / "config.toml"
         self.config = self.load_config()
 
@@ -46,10 +45,14 @@ class config_manager:
                     Path.home()
                     / "Library/Application Support/Binding of Isaac Afterbirth+ Mods"
                 )
+                if not os.path.exists(_mods_path): 
+                    _mods_path = None
             case "linux":
                 _mods_path = self.resolve_linux_path()
 
-        cfg["paths"]["mods"] = _mods_path
+        if _mods_path is not None:
+            logger.debug(f"Set mods path to: {_mods_path}")
+        cfg["paths"]["mods"] = str(_mods_path)
         self.save_config(cfg)
         return cfg
 
@@ -71,32 +74,29 @@ class config_manager:
                         if os.path.exists(
                             f"{game_root_folder}/steamapps/common/The Binding of Isaac Rebirth/mods/"
                         ):
+                            logger.info("VDF Found folder")
                             return game_root_folder
                 file.close()
         except FileNotFoundError:
             pass
         return None
 
-    def resolve_windows_path(self):
+    def resolve_windows_path(self) -> Path | None:
         """
-        Steam can be installed in any folder on Windows, this is only a
-        best guess as to where steam was installed.
+        Steam can be installed in any folder on Windows, but we can
+        query the Steam registry to find the correct path.
 
-        Returns: `%%STEAM_PATH%%\\steamapps\\common\\The Binding of Isaac Rebirth\\mods\\`
+        Returns: `%%STEAM_PATH%%\\steamapps\\common\\The Binding of Isaac Rebirth\\mods`
         """
         import winreg
 
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")  # type: ignore
         steam_path, _ = winreg.QueryValueEx(key, "SteamPath")  # type: ignore
         winreg.CloseKey(key)  # type: ignore
-        print(steam_path)
-        # TODO: Test on windows what this returns
-        # - Read and parse the path
-        # - Check if Isaac is there and mods
-        # Return: STEAM_PATH + Path_to_isaac_mods
-        return f"{self.parse_vdf_path(steam_path)}\\steamapps\\common\\The Binding of Isaac Rebirth\\mods\\"
 
-    def resolve_linux_path(self) -> str | None:
+        return Path(rf"{self.parse_vdf_path(steam_path)}/steamapps/common/The Binding of Isaac Rebirth/mods")
+
+    def resolve_linux_path(self) -> Path | None:
         """
         Linux can have multiple locations for the steam install, therefore
         we check some of the known file locations depending on the install
@@ -120,5 +120,5 @@ class config_manager:
         # Attrocious implementation but the safest
         for spath in STEAM_PATHS:
             if os.path.exists(spath):
-                return f"{self.parse_vdf_path(spath)}/steamapps/common/The Binding of Isaac Rebirth/mods/"
+                return Path(f"{self.parse_vdf_path(spath)}/steamapps/common/The Binding of Isaac Rebirth/mods/")
         return None
