@@ -35,7 +35,7 @@ class config_manager:
 
     def create_default_config(self) -> dict:
         cfg = {"paths": {"mods": ""}, "settings": {"remove_marks": False}}
-        # Try to guess the Isaac folder
+        # Get game path from Steam vdf file
         match sys.platform:
             case "win32":
                 _mods_path = self.resolve_windows_path()
@@ -50,9 +50,8 @@ class config_manager:
             case "linux":
                 _mods_path = self.resolve_linux_path()
 
-        if _mods_path is not None:
-            logger.debug(f"Set mods path to: {_mods_path}")
-        cfg["paths"]["mods"] = str(_mods_path)
+        logger.debug(f"Set mods path to: {_mods_path}")
+        cfg["paths"]["mods"] = str(_mods_path) if _mods_path is not None else ""
         self.save_config(cfg)
         return cfg
 
@@ -64,6 +63,8 @@ class config_manager:
         """
         Simple Valve Data File (.vdf) reader to figure out where a game is located on
         the computer.
+
+        Reads the VDF line by line and early returns when the game is found
         """
         try:
             with open(f"{steam_path}/config/libraryfolders.vdf", "r") as file:
