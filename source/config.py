@@ -6,10 +6,11 @@
 # of the program.
 
 import logging
-import os, sys
-import toml
-
+import os
+import sys
 from pathlib import Path
+
+import toml
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +21,10 @@ class config_manager:
     _instance = None
 
     def __new__(cls, *args, **kwargs):
-        if cls._instance == None:
+        if cls._instance is None:
             inst = super().__new__(cls)
             inst._initialized = False
-            inst._config = {}
+            inst.config = {}
             inst.config_file = None
             cls._instance = inst
         return cls._instance
@@ -33,19 +34,20 @@ class config_manager:
         Helper class to generate and manage the configuration file
         """
         # Initialize only once
-        if self._initialized or config_directory is None: return
-        
+        if self._initialized or config_directory is None:
+            return
+
         logger.debug(f"Config directory: {config_directory}")
         self.config_file = config_directory / "config.toml"
         self.config: dict = self._load_config()
         logger.debug(f"Mods dir: {self.get('paths', 'mods')}")
         self._initialized = True
-        
+
     # --------------
     # Public API
     # --------------
     def get(self, header, variable):
-        return self.config.get(header).get(variable)
+        return self.config.get(header).get(variable)  # type: ignore
 
     # --------------
     # Private functions
@@ -67,7 +69,7 @@ class config_manager:
                     Path.home()
                     / "Library/Application Support/Binding of Isaac Afterbirth+ Mods"
                 )
-                if not os.path.exists(_mods_path): 
+                if not os.path.exists(_mods_path):
                     _mods_path = None
             case "linux":
                 _mods_path = self._resolve_linux_path()
@@ -117,7 +119,9 @@ class config_manager:
         steam_path, _ = winreg.QueryValueEx(key, "SteamPath")  # type: ignore
         winreg.CloseKey(key)  # type: ignore
 
-        return Path(rf"{self._parse_vdf_path(steam_path)}/steamapps/common/The Binding of Isaac Rebirth/mods")
+        return Path(
+            rf"{self._parse_vdf_path(steam_path)}/steamapps/common/The Binding of Isaac Rebirth/mods"
+        )
 
     def _resolve_linux_path(self) -> Path | None:
         """
@@ -143,5 +147,7 @@ class config_manager:
         # Attrocious implementation but the safest
         for spath in STEAM_PATHS:
             if os.path.exists(spath):
-                return Path(f"{self._parse_vdf_path(spath)}/steamapps/common/The Binding of Isaac Rebirth/mods/")
+                return Path(
+                    f"{self._parse_vdf_path(spath)}/steamapps/common/The Binding of Isaac Rebirth/mods/"
+                )
         return None
