@@ -37,25 +37,30 @@ class config_manager:
         
         logger.debug(f"Config directory: {config_directory}")
         self.config_file = config_directory / "config.toml"
-        self.config: dict = self.load_config()
+        self.config: dict = self._load_config()
+        logger.debug(f"Mods dir: {self.get('paths', 'mods')}")
+        self._initialized = True
         
     # --------------
-    # Config API
+    # Public API
     # --------------
     def get(self, header, variable):
         return self.config.get(header).get(variable)
 
-    def load_config(self) -> dict:
+    # --------------
+    # Private functions
+    # --------------
+    def _load_config(self) -> dict:
         if self.config_file.exists():
             return toml.load(self.config_file)
-        return self.create_default_config()
+        return self._create_default_config()
 
-    def create_default_config(self) -> dict:
+    def _create_default_config(self) -> dict:
         cfg = {"paths": {"mods": ""}, "settings": {"remove_marks": False}}
         # Get game path from Steam vdf file
         match sys.platform:
             case "win32":
-                _mods_path = self.resolve_windows_path()
+                _mods_path = self._resolve_windows_path()
                 pass
             case "darwin":
                 _mods_path = str(
@@ -65,18 +70,18 @@ class config_manager:
                 if not os.path.exists(_mods_path): 
                     _mods_path = None
             case "linux":
-                _mods_path = self.resolve_linux_path()
+                _mods_path = self._resolve_linux_path()
 
         logger.debug(f"Set mods path to: {_mods_path}")
         cfg["paths"]["mods"] = str(_mods_path) if _mods_path is not None else ""
-        self.save_config(cfg)
+        self._save_config(cfg)
         return cfg
 
-    def save_config(self, cfg: dict):
+    def _save_config(self, cfg: dict):
         with open(self.config_file, "w") as f:
             toml.dump(cfg, f)
 
-    def parse_vdf_path(self, steam_path: str) -> str | None:
+    def _parse_vdf_path(self, steam_path: str) -> str | None:
         """
         Simple Valve Data File (.vdf) reader to figure out where a game is located on
         the computer.
@@ -99,7 +104,7 @@ class config_manager:
             pass
         return None
 
-    def resolve_windows_path(self) -> Path | None:
+    def _resolve_windows_path(self) -> Path | None:
         """
         Steam can be installed in any folder on Windows, but we can
         query the Steam registry to find the correct path.
@@ -112,9 +117,9 @@ class config_manager:
         steam_path, _ = winreg.QueryValueEx(key, "SteamPath")  # type: ignore
         winreg.CloseKey(key)  # type: ignore
 
-        return Path(rf"{self.parse_vdf_path(steam_path)}/steamapps/common/The Binding of Isaac Rebirth/mods")
+        return Path(rf"{self._parse_vdf_path(steam_path)}/steamapps/common/The Binding of Isaac Rebirth/mods")
 
-    def resolve_linux_path(self) -> Path | None:
+    def _resolve_linux_path(self) -> Path | None:
         """
         Linux can have multiple locations for the steam install, therefore
         we check some of the known file locations depending on the install
@@ -138,5 +143,5 @@ class config_manager:
         # Attrocious implementation but the safest
         for spath in STEAM_PATHS:
             if os.path.exists(spath):
-                return Path(f"{self.parse_vdf_path(spath)}/steamapps/common/The Binding of Isaac Rebirth/mods/")
+                return Path(f"{self._parse_vdf_path(spath)}/steamapps/common/The Binding of Isaac Rebirth/mods/")
         return None
