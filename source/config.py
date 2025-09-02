@@ -6,10 +6,10 @@
 # of the program.
 
 import logging
-import os
-import sys
-from pathlib import Path
+import os, sys
 import toml
+
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +17,33 @@ STEAM_APPID = 250900
 
 
 class config_manager:
-    def __init__(self, config_directory: Path):
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance == None:
+            inst = super().__new__(cls)
+            inst._initialized = False
+            inst._config = {}
+            inst.config_file = None
+            cls._instance = inst
+        return cls._instance
+
+    def __init__(self, config_directory: Path | None = None):
         """
         Helper class to generate and manage the configuration file
         """
+        # Initialize only once
+        if self._initialized or config_directory is None: return
+        
         logger.debug(f"Config directory: {config_directory}")
         self.config_file = config_directory / "config.toml"
-        self.config = self.load_config()
-
-    def get_config(self) -> dict:
-        return self.config
+        self.config: dict = self.load_config()
+        
+    # --------------
+    # Config API
+    # --------------
+    def get(self, header, variable):
+        return self.config.get(header).get(variable)
 
     def load_config(self) -> dict:
         if self.config_file.exists():

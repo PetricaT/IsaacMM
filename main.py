@@ -5,11 +5,13 @@ import sys
 from pathlib import Path
 
 from source.config import config_manager
+from source.folder import folder_manager
 
 sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
 
 class mod_manager:
     def __init__(self):
+        # Determine where the application state should be stored
         match sys.platform:
             case "win32":
                 self.config_directory = Path.home() / "AppData" / "Local" / "IsaacMM"
@@ -28,7 +30,9 @@ class mod_manager:
             os.makedirs(self.config_directory)
         
         self._setup_logger()
+        # cfg = config_manager(self.config_directory)
         config_manager(self.config_directory)
+        folder_manager()
 
     def _setup_logger(self):
         logger = logging.getLogger()
