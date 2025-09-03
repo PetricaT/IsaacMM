@@ -32,7 +32,8 @@ class mod_manager:
         self._setup_logger()
         # cfg = config_manager(self.config_directory)
         config_manager(self.config_directory)
-        folder_manager()
+        fm = folder_manager()
+        # fm.enable(r"completion mark reminder_2603224299")
 
     def _setup_logger(self):
         logger = logging.getLogger()

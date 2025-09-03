@@ -1,0 +1,21 @@
+# Masterlist that the mod manager calls for when
+# automatic sorting is called upon (ty LOOT for the idea)
+# -----------------------------------------------
+# List is completed with data from the metadata.xml
+# mods > name: "directory" tag  (also the name of the folder steam downloads without the steamID)
+# mods > url > name: "name" tag (prone to being edited by the MM, not reliable)
+# -----------------------------------------------
+# Mod authors are welcome to add their mods to this list
+# in case of conflicts or mod requirements
+mods:
+  - name: '!!mod config menu'
+    url:
+      - link: 'https://steamcommunity.com/sharedfiles/filedetails/?id=2681875787'
+        name: 'Mod Config Menu Pure'
+    # before: [ '@everything' ]
+    # after: [ '' ]
+  - name: '!!~External item descriptions'
+    url:
+      - link: 'https://steamcommunity.com/sharedfiles/filedetails/?id=836319872'
+        name: 'external item descriptions'
+    after: [ '!!mod config menu' ]
