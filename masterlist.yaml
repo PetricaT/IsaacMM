@@ -13,7 +13,7 @@ mods:
       - link: 'https://steamcommunity.com/sharedfiles/filedetails/?id=2681875787'
         name: 'Mod Config Menu Pure'
     # before: [ '@everything' ]
-    # after: [ '' ]
+  # Regex pattern (uncertain how I should set this up): /^\W*(external item descriptions)/imUg
   - name: '!!~External item descriptions'
     url:
       - link: 'https://steamcommunity.com/sharedfiles/filedetails/?id=836319872'

@@ -32,12 +32,12 @@ class folder_manager:
         self.config = config_manager()
         self.modlist = {}
         self.mods_dir = self.config.get("paths", "mods")
-        self.get_mod_list()
+        self.mod_folder_data = {}
+        # self.get_mod_list()
 
         self._initialized = True
 
     def get_mod_list(self) -> dict:
-        self.mod_folder_data = {}
         blacklisted_folders = [".DS_Store"]  # Apple is the bane of my existance
         mods: list[str] = os.listdir(self.mods_dir)
         # Purge unwanted folders before getting metadata
@@ -47,7 +47,6 @@ class folder_manager:
         # Generate metadata
         for mod in mods:
             self.mod_folder_data.update(self._generate_metadata(mod))
-        
         return self.mod_folder_data
 
     def disable(self, raw_folder_name: str | None = None) -> None:
@@ -80,12 +79,13 @@ class folder_manager:
         disableStatus = False
         if os.path.exists(f"{absolutePath}/disable.it"):
             disableStatus = True
-        [modName, directory, version, tags] = self._parse_xml(rawFolderName)
+        [modName, rank, directory, version, tags] = self._parse_xml(rawFolderName)
 
         return {
             rawFolderName: {
                 "steamID": steamID, 
                 "name": modName, 
+                "rank": rank,
                 "directory_name": directory,
                 "path": absolutePath,
                 "version": version,
@@ -102,7 +102,6 @@ class folder_manager:
             return -1
 
     def _parse_xml(self, raw_folder_name: str) -> list[str]:
-        """Returns list[Mod Name: str, Version: str]"""
         # Provide useful info from mod's xml
         try:
             mod_xml = ET.parse(f"{self.mods_dir}/{raw_folder_name}/metadata.xml")
@@ -110,6 +109,7 @@ class folder_manager:
             name: str = self._handle_none_xml_tag(
                 root, "name", raw_folder=raw_folder_name
             )
+            rank = -1
             directory: str = self._handle_none_xml_tag(
                 root, "directory", raw_folder=raw_folder_name
             )
@@ -118,13 +118,13 @@ class folder_manager:
             )
             
             tags = [tag.get("id") for tag in root.findall("tag")]
-
             if re.match(sorted_pattern, name):
+                rank = int(name[:3])
                 name = name[4:]
-            return [name, directory, version, tags]
+            return [name, rank, directory, version, tags]
 
         except FileNotFoundError:
-            return [raw_folder_name, raw_folder_name, "0", []]
+            return [raw_folder_name, -1, raw_folder_name, "0", []]
 
     def _handle_none_xml_tag(
         self, xml_root: ET.Element, tag: str, raw_folder: str | None = None

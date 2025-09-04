@@ -6,6 +6,7 @@ from pathlib import Path
 
 from source.config import config_manager
 from source.folder import folder_manager
+from source.sort import sort_manager
 
 sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
 
@@ -32,8 +33,7 @@ class mod_manager:
         self._setup_logger()
         # cfg = config_manager(self.config_directory)
         config_manager(self.config_directory)
-        fm = folder_manager()
-        # fm.enable(r"completion mark reminder_2603224299")
+        sort_manager()
 
     def _setup_logger(self):
         logger = logging.getLogger()
