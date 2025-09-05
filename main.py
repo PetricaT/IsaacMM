@@ -1,8 +1,11 @@
+from pathlib import Path
 import logging
+import sys
 import os
 import re
-import sys
-from pathlib import Path
+
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
 
 from source.config import config_manager
 from source.folder import folder_manager
@@ -55,8 +58,8 @@ class mod_manager:
 
         logger.info(f"Running on platform {sys.platform}")
 
-    def sometin(self):
-        pass
+class Application:
+    pass
 
 class ColoredFormatter(logging.Formatter):
     COLORS = {
@@ -76,4 +79,14 @@ class ColoredFormatter(logging.Formatter):
 
 
 if __name__ == "__main__":
+    app = QGuiApplication(sys.argv)
+    engine = QQmlApplicationEngine()
+    
     mod_manager()
+    engine.load("./source/ui/Main.qml")
+
+    if not engine.rootObjects():
+        sys.exit(-1)
+
+    sys.exit(app.exec())
+

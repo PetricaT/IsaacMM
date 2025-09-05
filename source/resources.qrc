@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/assets">
+        <file>assets/icon.png</file>
+    </qresource>
+    <qresource prefix="/ui">
+        <file>ui/ListItem.qml</file>
+        <file>ui/Main.qml</file>
+    </qresource>
+</RCC>
