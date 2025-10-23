@@ -4,7 +4,9 @@ import QtQuick.Controls 6.5
 ApplicationWindow {
     visible: true
     width: 600
+    minimumWidth: 600
     height: 400
+    minimumHeight: 400
     title: "Isaac Mod Manager"
 
     Row {
@@ -18,7 +20,7 @@ ApplicationWindow {
             height: parent.height
 
             model: ListModel {
-                ListElement { text: "Mod 1" }
+                ListElement { text: "Mod 1"; box: Qt.Checked }
                 ListElement { text: "Mod 2" }
                 ListElement { text: "Mod 3" }
             }
@@ -35,7 +37,7 @@ ApplicationWindow {
             spacing: 10
             Button {
                 text: "Add"
-                onClicked: listView.model.append({ "text": "More mods" })
+                onClicked: listView.model.append({ text: "More mods" })
             }
             Button {
                 text: "Remove"

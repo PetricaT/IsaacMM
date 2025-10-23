@@ -15,6 +15,7 @@ sorted_pattern = re.compile(r"^[0-9]{3}\s{1}.*")
 
 logger = logging.getLogger(__name__)
 
+
 class folder_manager:
     _instance = None
 
@@ -50,18 +51,20 @@ class folder_manager:
         return self.mod_folder_data
 
     def disable(self, raw_folder_name: str | None = None) -> None:
-        if raw_folder_name is None: return
+        if raw_folder_name is None:
+            return
         disable_file = f"{self.mods_dir}/{raw_folder_name}/disable.it"
-        if os.path.exists(disable_file): 
+        if os.path.exists(disable_file):
             logger.debug(f"Mod '{raw_folder_name}' alredy disabled")
             return
-        else: 
+        else:
             logger.debug(f"Disabling '{raw_folder_name}'")
-            with open(disable_file, 'w') as f:
+            with open(disable_file, "w") as f:
                 f.close()
 
     def enable(self, raw_folder_name: str | None = None) -> None:
-        if raw_folder_name is None: return
+        if raw_folder_name is None:
+            return
         disable_file = f"{self.mods_dir}/{raw_folder_name}/disable.it"
         if os.path.exists(disable_file):
             logger.debug(f"Enabling '{raw_folder_name}'")
@@ -83,15 +86,15 @@ class folder_manager:
 
         return {
             rawFolderName: {
-                "steamID": steamID, 
-                "name": modName, 
+                "steamID": steamID,
+                "name": modName,
                 "rank": rank,
                 "directory_name": directory,
                 "path": absolutePath,
                 "version": version,
                 "disabled": disableStatus,
-                "tags": tags
-                }
+                "tags": tags,
+            }
         }
 
     def _resolve_steamid(self, raw_folder_name: str) -> int:
@@ -116,7 +119,7 @@ class folder_manager:
             version: str = self._handle_none_xml_tag(
                 root, "version", raw_folder=raw_folder_name
             )
-            
+
             tags = [tag.get("id") for tag in root.findall("tag")]
             if re.match(sorted_pattern, name):
                 rank = int(name[:3])

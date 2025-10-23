@@ -3,7 +3,7 @@ import QtQuick.Controls 6.5
 
 Item {
     width: parent ? parent.width : 200
-    height: 40
+    height: 30
 
     Rectangle {
         anchors.fill: parent
@@ -21,9 +21,19 @@ Item {
 
         spacing: 10
 
-        CheckBox { id: box }
-        Label { id: label; text: qsTr("Default") }
-        Image {
+        CheckBox {
+            id: box
+            tristate: true
+            checkState: Qt.Unchecked
+            nextCheckState: function() {
+                if (checkState === Qt.Checked)
+                    return Qt.Unchecked
+                else
+                    return Qt.Checked
+            }
+        }                        // Mod status: On / Off
+        Label { id: label; text: qsTr("Default") }  // Mod name
+        Image {                                     // Mod icons (like mod type, what it changes / adds and stuff)
             id: icon
             source: "file:./assets/icon.png"   // Need to figure out QRC system for better pathing
             width: 20

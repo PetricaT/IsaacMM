@@ -1,38 +1,30 @@
-from pathlib import Path
 import logging
-import sys
 import os
 import re
+import sys
+from pathlib import Path
 
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
 from source.config import config_manager
 from source.folder import folder_manager
+from source.platform import platform
 from source.sort import sort_manager
 
 sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
 
+
 class mod_manager:
     def __init__(self):
+        self.platform_manager = platform()
         # Determine where the application state should be stored
-        match sys.platform:
-            case "win32":
-                self.config_directory = Path.home() / "AppData" / "Local" / "IsaacMM"
-            case "darwin":
-                self.config_directory = (
-                    Path.home() / "Library" / "Application Support" / "IsaacMM"
-                )
-            case "linux":
-                self.config_directory = Path.home() / ".config" / "IsaacMM"
-            case _:
-                print("OS Not Supported")
-                sys.exit(1)
+        self.config_directory = self.platform_manager.config_directory()
 
         # Initiate config directory
         if not os.path.exists(self.config_directory):
             os.makedirs(self.config_directory)
-        
+
         self._setup_logger()
         # cfg = config_manager(self.config_directory)
         config_manager(self.config_directory)
@@ -58,16 +50,18 @@ class mod_manager:
 
         logger.info(f"Running on platform {sys.platform}")
 
+
 class Application:
     pass
 
+
 class ColoredFormatter(logging.Formatter):
     COLORS = {
-        "DEBUG": "\033[34m",   # Blue
-        "INFO": "\033[36m",    # Cyan
-        "WARNING": "\033[33m", # Yellow
-        "ERROR": "\033[31m",   # Red
-        "CRITICAL": "\033[41m" # Red background
+        "DEBUG": "\033[34m",  # Blue
+        "INFO": "\033[36m",  # Cyan
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[41m",  # Red background
     }
     RESET = "\033[0m"
 
@@ -81,7 +75,7 @@ class ColoredFormatter(logging.Formatter):
 if __name__ == "__main__":
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
-    
+
     mod_manager()
     engine.load("./source/ui/Main.qml")
 
@@ -89,4 +83,3 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     sys.exit(app.exec())
-
