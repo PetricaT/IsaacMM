@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('masterlist.yaml', '.'), ('assets/icon.icns', 'assets'), ('assets/no_image.png', 'assets')],
     hiddenimports=['source.paths', 'source.config', 'source.models', 'source.widgets', 'source.window', 'source.sorter'],
     hookspath=[],
     hooksconfig={},

@@ -3,3 +3,5 @@ uv venv
 uv pip install -r requirements.txt
 uv pip install pyinstaller
 pyinstaller .\IsaacMM-Windows.spec
+
+Write-Output "Created dist\IsaacMM-Windows.exe"
