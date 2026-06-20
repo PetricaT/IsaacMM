@@ -31,14 +31,6 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
-      - name: Install UPX (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y upx-ucl
-
-      - name: Install UPX (macOS)
-        if: runner.os == 'macOS'
-        run: brew install upx
-
       - name: Build + Package (Windows)
         if: runner.os == 'Windows'
         shell: powershell
@@ -75,7 +67,7 @@ jobs:
           cp IsaacMM.desktop IsaacMM.AppDir/
           cp assets/icon.png IsaacMM.AppDir/IsaacMM.png
 
-          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --comp zstd IsaacMM.AppDir "dist/IsaacMM-${VERSION}-x86_64.AppImage"
+          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool IsaacMM.AppDir "dist/IsaacMM-${VERSION}-x86_64.AppImage"
           rm -rf IsaacMM.AppDir dist/IsaacMM-Linux
 
       - name: Upload Artifacts
