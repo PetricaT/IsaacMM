@@ -3,7 +3,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette, QStandardItem
+from PySide6.QtGui import QColor, QPalette, QStandardItem
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import config, paths
+from . import config, paths, sorter
 from .models import FlatDropModel
 from .widgets import ModInfoPanel
 
@@ -59,6 +59,7 @@ class DragApp(QWidget):
         self.baseLayout.setColumnStretch(1, 1)
 
         self.applyOrder.clicked.connect(self.applyModOrder)
+        self.autoSort.clicked.connect(self.autoSortMods)
         self.refreshOrder.clicked.connect(self.getModList)
         self.pickModsPath.clicked.connect(self.setModsPath)
         self.listView.selectionModel().selectionChanged.connect(
@@ -74,6 +75,12 @@ class DragApp(QWidget):
         self.listView.setDropIndicatorShown(True)
         self.listView.setDragDropMode(QAbstractItemView.InternalMove)
         self.listView.setDefaultDropAction(Qt.MoveAction)
+        self.listView.setAlternatingRowColors(True)
+        pal = self.listView.palette()
+        base = pal.color(QPalette.Base)
+        alt = base.lighter(120) if base.lightness() < 128 else base.darker(108)
+        pal.setColor(QPalette.AlternateBase, alt)
+        self.listView.setPalette(pal)
 
         self.model = FlatDropModel()
         self.listView.setModel(self.model)
@@ -193,11 +200,35 @@ class DragApp(QWidget):
         if folder:
             self.pending_toggles[folder] = item.checkState()
 
-    def disable_unimplemented(self):
-        unimplemented_buttons = [self.autoSort]
-        for button in unimplemented_buttons:
-            button.setEnabled(False)
-            button.setToolTip("Not implemented yet")
+    def autoSortMods(self):
+        items_data = []
+        for r in range(self.model.rowCount()):
+            item = self.model.item(r)
+            items_data.append({
+                "name": item.text(),
+                "folder": item.data(Qt.UserRole),
+                "checked": item.checkState(),
+            })
+
+        sorted_items = sorter.auto_sort(
+            [[d["name"], d["folder"]] for d in items_data],
+            config.mods_path,
+        )
+
+        self._populating = True
+        self.model.clear()
+
+        folder_data = {d["folder"]: d for d in items_data}
+        for name, folder in sorted_items:
+            d = folder_data.get(folder, {})
+            item = QStandardItem(name)
+            item.setCheckable(True)
+            item.setCheckState(d.get("checked", Qt.Checked))
+            item.setData(folder, Qt.UserRole)
+            self.model.appendRow(item)
+
+        config.loaded_mods = [[name, folder] for name, folder in sorted_items]
+        self._populating = False
 
     def _get_accent_color_hex(self):
         from PySide6.QtWidgets import QApplication

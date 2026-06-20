@@ -1,7 +1,7 @@
 import os
 import toml
 
-from . import paths
+from . import paths, sorter
 
 mods_path = ""
 remove_marks = False
@@ -25,6 +25,7 @@ def _create_default():
     os.makedirs(paths.appdata, exist_ok=True)
     detected = paths.find_isaac_mods_folder()
     mods_path = detected or ""
+    sorter.fetch_initial()
     cfg = {
         "paths": {"mods": mods_path},
         "settings": {"remove_marks": False},

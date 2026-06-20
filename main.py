@@ -21,6 +21,5 @@ if __name__ == "__main__":
 
     window = DragApp()
     window.getModList()
-    window.disable_unimplemented()
     window.show()
     sys.exit(app.exec())
