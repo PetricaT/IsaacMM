@@ -42,6 +42,34 @@ Once your mods are loaded in, simply drag your mods around to order them like so
 
 You can now press *Apply Sort Order* to mass-rename all the mods in the defined order.
 
+### Working with the config files
+
+Since the addition of the auto-sort, user defined rules are also accepted, and should be made use of for simpler re-deployment upon steam workshop updates (until I get around to fixing that too). For now, you will find a file in the following directories depending on your platform:
+
+### Windows
+```
+%APPDATA%/IsaacMM/user_rules.yaml
+```
+### Linux
+```
+~/.local/share/IsaacMM/user_rules.yaml
+```
+### MacOS
+```
+~/Library/Application Support/IsaacMM/user_rules.yaml
+```
+Inside this file you can specify which mod IDs should go above or below others. The format is:
+
+```yaml
+rules:
+   - id: 1234567890
+      after: [9876543210, 121212121]
+
+   - id: 3131313131
+      after: [9876543210, 121212121]
+```
+We use the **steam workshop** ID to identify the mods.
+
 ## 2. Why?
 
 |                The Problem               |                 The Solution               |
