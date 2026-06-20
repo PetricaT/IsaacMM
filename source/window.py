@@ -3,7 +3,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPalette, QStandardItem
+from PySide6.QtGui import QBrush, QColor, QPalette, QStandardItem
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -31,6 +31,7 @@ class DragApp(QWidget):
         self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
         self.resize(1161, 550)
         self.pending_toggles = {}
+        self._mod_files_cache = {}
         self._populating = False
 
         self.initUi()
@@ -182,6 +183,7 @@ class DragApp(QWidget):
         self._populating = True
         self.model.clear()
         self.pending_toggles.clear()
+        self._mod_files_cache.clear()
         config.loaded_mods.clear()
 
         mod_list = os.listdir(config.mods_path)
@@ -220,14 +222,63 @@ class DragApp(QWidget):
         self._update_path_button_style()
 
     def on_mod_selected(self, selected, deselected):
+        if self._populating:
+            return
+
         indexes = self.listView.selectedIndexes()
-        if indexes:
-            item = self.model.itemFromIndex(indexes[0])
-            self.modInfoPanel.show_mod_info(
-                item.text(), item.data(Qt.UserRole), item.checkState()
-            )
-        else:
+
+        for row in range(self.model.rowCount()):
+            self.model.item(row).setBackground(QBrush())
+
+        if not indexes:
             self.modInfoPanel.clear()
+            return
+
+        item = self.model.itemFromIndex(indexes[0])
+        self.modInfoPanel.show_mod_info(
+            item.text(), item.data(Qt.UserRole), item.checkState()
+        )
+
+        mod_folder = item.data(Qt.UserRole)
+        current_files = self._scan_mod_files(mod_folder)
+        current_idx = next(
+            (i for i in range(self.model.rowCount())
+             if self.model.item(i).data(Qt.UserRole) == mod_folder),
+            -1,
+        )
+
+        for row in range(self.model.rowCount()):
+            other = self.model.item(row)
+            other_folder = other.data(Qt.UserRole)
+            if other_folder == mod_folder:
+                continue
+            common = current_files & self._scan_mod_files(other_folder)
+            if not common:
+                continue
+            if row < current_idx:
+                other.setBackground(QColor("#9E4D4D"))
+            else:
+                other.setBackground(QColor("#65A665"))
+
+    def _scan_mod_files(self, folder):
+        cached = self._mod_files_cache.get(folder)
+        if cached is not None:
+            return cached
+        files = set()
+        mod_path = os.path.join(config.mods_path, folder)
+        try:
+            for root, dirs, fnames in os.walk(mod_path):
+                dirs[:] = [d for d in dirs if d not in ('.git', '__pycache__')]
+                for f in fnames:
+                    if f in ('metadata.xml', 'disable.it', '.DS_Store', 'Thumbs.db'):
+                        continue
+                    rel = os.path.relpath(os.path.join(root, f), mod_path)
+                    if '/' in rel or '\\' in rel:
+                        files.add(rel)
+        except OSError:
+            pass
+        self._mod_files_cache[folder] = files
+        return files
 
     def on_item_changed(self, item):
         if self._populating:
@@ -253,6 +304,7 @@ class DragApp(QWidget):
 
         self._populating = True
         self.model.clear()
+        self._mod_files_cache.clear()
 
         folder_data = {d["folder"]: d for d in items_data}
         for name, folder in sorted_items:
