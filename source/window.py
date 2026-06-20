@@ -3,7 +3,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QBrush, QColor, QPalette, QStandardItem
+from PySide6.QtGui import QBrush, QColor, QPalette, QPixmap, QStandardItem
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -12,8 +12,33 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListView,
     QPushButton,
+    QStyledItemDelegate,
     QWidget,
 )
+
+CONFLICT_ROLE = Qt.UserRole + 1
+
+
+class ConflictDelegate(QStyledItemDelegate):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        p = QPixmap(os.path.join(paths.BASE_DIR, "assets", "warning.png"))
+        self._warning = (
+            p.scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            if not p.isNull() else None
+        )
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        if self._warning is None:
+            return
+        if not index.data(CONFLICT_ROLE):
+            return
+        rect = option.rect
+        x = rect.right() - self._warning.width() - 4
+        y = rect.top() + (rect.height() - self._warning.height()) // 2
+        painter.drawPixmap(x, y, self._warning)
+
 
 from . import config, paths, sorter
 from .models import FlatDropModel
@@ -85,7 +110,9 @@ class DragApp(QWidget):
 
         self.model = FlatDropModel()
         self.listView.setModel(self.model)
+        self.listView.setItemDelegate(ConflictDelegate(self.listView))
         self.model.itemChanged.connect(self.on_item_changed)
+        self.model.rowsInserted.connect(self._on_rows_inserted)
 
         self.applyOrder = QPushButton("Apply Sort Order")
         self.autoSort = QPushButton("Auto Sort")
@@ -219,7 +246,29 @@ class DragApp(QWidget):
             self.model.appendRow(item)
 
         self._populating = False
+        self._update_conflict_indicators()
         self._update_path_button_style()
+
+    def _on_rows_inserted(self, parent, first, last):
+        if self._populating:
+            return
+        self._update_conflict_indicators()
+
+    def _update_conflict_indicators(self):
+        for row in range(self.model.rowCount()):
+            self.model.item(row).setData(None, CONFLICT_ROLE)
+        for i in range(self.model.rowCount()):
+            for j in range(i + 1, self.model.rowCount()):
+                item_i = self.model.item(i)
+                item_j = self.model.item(j)
+                common = (
+                    self._scan_mod_files(item_i.data(Qt.UserRole))
+                    & self._scan_mod_files(item_j.data(Qt.UserRole))
+                )
+                if not common:
+                    continue
+                item_i.setData(True, CONFLICT_ROLE)
+                item_j.setData(True, CONFLICT_ROLE)
 
     def on_mod_selected(self, selected, deselected):
         if self._populating:
@@ -317,6 +366,7 @@ class DragApp(QWidget):
 
         config.loaded_mods = [[name, folder] for name, folder in sorted_items]
         self._populating = False
+        self._update_conflict_indicators()
 
     def _get_accent_color_hex(self):
         from PySide6.QtWidgets import QApplication
