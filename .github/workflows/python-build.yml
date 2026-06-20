@@ -45,6 +45,11 @@ jobs:
         run: |
           pyinstaller IsaacMM-MacOS.spec
           mv dist/IsaacMM-MacOS.app "dist/IsaacMM-${VERSION}-MacOS.app"
+          mkdir -p dmg
+          cp -r "dist/IsaacMM-${VERSION}-MacOS.app" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "IsaacMM" -srcfolder dmg -ov -format UDZO "dist/IsaacMM-${VERSION}-MacOS.dmg"
+          rm -rf dmg dist/IsaacMM-${VERSION}-MacOS.app
 
       - name: Build + Package (Linux — AppImage)
         if: runner.os == 'Linux'

@@ -11,6 +11,12 @@ uv pip install pyinstaller
 VERSION=$(python3 -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
 
 pyinstaller IsaacMM-MacOS.spec
-
 mv "dist/IsaacMM-MacOS.app" "dist/IsaacMM-${VERSION}-MacOS.app"
-echo "Created dist/IsaacMM-${VERSION}-MacOS.app"
+
+mkdir -p dmg
+cp -r "dist/IsaacMM-${VERSION}-MacOS.app" dmg/
+ln -s /Applications dmg/Applications
+hdiutil create -volname "IsaacMM" -srcfolder dmg -ov -format UDZO "dist/IsaacMM-${VERSION}-MacOS.dmg"
+
+rm -rf dmg dist/IsaacMM-${VERSION}-MacOS.app
+echo "Created dist/IsaacMM-${VERSION}-MacOS.dmg"
