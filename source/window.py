@@ -29,7 +29,7 @@ class DragApp(QWidget):
         super().__init__(parent)
 
         self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
-        self.resize(800, 400)
+        self.resize(1161, 550)
         self.pending_toggles = {}
         self._populating = False
 
@@ -39,6 +39,7 @@ class DragApp(QWidget):
         self.baseLayout = QGridLayout(self)
         self.modListWidget()
         self.modInfoPanel = ModInfoPanel()
+        self.modInfoPanel.setMaximumWidth(580)
 
         self.baseLayout.addWidget(self.listView, 0, 0, 5, 1)
         self.baseLayout.addWidget(self.modInfoPanel, 0, 1, 6, 1)

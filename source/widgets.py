@@ -1,11 +1,42 @@
+import html
 import os
+import re
 import xml.etree.ElementTree as ET
 
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QMovie, QPixmap
-from PySide6.QtWidgets import QLabel, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, QSize, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QMovie, QPixmap
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import config, paths
+
+WORKSHOP_ID_RE = re.compile(r"_(\d+)$")
+
+def bbcode_to_html(text):
+    text = html.escape(text)
+    text = re.sub(r'\[b\](.*?)\[/b\]', r'<b>\1</b>', text, flags=re.DOTALL)
+    text = re.sub(r'\[i\](.*?)\[/i\]', r'<i>\1</i>', text, flags=re.DOTALL)
+    text = re.sub(r'\[u\](.*?)\[/u\]', r'<u>\1</u>', text, flags=re.DOTALL)
+    text = re.sub(r'\[h1\](.*?)\[/h1\]', r'<h1>\1</h1>', text, flags=re.DOTALL)
+    text = re.sub(r'\[h2\](.*?)\[/h2\]', r'<h2>\1</h2>', text, flags=re.DOTALL)
+    text = re.sub(r'\[h3\](.*?)\[/h3\]', r'<h3>\1</h3>', text, flags=re.DOTALL)
+    text = re.sub(r'\[url=([^\]]+)\](.*?)\[/url\]', r'<a href="\1">\2</a>', text, flags=re.DOTALL)
+    text = re.sub(r'\[url\](.*?)\[/url\]', r'<a href="\1">\1</a>', text, flags=re.DOTALL)
+    text = re.sub(r'\[img\](.*?)\[/img\]', r'<img src="\1">', text, flags=re.DOTALL)
+    text = re.sub(r'\[list\]', '<ul>', text)
+    text = re.sub(r'\[/list\]', '</ul>', text)
+    text = re.sub(r'\[\*\]', '<li>', text)
+    text = text.replace('\n', '<br>')
+    return f"<html><body style='font-size: 12pt;'>{text}</body></html>"
 
 
 class ModInfoPanel(QWidget):
@@ -34,20 +65,39 @@ class ModInfoPanel(QWidget):
         self.icon_label.setAlignment(Qt.AlignCenter)
         self.icon_label.setStyleSheet("border: 1px solid gray;")
 
+        self.tags_box = QListWidget()
+        self.tags_box.setMaximumHeight(128)
+        self.tags_box.setSelectionMode(QAbstractItemView.NoSelection)
+        self.tags_box.setFocusPolicy(Qt.NoFocus)
+        self.tags_box.setFlow(QListWidget.LeftToRight)
+        self.tags_box.setWrapping(True)
+        self.tags_box.setSpacing(4)
+        self.tags_box.setStyleSheet("QListWidget { border: none; background: transparent; }")
+
+        self.workshop_button = QPushButton("Steam Workshop")
+        self.workshop_button.clicked.connect(self._open_workshop)
+        self.workshop_button.setEnabled(False)
+
+        top_row = QHBoxLayout()
+        top_row.addWidget(self.icon_label)
+        top_row.addWidget(self.tags_box, 1)
+        top_row.addWidget(self.workshop_button)
+
         self.state_label = QLabel("Select a mod")
         self.state_label.setAlignment(Qt.AlignCenter)
 
-        self.description_text = QTextEdit()
-        self.description_text.setReadOnly(True)
+        self.description_text = QTextBrowser()
         self.description_text.setPlaceholderText(
             "Select a mod to view its description"
         )
+        self.description_text.setOpenExternalLinks(False)
+        self.description_text.anchorClicked.connect(self._open_link)
 
         self.folder_label = QLabel()
         self.folder_label.setStyleSheet("color: gray; font-size: 10px;")
         self.folder_label.setWordWrap(True)
 
-        layout.addWidget(self.icon_label)
+        layout.addLayout(top_row)
         layout.addWidget(self.state_label)
         layout.addWidget(self.description_text)
         layout.addWidget(self.folder_label)
@@ -125,13 +175,33 @@ class ModInfoPanel(QWidget):
             root = tree.getroot()
             desc = root.find("description")
             if desc is not None and desc.text:
-                self.description_text.setPlainText(desc.text.strip())
+                self.description_text.setHtml(bbcode_to_html(desc.text.strip()))
             else:
-                self.description_text.setPlainText("(no description)")
+                self.description_text.setHtml("(no description)")
+
+            self.tags_box.clear()
+            tags_el = root.find("tags")
+            if tags_el is not None:
+                tag_iter = tags_el.findall("tag")
+            else:
+                tag_iter = root.findall("tag")
+            for tag in tag_iter:
+                tid = tag.get("id", "")
+                if not tid:
+                    continue
+                item = QListWidgetItem(tid)
+                item.setBackground(QColor("#9BB7D4"))
+                item.setForeground(QColor("#111111"))
+                self.tags_box.addItem(item)
+
         except Exception:
-            self.description_text.setPlainText("(could not load description)")
+            self.description_text.setHtml("(could not load description)")
 
         self.folder_label.setText(f"Folder: {mod_folder}")
+
+        m = WORKSHOP_ID_RE.search(mod_folder)
+        self._workshop_id = int(m.group(1)) if m else None
+        self.workshop_button.setEnabled(self._workshop_id is not None)
 
     def _show_placeholder(self):
         self._stop_movie()
@@ -146,6 +216,14 @@ class ModInfoPanel(QWidget):
             self._movie.stop()
             self._movie = None
 
+    def _open_link(self, url):
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _open_workshop(self):
+        if self._workshop_id:
+            url = QUrl(f"https://steamcommunity.com/sharedfiles/filedetails/?id={self._workshop_id}")
+            QDesktopServices.openUrl(url)
+
     def clear(self):
         self._stop_movie()
         self._show_placeholder()
@@ -153,3 +231,6 @@ class ModInfoPanel(QWidget):
         self.state_label.setStyleSheet("")
         self.description_text.clear()
         self.folder_label.clear()
+        self._workshop_id = None
+        self.workshop_button.setEnabled(False)
+        self.tags_box.clear()
