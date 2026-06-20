@@ -8,7 +8,7 @@ source .venv/bin/activate
 uv pip install -r requirements.txt
 uv pip install pyinstaller
 
-VERSION=$(grep -Po '^version = "\K[^"]*' pyproject.toml)
+VERSION=$(python3 -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
 APPNAME="IsaacMM-${VERSION}"
 APPDIR="${APPNAME}.AppDir"
 
