@@ -13,15 +13,19 @@ from PySide6.QtCore import (
     QStringListModel,
     Qt,
 )
-from PySide6.QtGui import QIcon, QPalette
+from PySide6.QtGui import QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QFileDialog,
     QGridLayout,
+    QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListView,
     QPushButton,
+    QTextEdit,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -159,6 +163,110 @@ class DragDropListModel(QStringListModel):
         return True
 
 
+class ModInfoPanel(QWidget):
+    PRIORITY_ICON_NAMES = [
+        "title",
+        "thumbnail",
+        "icon",
+        "modicon",
+        "logo",
+        "spider thumbnail",
+    ]
+    IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif"}
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+
+        self.icon_label = QLabel()
+        self.icon_label.setFixedSize(128, 128)
+        self.icon_label.setAlignment(Qt.AlignCenter)
+        self.icon_label.setStyleSheet("border: 1px solid gray;")
+
+        self.state_label = QLabel("Select a mod")
+        self.state_label.setAlignment(Qt.AlignCenter)
+
+        self.description_text = QTextEdit()
+        self.description_text.setReadOnly(True)
+        self.description_text.setPlaceholderText("Select a mod to view its description")
+
+        layout.addWidget(self.icon_label)
+        layout.addWidget(self.state_label)
+        layout.addWidget(self.description_text)
+
+    def show_mod_info(self, mod_name):
+        mod_folder = None
+        for mod in loaded_mods:
+            if mod[0] == mod_name:
+                mod_folder = mod[1]
+                break
+
+        if mod_folder is None:
+            self.clear()
+            return
+
+        mod_path = os.path.join(mods_path, mod_folder)
+
+        icon_path = None
+        try:
+            files = os.listdir(mod_path)
+            file_set = set(files)
+            for name in self.PRIORITY_ICON_NAMES:
+                for ext in self.IMAGE_EXTENSIONS:
+                    candidate = f"{name}{ext}"
+                    if candidate in file_set:
+                        icon_path = os.path.join(mod_path, candidate)
+                        break
+                if icon_path:
+                    break
+            if icon_path is None:
+                for f in files:
+                    if os.path.splitext(f.lower())[1] in self.IMAGE_EXTENSIONS:
+                        icon_path = os.path.join(mod_path, f)
+                        break
+        except OSError:
+            pass
+
+        if icon_path:
+            pixmap = QPixmap(icon_path)
+            if not pixmap.isNull():
+                self.icon_label.setPixmap(
+                    pixmap.scaled(
+                        128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                )
+            else:
+                self.icon_label.setText("No icon")
+        else:
+            self.icon_label.setText("No icon")
+
+        disable_path = os.path.join(mod_path, "disable.it")
+        if os.path.exists(disable_path):
+            self.state_label.setText("Disabled")
+            self.state_label.setStyleSheet("color: red; font-weight: bold;")
+        else:
+            self.state_label.setText("Enabled")
+            self.state_label.setStyleSheet("color: green; font-weight: bold;")
+
+        try:
+            tree = ET.parse(os.path.join(mod_path, "metadata.xml"))
+            root = tree.getroot()
+            desc = root.find("description")
+            if desc is not None and desc.text:
+                self.description_text.setPlainText(desc.text.strip())
+            else:
+                self.description_text.setPlainText("(no description)")
+        except Exception:
+            self.description_text.setPlainText("(could not load description)")
+
+    def clear(self):
+        self.icon_label.clear()
+        self.icon_label.setText("No icon")
+        self.state_label.setText("Select a mod")
+        self.state_label.setStyleSheet("")
+        self.description_text.clear()
+
+
 class DragApp(QWidget):
     global loaded_mods
     loaded_mods = []
@@ -167,27 +275,41 @@ class DragApp(QWidget):
         super(DragApp, self).__init__(parent)
 
         self.setWindowTitle(f"Tboi Mod Manager [{version}]")
-        self.resize(490, 320)
+        self.resize(800, 400)
+        self.previous_mods_path = ""
 
         self.initUi()
 
     def initUi(self):
         self.baseLayout = QGridLayout(self)
-        # +----------+----------+
-        # | ListView | Mod Info |
-        # +----------+----------+
         self.modListWidget()
+        self.modInfoPanel = ModInfoPanel()
 
-        self.baseLayout.addWidget(self.listView, 0, 0)
-        self.baseLayout.addWidget(self.applyOrder, 1, 0)
-        self.baseLayout.addWidget(self.autoSort, 1, 1)
-        self.baseLayout.addWidget(self.refreshOrder, 2, 1)
-        self.baseLayout.addWidget(self.pickModsPath, 2, 0)
-        self.baseLayout.addWidget(self.currentPath, 3, 0)
+        # Left: list view; Right: mod info panel
+        self.baseLayout.addWidget(self.listView, 0, 0, 5, 1)
+        self.baseLayout.addWidget(self.modInfoPanel, 0, 1, 7, 1)
+
+        btn_row_1 = QHBoxLayout()
+        btn_row_1.addWidget(self.applyOrder)
+        btn_row_1.addWidget(self.autoSort)
+        self.baseLayout.addLayout(btn_row_1, 5, 0)
+
+        btn_row_2 = QHBoxLayout()
+        btn_row_2.addWidget(self.pickModsPath)
+        btn_row_2.addWidget(self.refreshOrder)
+        self.baseLayout.addLayout(btn_row_2, 6, 0)
+
+        self.baseLayout.addWidget(self.currentPath, 7, 0)
+
+        self.baseLayout.setColumnStretch(0, 1)
+        self.baseLayout.setColumnStretch(1, 1)
+
         self.applyOrder.clicked.connect(self.applyModOrder)
-        # self.autoSort.clicked.connect(self.autoSortMods)
         self.refreshOrder.clicked.connect(self.getModList)
         self.pickModsPath.clicked.connect(self.setModsPath)
+        self.listView.selectionModel().selectionChanged.connect(
+            self.on_mod_selected
+        )
 
     def modListWidget(self):
         self.accent_color = self.get_accent_color_hex()
@@ -260,10 +382,12 @@ class DragApp(QWidget):
         except ValueError:
             pass
         # If path has changed, refresh the list
+        reset_model = False
         if mods_path != self.previous_mods_path:
             loaded_mods.clear()
             self.ddm.beginResetModel()
             self.previous_mods_path = mods_path
+            reset_model = True
         for mod in mod_list:
             try:
                 mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
@@ -273,8 +397,17 @@ class DragApp(QWidget):
             except FileNotFoundError:
                 continue
         loaded_mods.sort()
-        self.ddm.endResetModel()
+        if reset_model:
+            self.ddm.endResetModel()
         self.ddm.setStringList([mod[0] for mod in loaded_mods])
+
+    def on_mod_selected(self, selected, deselected):
+        indexes = self.listView.selectedIndexes()
+        if indexes:
+            mod_name = indexes[0].data(Qt.DisplayRole)
+            self.modInfoPanel.show_mod_info(mod_name)
+        else:
+            self.modInfoPanel.clear()
 
     def disable_unimplemented(self):
         unimplemented_buttons = [self.autoSort]
