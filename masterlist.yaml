@@ -91,62 +91,10 @@ mods:
     name: "Coming Down! [Rework]"
     group: content
 
-  - id: 2610645873
-    name: "Maggy's Toy Box"
-    group: content
-
-  - id: 3508589739
-    name: "Spiced Up Item Collection"
-    group: content
-
-  - id: 2588931231
-    name: "Bestia"
-    group: content
-
   - id: 2916069863
     name: "GoodTrip [Fixed]"
     group: content
     after: [1978904635]
-
-  - id: 3330428576
-    name: "Deal with the Siren"
-    group: content
-
-  - id: 3147439712
-    name: "Horsegirls of the Apocalypse!"
-    group: content
-
-  - id: 3376611784
-    name: "cube_rabbid_mario"
-    group: content
-
-  - id: 3495158061
-    name: "Mega-Lome"
-    group: content
-
-  - id: 3471670973
-    name: "Meowdy"
-    group: content
-
-  - id: 3124519932
-    name: "MG Pack"
-    group: content
-
-  - id: 2526858840
-    name: "MgTexture"
-    group: content
-
-  - id: 3365367597
-    name: "Hatsune Miku Over Angels"
-    group: content
-
-  - id: 3322151121
-    name: "Mother Beastriz"
-    group: content
-
-  - id: 2568447666
-    name: "RockBottomButReally"
-    group: content
 
   - id: 2200995244
     name: "The Dark One Mod (reupload)"
@@ -160,54 +108,6 @@ mods:
     name: "Watch out, laser!"
     group: content
 
-  - id: 2916120339
-    name: "WoB Addon — Beggars, Chests, Sacks & Machines"
-    group: content
-
-  - id: 3350809136
-    name: "Yet another Neko Lost"
-    group: content
-
-  - id: 2796581153
-    name: "Neko Forgotten"
-    group: content
-
-  - id: 3179618856
-    name: "beezelbub rtl"
-    group: content
-
-  - id: 3360160654
-    name: "Plump Cutie Min-Min!"
-    group: content
-
-  - id: 3412679025
-    name: "Plump Cutie Spider Butt!"
-    group: content
-
-  - id: 3388616232
-    name: "Edgy Tainted Azazel"
-    group: content
-
-  - id: 3368742658
-    name: "siren trophy plus"
-    group: content
-
-  - id: 2508771538
-    name: "Siren's Bra"
-    group: content
-
-  - id: 3395339384
-    name: "Siren's Pad!"
-    group: content
-
-  - id: 3419883482
-    name: "Kasane Teto over Satan"
-    group: content
-
-  - id: 3494776356
-    name: "dad's lewd deck"
-    group: content
-
   - id: 2599675262
     name: "Chatty Devil"
     group: content
@@ -216,24 +116,12 @@ mods:
     name: "Gabe Lines"
     group: content
 
-  - id: 3361211771
-    name: "Less Subtle Indicator for Tinted & Super Special Rocks"
-    group: content
-
   - id: 3010945909
     name: "Rune Rooms [Release]"
     group: content
 
   - id: 3297124416
     name: "The Stars Align — Planetarium Notification"
-    group: content
-
-  - id: 2690434875
-    name: "Unique Birthrights"
-    group: content
-
-  - id: 2565331478
-    name: "Unique Coins"
     group: content
 
   - id: 2881008017
@@ -443,6 +331,118 @@ mods:
 
   - id: 3169073644
     name: "falling stage anim"
+    group: graphics
+
+  - id: 2610645873
+    name: "Maggy's Toy Box"
+    group: graphics
+
+  - id: 3508589739
+    name: "Spiced Up Item Collection"
+    group: graphics
+
+  - id: 2588931231
+    name: "Bestia"
+    group: graphics
+
+  - id: 3330428576
+    name: "Deal with the Siren"
+    group: graphics
+
+  - id: 3147439712
+    name: "Horsegirls of the Apocalypse!"
+    group: graphics
+
+  - id: 3376611784
+    name: "cube_rabbid_mario"
+    group: graphics
+
+  - id: 3495158061
+    name: "Mega-Lome"
+    group: graphics
+
+  - id: 3471670973
+    name: "Meowdy"
+    group: graphics
+
+  - id: 3124519932
+    name: "MG Pack"
+    group: graphics
+
+  - id: 2526858840
+    name: "MgTexture"
+    group: graphics
+
+  - id: 3365367597
+    name: "Hatsune Miku Over Angels"
+    group: graphics
+
+  - id: 3322151121
+    name: "Mother Beastriz"
+    group: graphics
+
+  - id: 2568447666
+    name: "RockBottomButReally"
+    group: graphics
+
+  - id: 2916120339
+    name: "WoB Addon — Beggars, Chests, Sacks & Machines"
+    group: graphics
+
+  - id: 3350809136
+    name: "Yet another Neko Lost"
+    group: graphics
+
+  - id: 2796581153
+    name: "Neko Forgotten"
+    group: graphics
+
+  - id: 3179618856
+    name: "beezelbub rtl"
+    group: graphics
+
+  - id: 3360160654
+    name: "Plump Cutie Min-Min!"
+    group: graphics
+
+  - id: 3412679025
+    name: "Plump Cutie Spider Butt!"
+    group: graphics
+
+  - id: 3388616232
+    name: "Edgy Tainted Azazel"
+    group: graphics
+
+  - id: 3368742658
+    name: "siren trophy plus"
+    group: graphics
+
+  - id: 2508771538
+    name: "Siren's Bra"
+    group: graphics
+
+  - id: 3395339384
+    name: "Siren's Pad!"
+    group: graphics
+
+  - id: 3419883482
+    name: "Kasane Teto over Satan"
+    group: graphics
+
+  - id: 3494776356
+    name: "dad's lewd deck"
+    group: graphics
+
+  - id: 2690434875
+    name: "Unique Birthrights"
+    group: graphics
+
+  - id: 2565331478
+    name: "Unique Coins"
+    group: graphics
+
+  - id: 3361211771
+    name: "Less Subtle Indicator for Tinted & Super Special Rocks"
     group: graphics
 
   # ── Music / Sound ──────────────────────────────────────────────────────

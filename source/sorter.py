@@ -12,6 +12,7 @@ from . import paths
 
 MASTERLIST_URL = "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
 CACHE_FILE = os.path.join(paths.appdata, "masterlist.yaml")
+USER_RULES_FILE = os.path.join(paths.appdata, "user_rules.yaml")
 CACHE_TTL = timedelta(hours=24)
 WORKSHOP_ID_RE = re.compile(r"_(\d+)$")
 
@@ -42,6 +43,20 @@ def get_masterlist():
 
 def fetch_initial():
     get_masterlist()
+    if not os.path.exists(USER_RULES_FILE):
+        os.makedirs(paths.appdata, exist_ok=True)
+        with open(USER_RULES_FILE, "w") as f:
+            f.write(
+                "# User-defined load order rules\n"
+                "# -----------------------------------------------\n"
+                "# Add custom before/after constraints by Steam Workshop ID.\n"
+                "# These merge with masterlist.yaml on every auto-sort.\n"
+                "# Uncomment and edit the example below.\n"
+                "# -----------------------------------------------------------\n"
+                "rules:\n"
+                "  # - id: 1234567890\n"
+                "  #   after: [9876543210]\n"
+            )
 
 
 def _is_cache_fresh():
@@ -83,6 +98,37 @@ def _try_bundled():
             return yaml.safe_load(f)
     except (OSError, yaml.YAMLError):
         return None
+
+
+def _load_user_rules():
+    try:
+        with open(USER_RULES_FILE) as f:
+            data = yaml.safe_load(f)
+            return data.get("rules", []) if data else []
+    except (OSError, yaml.YAMLError):
+        return []
+
+
+def _merge_user_rules(lookup, rules):
+    for rule in rules:
+        rid = rule.get("id")
+        if rid is None:
+            continue
+        if rid in lookup:
+            entry = lookup[rid]
+            for key in ("after", "before"):
+                if key in rule:
+                    entry.setdefault(key, [])
+                    for dep in rule[key]:
+                        if dep not in entry[key]:
+                            entry[key].append(dep)
+        else:
+            entry = {"id": rid, "group": "unknown"}
+            if "after" in rule:
+                entry["after"] = list(rule["after"])
+            if "before" in rule:
+                entry["before"] = list(rule["before"])
+            lookup[rid] = entry
 
 
 def _extract_workshop_id(folder_name):
@@ -180,6 +226,10 @@ def auto_sort(loaded_mods, mods_path):
     ml = get_masterlist()
     group_priorities = _build_group_index(ml)
     lookup, patterns, tag_entries = _build_mod_lookup(ml)
+
+    rules = _load_user_rules()
+    if rules:
+        _merge_user_rules(lookup, rules)
 
     classified = []
     for name, folder in loaded_mods:
