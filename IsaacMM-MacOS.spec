@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['gui.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['source.paths', 'source.config', 'source.models', 'source.widgets', 'source.window'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

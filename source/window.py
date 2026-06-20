@@ -1,0 +1,210 @@
+import os
+import re
+import xml.etree.ElementTree as ET
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette, QStandardItem
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QFileDialog,
+    QGridLayout,
+    QHBoxLayout,
+    QLineEdit,
+    QListView,
+    QPushButton,
+    QWidget,
+)
+
+from . import config, paths
+from .models import FlatDropModel
+from .widgets import ModInfoPanel
+
+sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
+
+
+class DragApp(QWidget):
+    loaded_mods = config.loaded_mods
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
+        self.resize(800, 400)
+        self.pending_toggles = {}
+        self._populating = False
+
+        self.initUi()
+
+    def initUi(self):
+        self.baseLayout = QGridLayout(self)
+        self.modListWidget()
+        self.modInfoPanel = ModInfoPanel()
+
+        self.baseLayout.addWidget(self.listView, 0, 0, 5, 1)
+        self.baseLayout.addWidget(self.modInfoPanel, 0, 1, 7, 1)
+
+        btn_row_1 = QHBoxLayout()
+        btn_row_1.addWidget(self.applyOrder)
+        btn_row_1.addWidget(self.autoSort)
+        self.baseLayout.addLayout(btn_row_1, 5, 0)
+
+        btn_row_2 = QHBoxLayout()
+        btn_row_2.addWidget(self.pickModsPath)
+        btn_row_2.addWidget(self.refreshOrder)
+        self.baseLayout.addLayout(btn_row_2, 6, 0)
+
+        self.baseLayout.addWidget(self.currentPath, 7, 0)
+
+        self.baseLayout.setColumnStretch(0, 1)
+        self.baseLayout.setColumnStretch(1, 1)
+
+        self.applyOrder.clicked.connect(self.applyModOrder)
+        self.refreshOrder.clicked.connect(self.getModList)
+        self.pickModsPath.clicked.connect(self.setModsPath)
+        self.listView.selectionModel().selectionChanged.connect(
+            self.on_mod_selected
+        )
+
+    def modListWidget(self):
+        self.accent_color = self._get_accent_color_hex()
+        self.listView = QListView(self)
+        self.listView.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.listView.setDragEnabled(True)
+        self.listView.setAcceptDrops(True)
+        self.listView.setDropIndicatorShown(True)
+        self.listView.setDragDropMode(QAbstractItemView.InternalMove)
+        self.listView.setDefaultDropAction(Qt.MoveAction)
+
+        self.model = FlatDropModel()
+        self.listView.setModel(self.model)
+        self.model.itemChanged.connect(self.on_item_changed)
+
+        self.getModList()
+        self.applyOrder = QPushButton("Apply Sort Order")
+        self.autoSort = QPushButton("Auto Sort")
+        self.refreshOrder = QPushButton("Refresh")
+        self.pickModsPath = QPushButton("Select Mods Folder")
+        self.currentPath = QLineEdit(f"{config.mods_path}")
+        self.currentPath.setReadOnly(True)
+
+        self.applyOrder.setStyleSheet(f"background-color : {self.accent_color}")
+
+        if config.mods_path == "" or config.loaded_mods == []:
+            self.pickModsPath.setStyleSheet("background-color : red")
+        else:
+            self.pickModsPath.setStyleSheet("background-color: auto")
+
+    def setModsPath(self):
+        new_path = QFileDialog.getExistingDirectory(self)
+        if new_path:
+            config.mods_path = new_path
+            config.save()
+            self.currentPath.setText(new_path)
+            self.getModList()
+
+    def applyModOrder(self):
+        i = 1
+        for row in range(self.model.rowCount()):
+            item = self.model.item(row)
+            mod_name = item.text()
+            mod_folder = item.data(Qt.UserRole)
+            if sorted_pattern.match(mod_name):
+                new_name = f"{i:03} {mod_name[4:]}"
+            else:
+                new_name = f"{i:03} {mod_name}"
+            mod_xml = ET.parse(f"{config.mods_path}/{mod_folder}/metadata.xml")
+            root = mod_xml.getroot()
+            root.find("name").text = new_name
+            mod_xml.write(
+                f"{config.mods_path}/{mod_folder}/metadata.xml",
+                encoding="utf-8",
+                xml_declaration=True,
+            )
+            i += 1
+        for folder, state in self.pending_toggles.items():
+            disable_path = os.path.join(config.mods_path, folder, "disable.it")
+            if state == Qt.Unchecked:
+                open(disable_path, "a").close()
+            else:
+                try:
+                    os.remove(disable_path)
+                except FileNotFoundError:
+                    pass
+        self.pending_toggles.clear()
+        self.getModList()
+
+    def getModList(self):
+        if config.mods_path == "":
+            return
+
+        self._populating = True
+        self.model.clear()
+        self.pending_toggles.clear()
+        config.loaded_mods.clear()
+
+        mod_list = os.listdir(config.mods_path)
+        try:
+            ds_index = mod_list.index(".DS_Store")
+            mod_list.pop(ds_index)
+        except ValueError:
+            pass
+
+        for mod_folder in mod_list:
+            try:
+                mod_xml = ET.parse(
+                    f"{config.mods_path}/{mod_folder}/metadata.xml"
+                )
+                root = mod_xml.getroot()
+                name = root.find("name").text
+                config.loaded_mods.append([name, mod_folder])
+            except FileNotFoundError:
+                continue
+
+        config.loaded_mods.sort(key=lambda x: x[0])
+
+        for name, mod_folder in config.loaded_mods:
+            item = QStandardItem(name)
+            item.setCheckable(True)
+            disable_path = os.path.join(
+                config.mods_path, mod_folder, "disable.it"
+            )
+            item.setCheckState(
+                Qt.Unchecked if os.path.exists(disable_path) else Qt.Checked
+            )
+            item.setData(mod_folder, Qt.UserRole)
+            self.model.appendRow(item)
+
+        self._populating = False
+
+    def on_mod_selected(self, selected, deselected):
+        indexes = self.listView.selectedIndexes()
+        if indexes:
+            item = self.model.itemFromIndex(indexes[0])
+            self.modInfoPanel.show_mod_info(
+                item.text(), item.data(Qt.UserRole), item.checkState()
+            )
+        else:
+            self.modInfoPanel.clear()
+
+    def on_item_changed(self, item):
+        if self._populating:
+            return
+        folder = item.data(Qt.UserRole)
+        if folder:
+            self.pending_toggles[folder] = item.checkState()
+
+    def disable_unimplemented(self):
+        unimplemented_buttons = [self.autoSort]
+        for button in unimplemented_buttons:
+            button.setEnabled(False)
+            button.setToolTip("Not implemented yet")
+
+    def _get_accent_color_hex(self):
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if not app:
+            app = QApplication([])
+        palette = app.palette()
+        accent_color = palette.color(QPalette.ColorRole.Highlight)
+        return accent_color.name()

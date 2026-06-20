@@ -1,85 +1,26 @@
-import logging
-import os
-import re
 import sys
-from pathlib import Path
 
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
 
-from source.config import config_manager
-from source.folder import folder_manager
-from source.platform import platform
-from source.sort import sort_manager
-
-sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
-
-
-class mod_manager:
-    def __init__(self):
-        self.platform_manager = platform()
-        # Determine where the application state should be stored
-        self.config_directory = self.platform_manager.config_directory()
-
-        # Initiate config directory
-        if not os.path.exists(self.config_directory):
-            os.makedirs(self.config_directory)
-
-        self._setup_logger()
-        # cfg = config_manager(self.config_directory)
-        config_manager(self.config_directory)
-        sort_manager()
-
-    def _setup_logger(self):
-        logger = logging.getLogger()
-        logger.setLevel(logging.DEBUG)
-
-        file_formatter = logging.Formatter("%(name)s [%(levelname)s] - %(message)s")
-        fh = logging.FileHandler(f"{self.config_directory}/exec.log", mode="w")
-        fh.setLevel(logging.DEBUG)
-        fh.setFormatter(file_formatter)
-
-        console_formatter = ColoredFormatter("%(levelname)s\t- %(message)s")
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.DEBUG)
-        ch.setFormatter(console_formatter)
-
-        if not logger.handlers:
-            logger.addHandler(fh)
-            logger.addHandler(ch)
-
-        logger.info(f"Running on platform {sys.platform}")
-
-
-class Application:
-    pass
-
-
-class ColoredFormatter(logging.Formatter):
-    COLORS = {
-        "DEBUG": "\033[34m",  # Blue
-        "INFO": "\033[36m",  # Cyan
-        "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",  # Red
-        "CRITICAL": "\033[41m",  # Red background
-    }
-    RESET = "\033[0m"
-
-    def format(self, record):
-        levelname = record.levelname
-        if levelname in self.COLORS:
-            record.levelname = f"{self.COLORS[levelname]}{levelname}{self.RESET}"
-        return super().format(record)
-
+from source import config, paths
+from source.window import DragApp
 
 if __name__ == "__main__":
-    app = QGuiApplication(sys.argv)
-    engine = QQmlApplicationEngine()
+    config.load()
 
-    mod_manager()
-    engine.load("./source/ui/Main.qml")
+    app = QApplication(sys.argv)
+    app.setStyle("fusion")
 
-    if not engine.rootObjects():
-        sys.exit(-1)
+    if sys.platform == "win32":
+        app.setWindowIcon(QIcon("assets/icon.ico"))
+    elif sys.platform == "darwin":
+        app.setWindowIcon(QIcon("assets/icon.icns"))
+    else:
+        app.setWindowIcon(QIcon("assets/icon.png"))
 
+    window = DragApp()
+    window.getModList()
+    window.disable_unimplemented()
+    window.show()
     sys.exit(app.exec())

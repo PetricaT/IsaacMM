@@ -1,21 +1,486 @@
-# Masterlist that the mod manager calls for when
-# automatic sorting is called upon (ty LOOT for the idea)
+# masterlist.yaml — IsaacMM auto-sort masterlist
 # -----------------------------------------------
-# List is completed with data from the metadata.xml
-# mods > name: "directory" tag  (also the name of the folder steam downloads without the steamID)
-# mods > url > name: "name" tag (prone to being edited by the MM, not reliable)
-# -----------------------------------------------
-# Mod authors are welcome to add their mods to this list
-# in case of conflicts or mod requirements
+# Inspired by LOOT for Skyrim, adapted for The Binding of Isaac.
+#
+# Matching priority (first match wins):
+#   1. id     — Steam Workshop ID (number after '_' in folder name)
+#   2. pattern — regex matched against the full folder name
+#   3. tag    — matched against <tag id="..."> in metadata.xml
+#   4. name   — matched against <name> in metadata.xml (least reliable, MM edits it)
+#
+# Load order is determined by group priority (lower = loads earlier),
+# then refined by before/after constraints within the same priority tier.
+# v1
+
+groups:
+  - name: framework
+    priority: 0
+
+  - name: libraries
+    priority: 10
+
+  - name: content
+    priority: 20
+
+  - name: tweaks
+    priority: 30
+
+  - name: overrides
+    priority: 35
+
+  - name: graphics
+    priority: 40
+
+  - name: music
+    priority: 45
+
+  - name: late
+    priority: 50
+
+  - name: unknown
+    priority: 99
+
+# ---------------------------------------------------------------------------
+# Mod entries
+#   id        — Steam Workshop ID (exact match from folder name suffix)
+#   pattern   — regex matched against the full folder name
+#   name      — human-readable label (for logging / UI hints)
+#   group     — group name from the list above
+#   after     — list of Steam IDs this mod must load after (dependencies)
+#   before    — list of Steam IDs this mod must load before
+#   requires  — list of Steam IDs that must be present (warns if missing)
+#   tag       — matched against <tag id="..."> in metadata.xml
+# ---------------------------------------------------------------------------
 mods:
-  - name: '!!mod config menu'
-    url:
-      - link: 'https://steamcommunity.com/sharedfiles/filedetails/?id=2681875787'
-        name: 'Mod Config Menu Pure'
-    # before: [ '@everything' ]
-  # Regex pattern (uncertain how I should set this up): /^\W*(external item descriptions)/imUg
-  - name: '!!~External item descriptions'
-    url:
-      - link: 'https://steamcommunity.com/sharedfiles/filedetails/?id=836319872'
-        name: 'external item descriptions'
-    after: [ '!!mod config menu' ]
+  # ── Framework ──────────────────────────────────────────────────────────
+  - id: 1978904635
+    name: "miniMAPI"
+    group: framework
+
+  - id: 2681875787
+    name: "Mod Config Menu Pure"
+    group: framework
+    after: [1978904635]
+
+  - id: 3701683951
+    name: "Mod Config Menu — Impure"
+    group: framework
+    after: [1978904635]
+
+  # ── Libraries ──────────────────────────────────────────────────────────
+  - id: 2491006386
+    name: "Music Mod Callback [REP]"
+    group: libraries
+
+  - id: 1933285222
+    name: "Soundtrack Menu"
+    group: libraries
+    after: [2491006386]
+
+  - id: 836319872
+    name: "External Item Descriptions"
+    group: libraries
+    after: [2681875787, 3701683951]
+
+  # ── Content ────────────────────────────────────────────────────────────
+  - id: 2851861015
+    name: "Improved Chargebars [REP+]"
+    group: content
+
+  - id: 2878352867
+    name: "Coming Down! [Rework]"
+    group: content
+
+  - id: 2610645873
+    name: "Maggy's Toy Box"
+    group: content
+
+  - id: 3508589739
+    name: "Spiced Up Item Collection"
+    group: content
+
+  - id: 2588931231
+    name: "Bestia"
+    group: content
+
+  - id: 2916069863
+    name: "GoodTrip [Fixed]"
+    group: content
+    after: [1978904635]
+
+  - id: 3330428576
+    name: "Deal with the Siren"
+    group: content
+
+  - id: 3147439712
+    name: "Horsegirls of the Apocalypse!"
+    group: content
+
+  - id: 3376611784
+    name: "cube_rabbid_mario"
+    group: content
+
+  - id: 3495158061
+    name: "Mega-Lome"
+    group: content
+
+  - id: 3471670973
+    name: "Meowdy"
+    group: content
+
+  - id: 3124519932
+    name: "MG Pack"
+    group: content
+
+  - id: 2526858840
+    name: "MgTexture"
+    group: content
+
+  - id: 3365367597
+    name: "Hatsune Miku Over Angels"
+    group: content
+
+  - id: 3322151121
+    name: "Mother Beastriz"
+    group: content
+
+  - id: 2568447666
+    name: "RockBottomButReally"
+    group: content
+
+  - id: 2200995244
+    name: "The Dark One Mod (reupload)"
+    group: content
+
+  - id: 3169946719
+    name: "TimeMachine [Fixed]"
+    group: content
+
+  - id: 2887926286
+    name: "Watch out, laser!"
+    group: content
+
+  - id: 2916120339
+    name: "WoB Addon — Beggars, Chests, Sacks & Machines"
+    group: content
+
+  - id: 3350809136
+    name: "Yet another Neko Lost"
+    group: content
+
+  - id: 2796581153
+    name: "Neko Forgotten"
+    group: content
+
+  - id: 3179618856
+    name: "beezelbub rtl"
+    group: content
+
+  - id: 3360160654
+    name: "Plump Cutie Min-Min!"
+    group: content
+
+  - id: 3412679025
+    name: "Plump Cutie Spider Butt!"
+    group: content
+
+  - id: 3388616232
+    name: "Edgy Tainted Azazel"
+    group: content
+
+  - id: 3368742658
+    name: "siren trophy plus"
+    group: content
+
+  - id: 2508771538
+    name: "Siren's Bra"
+    group: content
+
+  - id: 3395339384
+    name: "Siren's Pad!"
+    group: content
+
+  - id: 3419883482
+    name: "Kasane Teto over Satan"
+    group: content
+
+  - id: 3494776356
+    name: "dad's lewd deck"
+    group: content
+
+  - id: 2599675262
+    name: "Chatty Devil"
+    group: content
+
+  - id: 3311105740
+    name: "Gabe Lines"
+    group: content
+
+  - id: 3361211771
+    name: "Less Subtle Indicator for Tinted & Super Special Rocks"
+    group: content
+
+  - id: 3010945909
+    name: "Rune Rooms [Release]"
+    group: content
+
+  - id: 3297124416
+    name: "The Stars Align — Planetarium Notification"
+    group: content
+
+  - id: 2690434875
+    name: "Unique Birthrights"
+    group: content
+
+  - id: 2565331478
+    name: "Unique Coins"
+    group: content
+
+  - id: 2881008017
+    name: "Retribution"
+    group: content
+
+  - id: 2880387531
+    name: "Revelations"
+    group: content
+
+  - id: 3162704178
+    name: "Sacred Dreams"
+    group: content
+
+  - id: 3012430463
+    name: "Epiphany"
+    group: content
+
+  # ── Tweaks ─────────────────────────────────────────────────────────────
+  - id: 3455888206
+    name: "Inisaacable intro"
+    group: tweaks
+
+  - id: 2603224299
+    name: "Completion Mark Reminder"
+    group: tweaks
+
+  - id: 2851861015
+    name: "Improved Chargebars [REP+]"
+    group: tweaks
+    after: [1978904635]
+
+  - id: 2833146105
+    name: "Instant Fires and Poops"
+    group: tweaks
+
+  - id: 2566913410
+    name: "Just Better Rocks (Tinted)"
+    group: tweaks
+
+  - id: 3473981881
+    name: "angry faic spawn indicators"
+    group: tweaks
+
+  - id: 2907117024
+    name: "off-screen indicators"
+    group: tweaks
+
+  - id: 2488945061
+    name: "Old Wardrobe"
+    group: tweaks
+
+  - id: 3461938404
+    name: "Options? Reminder"
+    group: tweaks
+
+  - id: 2489006943
+    name: "Planetarium Chance [REP+]"
+    group: tweaks
+
+  - id: 3263533304
+    name: "Restart Until Special Room With Tweaks"
+    group: tweaks
+
+  - id: 2729900570
+    name: "Stats+"
+    group: tweaks
+
+  - id: 3334902042
+    name: "Unlocks Reminder"
+    group: tweaks
+
+  - id: 3345496670
+    name: "visible challenges unlocks colored"
+    group: tweaks
+
+  - id: 3288668288
+    name: "Visible Audio Cues"
+    group: tweaks
+
+  - id: 3503396978
+    name: "Damage Tracker"
+    group: tweaks
+
+  - id: 3369194114
+    name: "The Specialist for Good Items [REP+]"
+    group: tweaks
+
+  - id: 2807310556
+    name: "Smosh SHUT UP during ascent"
+    group: tweaks
+
+  - id: 2499552332
+    name: "Better Vomit Grimace Sprite"
+    group: tweaks
+
+  - id: 2521412603
+    name: "Make Gimpy Awful"
+    group: tweaks
+
+  - id: 3387673993
+    name: "Low Firerate Tear Chargebar"
+    group: tweaks
+
+  - id: 3343581511
+    name: "trite does stupid backflip"
+    group: tweaks
+
+  # ── Graphics / UI ──────────────────────────────────────────────────────
+  - id: 3345262813
+    name: "100% Accurate Character Select"
+    group: graphics
+
+  - id: 2879232973
+    name: "Better Explosions"
+    group: graphics
+
+  - id: 3406985235
+    name: "Dynamic Bomb HUD [REP(+)]"
+    group: graphics
+    after: [1978904635]
+
+  - id: 3381237554
+    name: "Chaos Card QOL [REP(+)]"
+    group: graphics
+
+  - id: 2635267643
+    name: "Enhanced Boss Bars"
+    group: graphics
+
+  - id: 3132976756
+    name: "Even more Eden hairstyles"
+    group: graphics
+
+  - id: 3402926130
+    name: "Alternate Hairstyles!"
+    group: graphics
+
+  - id: 3366048762
+    name: "Fancier Chests!"
+    group: graphics
+
+  - id: 2518709898
+    name: "Hanging Dream Catcher"
+    group: graphics
+
+  - id: 3376862268
+    name: "HUD Restyle (+more)"
+    group: graphics
+
+  - id: 3386788715
+    name: "Yet Another Portraits Mod"
+    group: graphics
+
+  - id: 3502670841
+    name: "Aladar's Bomb Items Resprite"
+    group: graphics
+
+  - id: 3502665463
+    name: "Aladar's Book Items Resprite"
+    group: graphics
+
+  - id: 3502676942
+    name: "Aladar's Mushroom Items Resprite"
+    group: graphics
+
+  - id: 3502680193
+    name: "Aladar's Syringe Items Resprite"
+    group: graphics
+
+  - id: 3502656580
+    name: "Aladar's Worm Item Resprite"
+    group: graphics
+
+  - id: 3169073644
+    name: "falling stage anim"
+    group: graphics
+
+  - id: 3297853239
+    name: "Proper Alt Trapdoors"
+    group: graphics
+
+  - id: 3339600600
+    name: "Realistic Black Hole"
+    group: graphics
+
+  - id: 2766379837
+    name: "Regret Pedestals"
+    group: graphics
+
+  - id: 3363277114
+    name: "Voiding effect"
+    group: graphics
+
+  - id: 3348607763
+    name: "Custom Wall Holes!"
+    group: graphics
+
+  - id: 2492654252
+    name: "Boss Rush Wave Counter [REP | AB+]"
+    group: graphics
+
+  - id: 3585879877
+    name: "Door Overhaul"
+    group: graphics
+    after: [1978904635]
+
+  - id: 3169073644
+    name: "falling stage anim"
+    group: graphics
+
+  # ── Music / Sound ──────────────────────────────────────────────────────
+  - id: 3417561024
+    name: "Ethiopian jazz in shop"
+    group: music
+
+  # ── Late / Compatibility ───────────────────────────────────────────────
+  - pattern: ".*external.*description.*"
+    group: libraries
+    name: "External Item Descriptions (pattern fallback)"
+
+  - pattern: ".*mod config menu.*"
+    group: framework
+    name: "MCM variant (pattern fallback)"
+
+  - pattern: ".*minimapi.*"
+    group: framework
+    name: "miniMAPI (pattern fallback)"
+
+  # ── Tag-based fallbacks ────────────────────────────────────────────────
+  - tag: "Player Characters"
+    group: content
+
+  - tag: "Items"
+    group: content
+
+  - tag: "Graphics"
+    group: graphics
+
+  - tag: "Tweaks"
+    group: tweaks
+
+  - tag: "Music"
+    group: music
+
+  - tag: "Sound"
+    group: music
+
+  - tag: "Gameplay"
+    group: tweaks
