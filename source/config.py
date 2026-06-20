@@ -4,18 +4,16 @@ import toml
 from . import paths, sorter
 
 mods_path = ""
-remove_marks = False
 loaded_mods = []
 
 
 def load():
-    global mods_path, remove_marks
+    global mods_path
     try:
         cfg = toml.load(f"{paths.appdata}/config.toml")
         mods_path = cfg["paths"]["mods"]
         if mods_path == "":
             print("Mods path malformed, check if path is correct")
-        remove_marks = cfg["settings"].get("remove_marks", "false") == "true"
     except FileNotFoundError:
         _create_default()
 
@@ -37,7 +35,7 @@ def _create_default():
 def save():
     cfg = {
         "paths": {"mods": mods_path},
-        "settings": {"remove_marks": remove_marks},
+        "settings": {},
     }
     os.makedirs(paths.appdata, exist_ok=True)
     with open(f"{paths.appdata}/config.toml", "w") as f:

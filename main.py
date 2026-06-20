@@ -20,6 +20,5 @@ if __name__ == "__main__":
         app.setWindowIcon(QIcon("assets/icon.png"))
 
     window = DragApp()
-    window.getModList()
     window.show()
     sys.exit(app.exec())

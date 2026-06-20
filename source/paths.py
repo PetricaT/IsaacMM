@@ -1,7 +1,9 @@
 import os
+import re
 import sys
 
 STEAM_APPID = 250900
+WORKSHOP_ID_RE = re.compile(r"_(\d+)$")
 
 if sys.platform == "win32":
     appdata = os.path.expanduser("~") + "/AppData/IsaacMM"

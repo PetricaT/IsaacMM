@@ -90,7 +90,7 @@ from . import config, paths, sorter
 from .models import FlatDropModel
 from .widgets import ModInfoPanel
 
-sorted_pattern = re.compile(r"[0-9]{3}\s{1}.*")
+sorted_pattern = re.compile(r"[0-9]{3}\s.*")
 
 
 class DragApp(QWidget):

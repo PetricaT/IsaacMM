@@ -15,7 +15,6 @@ CACHE_FILE = os.path.join(paths.appdata, "masterlist.yaml")
 USER_RULES_FILE = os.path.join(paths.appdata, "user_rules.yaml")
 LAST_ORDER_FILE = os.path.join(paths.appdata, "last_order.yaml")
 CACHE_TTL = timedelta(hours=24)
-WORKSHOP_ID_RE = re.compile(r"_(\d+)$")
 
 _masterlist = None
 
@@ -148,7 +147,7 @@ def _merge_user_rules(lookup, rules):
 
 
 def _extract_workshop_id(folder_name):
-    m = WORKSHOP_ID_RE.search(folder_name)
+    m = paths.WORKSHOP_ID_RE.search(folder_name)
     return int(m.group(1)) if m else None
 
 

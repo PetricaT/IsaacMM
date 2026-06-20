@@ -19,8 +19,6 @@ from PySide6.QtWidgets import (
 
 from . import config, paths
 
-WORKSHOP_ID_RE = re.compile(r"_(\d+)$")
-
 def bbcode_to_html(text):
     text = html.escape(text)
     text = re.sub(r'\[b\](.*?)\[/b\]', r'<b>\1</b>', text, flags=re.DOTALL)
@@ -199,7 +197,7 @@ class ModInfoPanel(QWidget):
 
         self.folder_label.setText(f"Folder: {mod_folder}")
 
-        m = WORKSHOP_ID_RE.search(mod_folder)
+        m = paths.WORKSHOP_ID_RE.search(mod_folder)
         self._workshop_id = int(m.group(1)) if m else None
         self.workshop_button.setEnabled(self._workshop_id is not None)
 
