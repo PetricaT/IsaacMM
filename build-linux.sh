@@ -38,7 +38,7 @@ fi
 APPIMAGETOOL=$(command -v appimagetool || echo "./appimagetool")
 
 export ARCH=x86_64
-"${APPIMAGETOOL}" "${APPDIR}" "${APPNAME}-x86_64.AppImage"
+"${APPIMAGETOOL}" --comp zstd "${APPDIR}" "${APPNAME}-x86_64.AppImage"
 
 rm -rf "${APPDIR}"
 echo "Created ${APPNAME}-x86_64.AppImage"
