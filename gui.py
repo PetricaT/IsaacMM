@@ -4,16 +4,15 @@ import sys
 import xml.etree.ElementTree as ET
 
 import toml
-from PySide6.QtCore import (
-    QByteArray,
-    QDataStream,
-    QIODevice,
-    QMimeData,
-    QModelIndex,
-    QStringListModel,
-    Qt,
+from PySide6.QtCore import QModelIndex, QSize, Qt
+from PySide6.QtGui import (
+    QIcon,
+    QMovie,
+    QPalette,
+    QPixmap,
+    QStandardItem,
+    QStandardItemModel,
 )
-from PySide6.QtGui import QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -89,85 +88,21 @@ except FileNotFoundError:
         f.close
 
 
-class DragDropListModel(QStringListModel):
-    def __init__(self, parent=None):
-        super(DragDropListModel, self).__init__(parent)
-
-        self.myMimeTypes = "application/json"
-
-    def supportedDropActions(self):
-        return Qt.MoveAction
-
-    def flags(self, index):
-        defaultFlags = QStringListModel.flags(self, index)
-
-        if index.isValid():
-            return Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled | defaultFlags
-        else:
-            return Qt.ItemIsDropEnabled | defaultFlags
-
-    def mimeTypes(self):
-        return [self.myMimeTypes]
-
-    def mimeData(self, indexes):
-        mmData = QMimeData()
-        encodedData = QByteArray()
-        stream = QDataStream(encodedData, QIODevice.WriteOnly)
-
-        for index in indexes:
-            if index.isValid():
-                text = self.data(index, Qt.DisplayRole)
-                stream << text
-
-        mmData.setData(self.myMimeTypes, encodedData)
-        return mmData
-
-    def canDropMimeData(self, data, action, row, column, parent):
-        if data.hasFormat(self.myMimeTypes) is False:
-            return False
-        if column > 0:
-            return False
-        return True
-
+class FlatDropModel(QStandardItemModel):
     def dropMimeData(self, data, action, row, column, parent):
-        if self.canDropMimeData(data, action, row, column, parent) is False:
-            return False
-
-        if action == Qt.IgnoreAction:
-            return True
-
-        beginRow = -1
-        if row != -1:
-            beginRow = row
-        elif parent.isValid():
-            beginRow = parent.row()
-        else:
-            beginRow = self.rowCount(QModelIndex())
-
-        encodedData = data.data(self.myMimeTypes)
-        stream = QDataStream(encodedData, QIODevice.ReadOnly)
-        newItems = []
-        rows = 0
-
-        while stream.atEnd() is False:
-            text = stream.readQString()
-            newItems.append(str(text))
-            rows += 1
-
-        self.insertRows(beginRow, rows, QModelIndex())
-        for text in newItems:
-            idx = self.index(beginRow, 0, QModelIndex())
-            self.setData(idx, text)
-            beginRow += 1
-
-        return True
+        if parent.isValid():
+            row = parent.row() + 1
+            parent = QModelIndex()
+        return super().dropMimeData(data, action, row, column, parent)
 
 
 class ModInfoPanel(QWidget):
     PRIORITY_ICON_NAMES = [
         "title",
         "thumbnail",
+        "Thumbnail",
         "icon",
+        "images",
         "modicon",
         "logo",
         "spider thumbnail",
@@ -178,6 +113,10 @@ class ModInfoPanel(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
 
+        self._movie = None
+        self._placeholder = QPixmap(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "no_image.png")
+        )
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(128, 128)
         self.icon_label.setAlignment(Qt.AlignCenter)
@@ -190,16 +129,21 @@ class ModInfoPanel(QWidget):
         self.description_text.setReadOnly(True)
         self.description_text.setPlaceholderText("Select a mod to view its description")
 
+        self.folder_label = QLabel()
+        self.folder_label.setStyleSheet("color: gray; font-size: 10px;")
+        self.folder_label.setWordWrap(True)
+
         layout.addWidget(self.icon_label)
         layout.addWidget(self.state_label)
         layout.addWidget(self.description_text)
+        layout.addWidget(self.folder_label)
 
-    def show_mod_info(self, mod_name):
-        mod_folder = None
-        for mod in loaded_mods:
-            if mod[0] == mod_name:
-                mod_folder = mod[1]
-                break
+    def show_mod_info(self, mod_name, mod_folder=None, check_state=None):
+        if mod_folder is None:
+            for mod in loaded_mods:
+                if mod[0] == mod_name:
+                    mod_folder = mod[1]
+                    break
 
         if mod_folder is None:
             self.clear()
@@ -227,21 +171,35 @@ class ModInfoPanel(QWidget):
         except OSError:
             pass
 
+        self._stop_movie()
         if icon_path:
-            pixmap = QPixmap(icon_path)
-            if not pixmap.isNull():
-                self.icon_label.setPixmap(
-                    pixmap.scaled(
-                        128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                    )
-                )
+            if icon_path.lower().endswith(".gif"):
+                movie = QMovie(icon_path)
+                movie.setScaledSize(QSize(128, 128))
+                if movie.isValid():
+                    self._movie = movie
+                    self.icon_label.setMovie(movie)
+                    movie.start()
+                else:
+                    self._show_placeholder()
             else:
-                self.icon_label.setText("No icon")
+                pixmap = QPixmap(icon_path)
+                if not pixmap.isNull():
+                    self.icon_label.setPixmap(
+                        pixmap.scaled(
+                            128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                        )
+                    )
+                else:
+                    self._show_placeholder()
         else:
-            self.icon_label.setText("No icon")
+            self._show_placeholder()
 
-        disable_path = os.path.join(mod_path, "disable.it")
-        if os.path.exists(disable_path):
+        if check_state is not None:
+            disabled = check_state == Qt.Unchecked
+        else:
+            disabled = os.path.exists(os.path.join(mod_path, "disable.it"))
+        if disabled:
             self.state_label.setText("Disabled")
             self.state_label.setStyleSheet("color: red; font-weight: bold;")
         else:
@@ -259,12 +217,28 @@ class ModInfoPanel(QWidget):
         except Exception:
             self.description_text.setPlainText("(could not load description)")
 
+        self.folder_label.setText(f"Folder: {mod_folder}")
+
+    def _show_placeholder(self):
+        self._stop_movie()
+        self.icon_label.setPixmap(
+            self._placeholder.scaled(
+                128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+        )
+
+    def _stop_movie(self):
+        if self._movie is not None:
+            self._movie.stop()
+            self._movie = None
+
     def clear(self):
-        self.icon_label.clear()
-        self.icon_label.setText("No icon")
+        self._stop_movie()
+        self._show_placeholder()
         self.state_label.setText("Select a mod")
         self.state_label.setStyleSheet("")
         self.description_text.clear()
+        self.folder_label.clear()
 
 
 class DragApp(QWidget):
@@ -277,6 +251,8 @@ class DragApp(QWidget):
         self.setWindowTitle(f"Tboi Mod Manager [{version}]")
         self.resize(800, 400)
         self.previous_mods_path = ""
+        self.pending_toggles = {}
+        self._populating = False
 
         self.initUi()
 
@@ -318,8 +294,12 @@ class DragApp(QWidget):
         self.listView.setDragEnabled(True)
         self.listView.setAcceptDrops(True)
         self.listView.setDropIndicatorShown(True)
-        self.ddm = DragDropListModel()
-        self.listView.setModel(self.ddm)
+        self.listView.setDragDropMode(QAbstractItemView.InternalMove)
+        self.listView.setDefaultDropAction(Qt.MoveAction)
+
+        self.model = FlatDropModel()
+        self.listView.setModel(self.model)
+        self.model.itemChanged.connect(self.on_item_changed)
 
         self.getModList()
         self.applyOrder = QPushButton("Apply Sort Order")
@@ -347,67 +327,91 @@ class DragApp(QWidget):
 
     def applyModOrder(self):
         i = 1
-        names_array = []
-        for mod in loaded_mods:
-            names_array.append(mod[0])
-        for mod in self.ddm.stringList():
-            mod_index = names_array.index(mod)  # index of mod in big array
-            mod_path = loaded_mods[mod_index][1]
-            if sorted_pattern.match(mod):
-                # Mod was sorted previously, replace prefix
-                mod_name = f"{i:03} {mod[4:]}"
+        for row in range(self.model.rowCount()):
+            item = self.model.item(row)
+            mod_name = item.text()
+            mod_folder = item.data(Qt.UserRole)
+            if sorted_pattern.match(mod_name):
+                new_name = f"{i:03} {mod_name[4:]}"
             else:
-                mod_name = f"{i:03} {mod}"
-            mod_xml = ET.parse(f"{mods_path}/{mod_path}/metadata.xml")
+                new_name = f"{i:03} {mod_name}"
+            mod_xml = ET.parse(f"{mods_path}/{mod_folder}/metadata.xml")
             root = mod_xml.getroot()
-            root.find("name").text = mod_name
+            root.find("name").text = new_name
             mod_xml.write(
-                f"{mods_path}/{mod_path}/metadata.xml",
+                f"{mods_path}/{mod_folder}/metadata.xml",
                 encoding="utf-8",
                 xml_declaration=True,
             )
             i += 1
+        for folder, state in self.pending_toggles.items():
+            disable_path = os.path.join(mods_path, folder, "disable.it")
+            if state == Qt.Unchecked:
+                open(disable_path, "a").close()
+            else:
+                try:
+                    os.remove(disable_path)
+                except FileNotFoundError:
+                    pass
+        self.pending_toggles.clear()
         self.getModList()
 
     def getModList(self):
-        # If path is unset, return
         if mods_path == "":
             return
-        # Get list of Isaac mods
+
+        self._populating = True
+        self.model.clear()
+        self.pending_toggles.clear()
+        loaded_mods.clear()
+
         mod_list = os.listdir(mods_path)
         try:
-            # Hacky macos DS_Store skip
             ds_index = mod_list.index(".DS_Store")
             mod_list.pop(ds_index)
         except ValueError:
             pass
-        # If path has changed, refresh the list
-        reset_model = False
-        if mods_path != self.previous_mods_path:
-            loaded_mods.clear()
-            self.ddm.beginResetModel()
-            self.previous_mods_path = mods_path
-            reset_model = True
-        for mod in mod_list:
+
+        for mod_folder in mod_list:
             try:
-                mod_xml = ET.parse(f"{mods_path}/{mod}/metadata.xml")
+                mod_xml = ET.parse(f"{mods_path}/{mod_folder}/metadata.xml")
                 root = mod_xml.getroot()
-                if [root.find("name").text, mod] not in loaded_mods:
-                    loaded_mods.append([root.find("name").text, mod])
+                name = root.find("name").text
+                loaded_mods.append([name, mod_folder])
             except FileNotFoundError:
                 continue
-        loaded_mods.sort()
-        if reset_model:
-            self.ddm.endResetModel()
-        self.ddm.setStringList([mod[0] for mod in loaded_mods])
+
+        loaded_mods.sort(key=lambda x: x[0])
+
+        for name, mod_folder in loaded_mods:
+            item = QStandardItem(name)
+            item.setCheckable(True)
+            disable_path = os.path.join(mods_path, mod_folder, "disable.it")
+            item.setCheckState(
+                Qt.Unchecked if os.path.exists(disable_path) else Qt.Checked
+            )
+            item.setData(mod_folder, Qt.UserRole)
+            self.model.appendRow(item)
+
+        self.previous_mods_path = mods_path
+        self._populating = False
 
     def on_mod_selected(self, selected, deselected):
         indexes = self.listView.selectedIndexes()
         if indexes:
-            mod_name = indexes[0].data(Qt.DisplayRole)
-            self.modInfoPanel.show_mod_info(mod_name)
+            item = self.model.itemFromIndex(indexes[0])
+            self.modInfoPanel.show_mod_info(
+                item.text(), item.data(Qt.UserRole), item.checkState()
+            )
         else:
             self.modInfoPanel.clear()
+
+    def on_item_changed(self, item):
+        if self._populating:
+            return
+        folder = item.data(Qt.UserRole)
+        if folder:
+            self.pending_toggles[folder] = item.checkState()
 
     def disable_unimplemented(self):
         unimplemented_buttons = [self.autoSort]
