@@ -1,4 +1,3 @@
 PySide6
-PyQt6
 toml
 pyyaml

@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('masterlist.yaml', '.'), ('assets/icon.png', 'assets'), ('assets/no_image.png', 'assets')],
+    datas=[('masterlist.yaml', '.'), ('pyproject.toml', '.'), ('assets/icon.png', 'assets'), ('assets/no_image.png', 'assets')],
     hiddenimports=['source.paths', 'source.config', 'source.models', 'source.widgets', 'source.window', 'source.sorter'],
     hookspath=[],
     hooksconfig={},
@@ -19,9 +19,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='IsaacMM-Linux.elf',
     debug=False,
     bootloader_ignore_signals=False,
@@ -36,4 +35,14 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['assets/icon.png'],
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='IsaacMM-Linux',
 )

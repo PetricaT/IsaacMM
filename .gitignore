@@ -192,3 +192,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Linux Build
+appimagetool
+*.AppImage

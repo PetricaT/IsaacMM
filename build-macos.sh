@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-uv venv
+if [ ! -d .venv ]; then
+    uv venv
+fi
 source .venv/bin/activate
 uv pip install -r requirements.txt
 uv pip install pyinstaller
+
+VERSION=$(grep -Po '^version = "\K[^"]*' pyproject.toml)
+
 pyinstaller IsaacMM-MacOS.spec
 
-echo "Created dist/IsaacMM-MacOS.app"
+mv "dist/IsaacMM-MacOS.app" "dist/IsaacMM-${VERSION}-MacOS.app"
+echo "Created dist/IsaacMM-${VERSION}-MacOS.app"

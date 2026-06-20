@@ -2,7 +2,6 @@ import os
 import sys
 
 STEAM_APPID = 250900
-version = "v0.2.4"
 
 if sys.platform == "win32":
     appdata = os.path.expanduser("~") + "/AppData/IsaacMM"
@@ -12,6 +11,16 @@ else:
     appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+version = "0.0.0"
+try:
+    import toml
+
+    pp = os.path.join(BASE_DIR, "pyproject.toml")
+    if os.path.exists(pp):
+        version = toml.load(pp)["project"]["version"]
+except Exception:
+    pass
 
 
 def find_isaac_mods_folder():

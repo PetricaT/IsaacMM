@@ -1,7 +1,13 @@
-uv venv
+if (!(Test-Path .venv)) {
+    uv venv
+}
 .\.venv\Scripts\activate
 uv pip install -r requirements.txt
 uv pip install pyinstaller
+
+$version = Select-String -Path "pyproject.toml" -Pattern '^version = "(.*)"' | ForEach-Object { $_.Matches.Groups[1].Value }
+
 pyinstaller .\IsaacMM-Windows.spec
 
-Write-Output "Created dist\IsaacMM-Windows.exe"
+Move-Item "dist\IsaacMM-Windows.exe" "dist\IsaacMM-$version-Windows.exe" -Force
+Write-Output "Created dist\IsaacMM-$version-Windows.exe"

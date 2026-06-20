@@ -41,26 +41,23 @@ class DragApp(QWidget):
         self.modInfoPanel = ModInfoPanel()
 
         self.baseLayout.addWidget(self.listView, 0, 0, 5, 1)
-        self.baseLayout.addWidget(self.modInfoPanel, 0, 1, 7, 1)
+        self.baseLayout.addWidget(self.modInfoPanel, 0, 1, 6, 1)
 
-        btn_row_1 = QHBoxLayout()
-        btn_row_1.addWidget(self.applyOrder)
-        btn_row_1.addWidget(self.autoSort)
-        self.baseLayout.addLayout(btn_row_1, 5, 0)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(self.applyOrder)
+        btn_row.addWidget(self.autoSort)
+        self.baseLayout.addLayout(btn_row, 5, 0)
 
-        btn_row_2 = QHBoxLayout()
-        btn_row_2.addWidget(self.pickModsPath)
-        btn_row_2.addWidget(self.refreshOrder)
-        self.baseLayout.addLayout(btn_row_2, 6, 0)
-
-        self.baseLayout.addWidget(self.currentPath, 7, 0)
+        bottom_row = QHBoxLayout()
+        bottom_row.addWidget(self.pickModsPath)
+        bottom_row.addWidget(self.currentPath, 1)
+        self.baseLayout.addLayout(bottom_row, 6, 0, 1, 2)
 
         self.baseLayout.setColumnStretch(0, 1)
         self.baseLayout.setColumnStretch(1, 1)
 
         self.applyOrder.clicked.connect(self.applyModOrder)
         self.autoSort.clicked.connect(self.autoSortMods)
-        self.refreshOrder.clicked.connect(self.getModList)
         self.pickModsPath.clicked.connect(self.setModsPath)
         self.listView.selectionModel().selectionChanged.connect(
             self.on_mod_selected
@@ -89,7 +86,6 @@ class DragApp(QWidget):
         self.getModList()
         self.applyOrder = QPushButton("Apply Sort Order")
         self.autoSort = QPushButton("Auto Sort")
-        self.refreshOrder = QPushButton("Refresh")
         self.pickModsPath = QPushButton("Select Mods Folder")
         self.currentPath = QLineEdit(f"{config.mods_path}")
         self.currentPath.setReadOnly(True)
@@ -102,7 +98,16 @@ class DragApp(QWidget):
             self.pickModsPath.setStyleSheet("background-color: auto")
 
     def setModsPath(self):
-        new_path = QFileDialog.getExistingDirectory(self)
+        start_dir = ""
+        if config.mods_path and os.path.isdir(config.mods_path):
+            start_dir = config.mods_path
+        else:
+            detected = paths.find_isaac_mods_folder()
+            if detected and os.path.isdir(detected):
+                start_dir = detected
+        new_path = QFileDialog.getExistingDirectory(
+            self, "Select Mods Folder", start_dir
+        )
         if new_path:
             config.mods_path = new_path
             config.save()
