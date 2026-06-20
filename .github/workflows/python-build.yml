@@ -85,9 +85,36 @@ jobs:
         with:
           path: artifacts
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/build-*/*
+      - name: Publish Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd artifacts
+          for f in build-*/*; do
+            name="${f#*/}"
+            if [ -f "$f" ]; then
+              sha256sum "$f" | sed "s|$f|$name|"
+            elif [ -d "$f" ]; then
+              tar cf - "$f" | sha256sum | sed "s|-|$name|"
+            fi
+          done > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cd ..
+
+          NOTES=$(printf '### SHA256 Checksums\n```\n%s\n```\n' "$(cat artifacts/SHA256SUMS.txt)")
+
+          if gh release view "${{ github.ref_name }}" &>/dev/null; then
+            EXISTING=$(gh release view "${{ github.ref_name }}" --json body --jq '.body')
+            printf '%s\n\n%s\n' "$EXISTING" "$NOTES" > body.md
+            gh release edit "${{ github.ref_name }}" --notes-file body.md
+            gh release upload "${{ github.ref_name }}" artifacts/SHA256SUMS.txt --clobber
+            for f in artifacts/build-*/*; do
+              gh release upload "${{ github.ref_name }}" "$f" --clobber
+            done
+          else
+            printf '%s\n' "$NOTES" > body.md
+            gh release create "${{ github.ref_name }}" \
+              --notes-file body.md \
+              artifacts/SHA256SUMS.txt \
+              artifacts/build-*/*
+          fi

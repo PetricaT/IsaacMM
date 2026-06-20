@@ -1,11 +1,13 @@
+<div align="center">
+
 # <img src="assets/icon.png" width="25" height="25" alt="isaac thumbs up"> The binding of Isaac - Mod Manager 
 
 [![Build release](https://github.com/PetricaT/IsaacMM/actions/workflows/python-build.yml/badge.svg)](https://github.com/PetricaT/IsaacMM/actions/workflows/python-build.yml)
+![Downloads](https://img.shields.io/github/downloads/PetricaT/IsaacMM/latest/total)
+
+---
 
 An experimental way of sorting mods for the game The binding of Isaac: Rebirth (with support for any DLC) 
-
-<div align="center">
-
 ![Program Window](./assets/demo_window.png)
 
 </div>
@@ -14,7 +16,7 @@ An experimental way of sorting mods for the game The binding of Isaac: Rebirth (
 1. [How to use](#how-to-use)
 2. [Why?](#why)
 3. [How it works](#how-it-works)
-4. [Contributing](#how-to-help)
+4. [Developing](#developing)
 
 ## 1. HOW TO USE
 
@@ -69,34 +71,34 @@ Tboi sorts mods as follows:
 
 I don't expect people to have more than 999 mods for this game, but if that proves wrong, the limit can be changed.
 
-## 4. How to help
+## 4. Developing
 
 Quick rundown on the files.
 
-The current compiling program: gui.py (yes, the entire file alone)
+The main entry point is `main.py` (shocker)
 
-Work in progress (entire rewrite):
 
 ```
 root
 ├─ main.py
-├─ setup.py (cx_Freeze)
 └─ source
-   ├─ folder.py
-   └─ config.py
+   ├─ sorter.py  -- Autosorting algorithm and masterlist handler  
+   ├─ window.py  -- Original UI entrypoint, still has some logic tied to it
+   ├─ widgets.py -- Layout of the GUI  
+   ├─ paths.py   -- Parses steam info to automatically find the mods folder 
+   ├─ models.py  -- Template for the drag and drop model 
+   └─ config.py  -- Handles the config directory read/write
 ```
 
 ---
 
-If you want to aid in the development of this, fork the repo and install the requierments (PyQt6, PySide6, toml) 
+If you want to aid in the development of this, fork the repo and install the requierments 
 
 ``` sh
 pip install -r requirements.txt
 ```
 
 Create a pull request with your changes and I will approve them.
-
-If you know how to make Qt based apps, help would be appreciated in making the GUI code cleaner or better.
 
 > [!NOTE]
 > The build scripts assume you have "[uv](https://docs.astral.sh/uv/)" installed, if you don't have it, do yourself a favour and install it.
