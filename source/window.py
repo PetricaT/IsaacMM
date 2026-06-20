@@ -46,6 +46,7 @@ class DragApp(QWidget):
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.applyOrder)
         btn_row.addWidget(self.autoSort)
+        btn_row.addWidget(self.restoreOrder)
         self.baseLayout.addLayout(btn_row, 5, 0)
 
         bottom_row = QHBoxLayout()
@@ -58,6 +59,7 @@ class DragApp(QWidget):
 
         self.applyOrder.clicked.connect(self.applyModOrder)
         self.autoSort.clicked.connect(self.autoSortMods)
+        self.restoreOrder.clicked.connect(self.restoreLastOrder)
         self.pickModsPath.clicked.connect(self.setModsPath)
         self.listView.selectionModel().selectionChanged.connect(
             self.on_mod_selected
@@ -83,19 +85,17 @@ class DragApp(QWidget):
         self.listView.setModel(self.model)
         self.model.itemChanged.connect(self.on_item_changed)
 
-        self.getModList()
         self.applyOrder = QPushButton("Apply Sort Order")
         self.autoSort = QPushButton("Auto Sort")
+        self.restoreOrder = QPushButton("Restore Last Order")
+        self.restoreOrder.setEnabled(sorter.load_last_order() is not None)
         self.pickModsPath = QPushButton("Select Mods Folder")
         self.currentPath = QLineEdit(f"{config.mods_path}")
         self.currentPath.setReadOnly(True)
 
+        self.getModList()
         self.applyOrder.setStyleSheet(f"background-color : {self.accent_color}")
-
-        if config.mods_path == "" or config.loaded_mods == []:
-            self.pickModsPath.setStyleSheet("background-color : red")
-        else:
-            self.pickModsPath.setStyleSheet("background-color: auto")
+        self._update_path_button_style()
 
     def setModsPath(self):
         start_dir = ""
@@ -116,10 +116,12 @@ class DragApp(QWidget):
 
     def applyModOrder(self):
         i = 1
+        folder_order = []
         for row in range(self.model.rowCount()):
             item = self.model.item(row)
             mod_name = item.text()
             mod_folder = item.data(Qt.UserRole)
+            folder_order.append(mod_folder)
             if sorted_pattern.match(mod_name):
                 new_name = f"{i:03} {mod_name[4:]}"
             else:
@@ -143,10 +145,37 @@ class DragApp(QWidget):
                 except FileNotFoundError:
                     pass
         self.pending_toggles.clear()
+        sorter.save_last_order(folder_order)
         self.getModList()
+
+    def restoreLastOrder(self):
+        folder_order = sorter.load_last_order()
+        if not folder_order:
+            return
+        i = 1
+        for folder in folder_order:
+            xml_path = os.path.join(config.mods_path, folder, "metadata.xml")
+            if not os.path.exists(xml_path):
+                continue
+            mod_xml = ET.parse(xml_path)
+            root = mod_xml.getroot()
+            name = root.find("name").text
+            if sorted_pattern.match(name):
+                name = name[4:]
+            root.find("name").text = f"{i:03} {name}"
+            mod_xml.write(xml_path, encoding="utf-8", xml_declaration=True)
+            i += 1
+        self.getModList()
+
+    def _update_path_button_style(self):
+        if config.mods_path == "" or config.loaded_mods == []:
+            self.pickModsPath.setStyleSheet("background-color : red")
+        else:
+            self.pickModsPath.setStyleSheet("")
 
     def getModList(self):
         if config.mods_path == "":
+            self._update_path_button_style()
             return
 
         self._populating = True
@@ -187,6 +216,7 @@ class DragApp(QWidget):
             self.model.appendRow(item)
 
         self._populating = False
+        self._update_path_button_style()
 
     def on_mod_selected(self, selected, deselected):
         indexes = self.listView.selectedIndexes()

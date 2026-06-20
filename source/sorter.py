@@ -13,6 +13,7 @@ from . import paths
 MASTERLIST_URL = "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
 CACHE_FILE = os.path.join(paths.appdata, "masterlist.yaml")
 USER_RULES_FILE = os.path.join(paths.appdata, "user_rules.yaml")
+LAST_ORDER_FILE = os.path.join(paths.appdata, "last_order.yaml")
 CACHE_TTL = timedelta(hours=24)
 WORKSHOP_ID_RE = re.compile(r"_(\d+)$")
 
@@ -96,6 +97,21 @@ def _try_bundled():
     try:
         with open(bundled) as f:
             return yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
+        return None
+
+
+def save_last_order(folder_order):
+    os.makedirs(paths.appdata, exist_ok=True)
+    with open(LAST_ORDER_FILE, "w") as f:
+        yaml.dump({"ordered_folders": folder_order}, f, default_flow_style=False)
+
+
+def load_last_order():
+    try:
+        with open(LAST_ORDER_FILE) as f:
+            data = yaml.safe_load(f)
+            return data.get("ordered_folders") if data else None
     except (OSError, yaml.YAMLError):
         return None
 
