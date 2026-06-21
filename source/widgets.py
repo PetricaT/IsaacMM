@@ -7,12 +7,16 @@ from PySide6.QtCore import Qt, QSize, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QMovie, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QTabWidget,
     QTextBrowser,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -90,8 +94,7 @@ class ModInfoPanel(QWidget):
         top_row.addWidget(self.tags_box, 1)
         top_row.addLayout(btn_col)
 
-        self.state_label = QLabel("Select a mod")
-        self.state_label.setAlignment(Qt.AlignCenter)
+        self.tabs = QTabWidget()
 
         self.description_text = QTextBrowser()
         self.description_text.setPlaceholderText(
@@ -99,17 +102,23 @@ class ModInfoPanel(QWidget):
         )
         self.description_text.setOpenExternalLinks(False)
         self.description_text.anchorClicked.connect(self._open_link)
+        self.tabs.addTab(self.description_text, "Description")
+
+        self.conflicts_tree = QTreeWidget()
+        self.conflicts_tree.setHeaderLabels(["Mod", "File"])
+        self.conflicts_tree.setRootIsDecorated(True)
+        self.conflicts_tree.itemDoubleClicked.connect(self._open_conflict_file)
+        self.tabs.addTab(self.conflicts_tree, "Conflicts")
 
         self.folder_label = QLabel()
         self.folder_label.setStyleSheet("color: gray; font-size: 10px;")
         self.folder_label.setWordWrap(True)
 
         layout.addLayout(top_row)
-        layout.addWidget(self.state_label)
-        layout.addWidget(self.description_text)
+        layout.addWidget(self.tabs)
         layout.addWidget(self.folder_label)
 
-    def show_mod_info(self, mod_name, mod_folder=None, check_state=None):
+    def show_mod_info(self, mod_name, mod_folder=None, check_state=None, conflicts=None):
         if mod_folder is None:
             for mod in config.loaded_mods:
                 if mod[0] == mod_name:
@@ -168,16 +177,19 @@ class ModInfoPanel(QWidget):
         else:
             self._show_placeholder()
 
-        if check_state is not None:
-            disabled = check_state == Qt.Unchecked
-        else:
-            disabled = os.path.exists(os.path.join(mod_path, "disable.it"))
-        if disabled:
-            self.state_label.setText("Disabled")
-            self.state_label.setStyleSheet("color: red; font-weight: bold;")
-        else:
-            self.state_label.setText("Enabled")
-            self.state_label.setStyleSheet("color: green; font-weight: bold;")
+        self.conflicts_tree.clear()
+        if conflicts:
+            for mod, data in sorted(conflicts.items()):
+                folder = data["folder"]
+                color = "#65A665" if data["overwrites"] else "#9E4D4D"
+                mod_item = QTreeWidgetItem([mod, ""])
+                mod_item.setForeground(0, QColor(color))
+                for f in data["files"]:
+                    file_item = QTreeWidgetItem(["", f])
+                    file_item.setData(0, Qt.UserRole, (folder, f))
+                    mod_item.addChild(file_item)
+                self.conflicts_tree.addTopLevelItem(mod_item)
+            self.conflicts_tree.expandAll()
 
         try:
             tree = ET.parse(os.path.join(mod_path, "metadata.xml"))
@@ -237,12 +249,25 @@ class ModInfoPanel(QWidget):
         if self._mod_path and os.path.isdir(self._mod_path):
             QDesktopServices.openUrl(QUrl.fromLocalFile(self._mod_path))
 
+    def _open_conflict_file(self, item, column):
+        data = item.data(0, Qt.UserRole)
+        if data is None:
+            return
+        mod_folder, rel_path = data
+        full_path = os.path.join(config.mods_path, mod_folder, rel_path)
+        if not os.path.exists(full_path):
+            return
+        ctrl = QApplication.keyboardModifiers() & Qt.ControlModifier
+        if ctrl:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(full_path))
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(full_path)))
+
     def clear(self):
         self._stop_movie()
         self._show_placeholder()
-        self.state_label.setText("Select a mod")
-        self.state_label.setStyleSheet("")
         self.description_text.clear()
+        self.conflicts_tree.clear()
         self.folder_label.clear()
         self._workshop_id = None
         self._mod_path = None

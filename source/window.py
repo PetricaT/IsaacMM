@@ -1,9 +1,19 @@
 import os
 import re
 import xml.etree.ElementTree as ET
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QPalette, QPixmap, QStandardItem
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QPalette,
+    QPixmap,
+    QStandardItem,
+    QTextCharFormat,
+    QTextCursor,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -17,8 +27,11 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListView,
+    QPlainTextEdit,
     QPushButton,
+    QSplitter,
     QStyledItemDelegate,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -128,8 +141,13 @@ class SettingsDialog(QDialog):
     def _run_backup(self):
         if not config.mods_path:
             return
+        parent = self.parent()
+        if parent and hasattr(parent, 'log'):
+            parent.log("Running manual backup...")
         from .backup import backup_all, get_backup_root
         backup_all(config.mods_path, get_backup_root(config.mods_path), config.loaded_mods)
+        if parent and hasattr(parent, 'log'):
+            parent.log("Manual backup complete")
 
     @property
     def result_backup_enabled(self):
@@ -151,13 +169,14 @@ class DragApp(QWidget):
         self.initUi()
 
     def initUi(self):
-        self.baseLayout = QGridLayout(self)
+        self.baseLayout = QVBoxLayout(self)
+        self.console = QPlainTextEdit(self)
+        self.console.setReadOnly(True)
+        self.console.setFont(QFont("Courier New", 9))
+        self.console.setFixedHeight(100)
+        self.console.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; border: 1px solid #333;")
         self.modListWidget()
         self.modInfoPanel = ModInfoPanel()
-        self.modInfoPanel.setMaximumWidth(580)
-
-        self.baseLayout.addWidget(self.listView, 0, 0, 5, 1)
-        self.baseLayout.addWidget(self.modInfoPanel, 0, 1, 6, 1)
 
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.applyOrder)
@@ -166,15 +185,25 @@ class DragApp(QWidget):
         btn_row.addStretch()
         btn_row.addWidget(self.addSeparatorBtn)
         btn_row.addWidget(self.settingsBtn)
-        self.baseLayout.addLayout(btn_row, 5, 0)
+
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.addWidget(self.listView, 1)
+        left_layout.addLayout(btn_row)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(left_widget)
+        splitter.addWidget(self.modInfoPanel)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        self.baseLayout.addWidget(splitter, 1)
 
         bottom_row = QHBoxLayout()
         bottom_row.addWidget(self.pickModsPath)
         bottom_row.addWidget(self.currentPath, 1)
-        self.baseLayout.addLayout(bottom_row, 6, 0, 1, 2)
-
-        self.baseLayout.setColumnStretch(0, 1)
-        self.baseLayout.setColumnStretch(1, 1)
+        self.baseLayout.addLayout(bottom_row)
+        self.baseLayout.addWidget(self.console)
 
         self.applyOrder.clicked.connect(self.applyModOrder)
         self.autoSort.clicked.connect(self.autoSortMods)
@@ -235,12 +264,14 @@ class DragApp(QWidget):
             self, "Select Mods Folder", start_dir
         )
         if new_path:
+            self.log(f"Set mods path to {new_path}")
             config.mods_path = new_path
             config.save()
             self.currentPath.setText(new_path)
             self.getModList()
 
     def applyModOrder(self):
+        self.log("Applying sort order...")
         i = 1
         folder_order = []
         for row in range(self.model.rowCount()):
@@ -254,38 +285,50 @@ class DragApp(QWidget):
                 new_name = f"{i:03} {mod_name[4:]}"
             else:
                 new_name = f"{i:03} {mod_name}"
-            mod_xml = ET.parse(f"{config.mods_path}/{mod_folder}/metadata.xml")
-            root = mod_xml.getroot()
-            root.find("name").text = new_name
-            mod_xml.write(
-                f"{config.mods_path}/{mod_folder}/metadata.xml",
-                encoding="utf-8",
-                xml_declaration=True,
-            )
-            i += 1
+            try:
+                mod_xml = ET.parse(f"{config.mods_path}/{mod_folder}/metadata.xml")
+                root = mod_xml.getroot()
+                root.find("name").text = new_name
+                mod_xml.write(
+                    f"{config.mods_path}/{mod_folder}/metadata.xml",
+                    encoding="utf-8",
+                    xml_declaration=True,
+                )
+                i += 1
+            except Exception as e:
+                self.log(f"Writing {mod_folder}: {e}", "error")
         for folder, state in self.pending_toggles.items():
             disable_path = os.path.join(config.mods_path, folder, "disable.it")
             if state == Qt.Unchecked:
-                open(disable_path, "a").close()
+                try:
+                    open(disable_path, "a").close()
+                except OSError as e:
+                    self.log(f"Disabling {folder}: {e}", "error")
             else:
                 try:
                     os.remove(disable_path)
                 except FileNotFoundError:
                     pass
+                except OSError as e:
+                    self.log(f"Enabling {folder}: {e}", "error")
         self.pending_toggles.clear()
         sorter.save_last_order(folder_order)
+        self.log(f"Applied order for {i - 1} mods")
         self.getModList()
 
     def restoreLastOrder(self):
         folder_order = sorter.load_last_order()
         if not folder_order:
+            self.log("No saved order to restore")
             return
+        self.log("Restoring last saved order...")
         i = 1
         for folder in folder_order:
             if folder.endswith(SEPARATOR_SUFFIX):
                 continue
             xml_path = os.path.join(config.mods_path, folder, "metadata.xml")
             if not os.path.exists(xml_path):
+                self.log(f"{folder} no longer exists, skipping", "warning")
                 continue
             mod_xml = ET.parse(xml_path)
             root = mod_xml.getroot()
@@ -295,6 +338,7 @@ class DragApp(QWidget):
             root.find("name").text = f"{i:03} {name}"
             mod_xml.write(xml_path, encoding="utf-8", xml_declaration=True)
             i += 1
+        self.log(f"Restored order for {i - 1} mods")
         self.getModList()
 
     def _update_path_button_style(self):
@@ -302,6 +346,18 @@ class DragApp(QWidget):
             self.pickModsPath.setStyleSheet("background-color : red")
         else:
             self.pickModsPath.setStyleSheet("")
+
+    def log(self, message, level="info"):
+        ts = datetime.now().strftime("%H:%M:%S")
+        colors = {"info": "#d4d4d4", "warning": "#ffa500", "error": "#ff4444"}
+        color = colors.get(level, "#d4d4d4")
+        cursor = self.console.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(color))
+        cursor.insertText(f"[{ts}] {message}\n", fmt)
+        self.console.setTextCursor(cursor)
+        self.console.ensureCursorVisible()
 
     def getModList(self):
         if config.mods_path == "":
@@ -377,6 +433,7 @@ class DragApp(QWidget):
             self.model.appendRow(item)
 
         self._populating = False
+        self.log(f"Loaded {len(config.loaded_mods)} mods, {len(sep_map)} separators")
         self._maybe_backup()
         self._update_conflict_indicators()
         self._update_path_button_style()
@@ -439,18 +496,10 @@ class DragApp(QWidget):
             folder = item.data(Qt.UserRole)
             self.modInfoPanel._mod_path = os.path.join(config.mods_path, folder)
             self.modInfoPanel.folder_button.setEnabled(True)
-            self.modInfoPanel.state_label.setText(sep_data["name"])
-            self.modInfoPanel.state_label.setStyleSheet(
-                f"color: {sep_data['color']}; font-weight: bold; font-size: 14px;"
-            )
             self.modInfoPanel.folder_label.setText(
-                f"Separator folder: {folder}"
+                f"Separator: {sep_data['name']} (folder: {folder})"
             )
             return
-
-        self.modInfoPanel.show_mod_info(
-            item.text(), item.data(Qt.UserRole), item.checkState()
-        )
 
         mod_folder = item.data(Qt.UserRole)
         current_files = self._scan_mod_files(mod_folder)
@@ -460,6 +509,7 @@ class DragApp(QWidget):
             -1,
         )
 
+        conflicts = {}
         for row in range(self.model.rowCount()):
             other = self.model.item(row)
             other_folder = other.data(Qt.UserRole)
@@ -468,10 +518,19 @@ class DragApp(QWidget):
             common = current_files & self._scan_mod_files(other_folder)
             if not common:
                 continue
+            conflicts[other.text()] = {
+                "folder": other_folder,
+                "files": sorted(common),
+                "overwrites": row > current_idx,
+            }
             if row < current_idx:
                 other.setBackground(QColor("#9E4D4D"))
             else:
                 other.setBackground(QColor("#65A665"))
+
+        self.modInfoPanel.show_mod_info(
+            item.text(), item.data(Qt.UserRole), item.checkState(), conflicts
+        )
 
     def _scan_mod_files(self, folder):
         cached = self._mod_files_cache.get(folder)
@@ -501,6 +560,7 @@ class DragApp(QWidget):
             self.pending_toggles[folder] = item.checkState()
 
     def autoSortMods(self):
+        self.log("Running auto-sort...")
         mods_data = []
         separators = []
         for r in range(self.model.rowCount()):
@@ -557,6 +617,7 @@ class DragApp(QWidget):
             if folder not in sep_lookup
         ]
         self._populating = False
+        self.log(f"Auto-sort complete ({len(config.loaded_mods)} mods)")
         self._maybe_backup()
         self._update_conflict_indicators()
 
@@ -566,12 +627,15 @@ class DragApp(QWidget):
             return
         config.backup_enabled = dlg.result_backup_enabled
         config.save()
+        self.log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
 
     def _maybe_backup(self):
         if not config.backup_enabled or not config.mods_path:
             return
+        self.log("Backing up modified mods...")
         from .backup import backup_all, get_backup_root
         backup_all(config.mods_path, get_backup_root(config.mods_path), config.loaded_mods)
+        self.log("Backup complete")
 
     def _create_separator(self):
         dlg = SeparatorDialog("Create Separator", parent=self)
@@ -594,9 +658,10 @@ class DragApp(QWidget):
                 encoding="utf-8",
                 xml_declaration=True,
             )
+            self.log(f"Created separator '{name}'")
             self.getModList()
-        except OSError:
-            pass
+        except OSError as e:
+            self.log(f"Creating separator: {e}", "error")
 
     def _on_item_double_clicked(self, index):
         item = self.model.itemFromIndex(index)
@@ -631,6 +696,7 @@ class DragApp(QWidget):
         ET.SubElement(root, "color").text = new_color
         tree = ET.ElementTree(root)
         tree.write(sep_path, encoding="utf-8", xml_declaration=True)
+        self.log(f"Updated separator '{new_name}'")
         self.getModList()
 
     def _get_accent_color_hex(self):
