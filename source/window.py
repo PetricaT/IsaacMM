@@ -239,10 +239,8 @@ class DragApp(QWidget):
         menu_button.setFixedWidth(30)
         overflow_menu = QMenu(menu_button)
         overflow_menu.addAction("Add Separator", self._create_separator)
-        export_action = overflow_menu.addAction("Export modlist")
-        export_action.setEnabled(False)
-        import_action = overflow_menu.addAction("Import modlist")
-        import_action.setEnabled(False)
+        overflow_menu.addAction("Export modlist (.csv)", self._export_modlist)
+        overflow_menu.addAction("Import modlist (.csv)", self._import_modlist)
         menu_button.setMenu(overflow_menu)
         modlist_header_layout.addWidget(modlist_label, 1)
         modlist_header_layout.addWidget(menu_button)
@@ -786,6 +784,74 @@ class DragApp(QWidget):
             self.getModList()
         except OSError as exception:
             self.log(f"Creating separator: {exception}", "error")
+
+    def _export_modlist(self) -> None:
+        file_path, selected_filter = QFileDialog.getSaveFileName(
+            self, "Export Modlist", "", "CSV files (*.csv);;All files (*)"
+        )
+        if not file_path:
+            return
+        if not file_path.lower().endswith(".csv") and "*.csv" in selected_filter:
+            file_path += ".csv"
+        items = []
+        for row_index in range(self.model.rowCount()):
+            list_item = self.model.item(row_index)
+            if list_item.data(SEPARATOR_ROLE):
+                continue
+            items.append((list_item.data(Qt.UserRole), list_item.text()))
+        try:
+            from .modlist_io import export_modlist_csv
+            count = export_modlist_csv(file_path, items)
+            self.log(f"Exported {count} mods to {file_path}")
+        except OSError as exception:
+            self.log(f"Exporting modlist: {exception}", "error")
+
+    def _import_modlist(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import Modlist", "", "CSV files (*.csv);;All files (*)"
+        )
+        if not file_path:
+            return
+        try:
+            from .modlist_io import import_modlist_csv
+
+            known_mods = {}
+            for row_index in range(self.model.rowCount()):
+                list_item = self.model.item(row_index)
+                if list_item.data(SEPARATOR_ROLE):
+                    continue
+                folder = list_item.data(Qt.UserRole)
+                ws_id = paths.WORKSHOP_ID_RE.search(folder)
+                known_mods[folder] = (ws_id.group(1) if ws_id else None, list_item.text())
+
+            imported_folders = import_modlist_csv(file_path, known_mods)
+        except Exception as exception:
+            self.log(f"Failed to import modlist: {exception}", "error")
+            return
+
+        all_folders = set(f for f, _ in known_mods.items())
+        new_order = imported_folders + [f for f in all_folders if f not in imported_folders]
+
+        sort_index = 1
+        for mod_folder in new_order:
+            if mod_folder.endswith(SEPARATOR_SUFFIX):
+                continue
+            xml_path = os.path.join(config.mods_path, mod_folder, "metadata.xml")
+            try:
+                metadata_tree = ET.parse(xml_path)
+                xml_root = metadata_tree.getroot()
+                mod_name = xml_root.find("name").text
+                if sorted_pattern.match(mod_name):
+                    mod_name = mod_name[4:]
+                xml_root.find("name").text = f"{sort_index:03} {mod_name}"
+                metadata_tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+                sort_index += 1
+            except Exception as exception:
+                self.log(f"Writing {mod_folder}: {exception}", "error")
+
+        sorter.save_last_order(new_order)
+        self.log(f"Imported {sort_index - 1} mods from CSV")
+        self.getModList()
 
     def _on_item_double_clicked(self, index) -> None:
         list_item = self.model.itemFromIndex(index)
