@@ -8,22 +8,27 @@ from . import paths, sorter
 
 mods_path: str = ""
 backup_enabled: bool = False
+backup_path: Optional[str] = None
 splitter_state: Optional[str] = None
 column_state: Optional[str] = None
+window_geometry: Optional[str] = None
 loaded_mods: list = []
 
 
 def load() -> None:
-    global mods_path, backup_enabled, splitter_state, column_state
+    global mods_path, backup_enabled, backup_path, splitter_state, column_state, window_geometry
     try:
         config_data = toml.load(f"{paths.appdata}/config.toml")
         mods_path = config_data["paths"]["mods"]
         if mods_path == "":
             print("Mods path malformed, check if path is correct")
-        backup_enabled = config_data.get("settings", {}).get("backup_enabled", False)
+        settings_section = config_data.get("settings", {})
+        backup_enabled = settings_section.get("backup_enabled", False)
+        backup_path = settings_section.get("backup_path") or None
         layout_section = config_data.get("layout", {})
         splitter_state = layout_section.get("splitter_state")
         column_state = layout_section.get("column_state")
+        window_geometry = layout_section.get("window_geometry")
     except FileNotFoundError:
         _create_default()
 
@@ -53,10 +58,14 @@ def decode_state(state_string: str) -> Optional[bytes]:
 def save() -> None:
     config_data = {
         "paths": {"mods": mods_path},
-        "settings": {"backup_enabled": backup_enabled},
+        "settings": {
+            "backup_enabled": backup_enabled,
+            "backup_path": backup_path,
+        },
         "layout": {
             "splitter_state": splitter_state,
             "column_state": column_state,
+            "window_geometry": window_geometry,
         },
     }
     os.makedirs(paths.appdata, exist_ok=True)

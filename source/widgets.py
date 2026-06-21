@@ -5,12 +5,13 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 
 from PySide6.QtCore import QByteArray, Qt, QSize, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QMovie, QPalette, QPixmap
+from PySide6.QtGui import (
+    QColor, QDesktopServices, QIcon, QMovie, QPalette, QPixmap,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -44,6 +45,10 @@ def bbcode_to_html(input_text: str) -> str:
     return f"<html><body style='font-size: 12pt;'>{text}</body></html>"
 
 
+class ConflictTreeWidget(QTreeWidget):
+    pass
+
+
 class ModInfoPanel(QWidget):
     PRIORITY_ICON_NAMES: list[str] = [
         "title", "thumbnail", "Thumbnail", "icon", "images", "modicon", "logo",
@@ -59,6 +64,9 @@ class ModInfoPanel(QWidget):
         self._mod_path: Optional[str] = None
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
+        )
+        self._folder_icon = QIcon(
+            os.path.join(paths.BASE_DIR, "assets", "folder-yellow.png")
         )
         modinfo_label = QLabel("<b>Mod Info</b>")
         modinfo_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -105,7 +113,7 @@ class ModInfoPanel(QWidget):
         self.description_text.anchorClicked.connect(self._open_link)
         self.tabs.addTab(self.description_text, "Description")
 
-        self.conflicts_tree = QTreeWidget()
+        self.conflicts_tree = ConflictTreeWidget()
         self.conflicts_tree.setHeaderLabels(["Mod", "File"])
         self.conflicts_tree.setRootIsDecorated(True)
         self.conflicts_tree.setAlternatingRowColors(True)
@@ -123,9 +131,13 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.itemDoubleClicked.connect(self._open_conflict_file)
         self.tabs.addTab(self.conflicts_tree, "Conflicts")
 
-        self.folder_label = QLabel()
-        self.folder_label.setStyleSheet("color: gray; font-size: 10px;")
-        self.folder_label.setWordWrap(True)
+        self.folder_label = QPushButton()
+        self.folder_label.setFlat(True)
+        self.folder_label.setStyleSheet(
+            "QPushButton { color: gray; font-size: 10px; text-align: left; border: none; }"
+        )
+        self.folder_label.setCursor(Qt.PointingHandCursor)
+        self.folder_label.clicked.connect(self._open_folder)
 
         layout.addLayout(top_layout)
         layout.addWidget(self.tabs)
@@ -283,6 +295,7 @@ class ModInfoPanel(QWidget):
                 if child_subtree:
                     folder_item = QTreeWidgetItem([name, ""])
                     folder_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+                    folder_item.setIcon(0, self._folder_icon)
                     parent.addChild(folder_item)
                     add_branches(child_subtree, folder_item, segment_path)
                 else:
@@ -318,7 +331,7 @@ class ModInfoPanel(QWidget):
         self._show_placeholder()
         self.description_text.clear()
         self.conflicts_tree.clear()
-        self.folder_label.clear()
+        self.folder_label.setText("")
         self._workshop_id = None
         self._mod_path = None
         self.workshop_button.setEnabled(False)

@@ -4,10 +4,11 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, Qt, QTimer
+from PySide6.QtCore import QByteArray, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QDesktopServices,
     QFont,
     QPalette,
     QPixmap,
@@ -17,6 +18,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QColorDialog,
     QDialog,
@@ -116,32 +118,54 @@ class SettingsDialog(QDialog):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(500)
         form_layout = QFormLayout(self)
 
         self.backup_check = QCheckBox("Back up mods on apply / auto-sort")
         self.backup_check.setChecked(config.backup_enabled)
+        self.backup_check.toggled.connect(self._save_settings)
 
-        if config.mods_path:
-            from .backup import get_backup_root
-
-            backup_root_path = get_backup_root(config.mods_path)
-            location_label = QLabel(f"Backup location: {backup_root_path}")
-        else:
-            location_label = QLabel("(set mods path first)")
-        location_label.setStyleSheet("color: gray;")
+        backup_path_layout = QHBoxLayout()
+        self.backup_path_edit = QLineEdit()
+        from .backup import get_backup_root
+        default_path = get_backup_root(config.mods_path) if config.mods_path else ""
+        self.backup_path_edit.setPlaceholderText(f"(default: {default_path})")
+        current_backup = config.backup_path or ""
+        self.backup_path_edit.setText(current_backup)
+        self.backup_path_edit.editingFinished.connect(self._save_settings)
+        browse_button = QPushButton("Browse...")
+        browse_button.clicked.connect(self._pick_backup_path)
+        reset_button = QPushButton("Reset")
+        reset_button.clicked.connect(self._reset_path)
+        backup_path_layout.addWidget(self.backup_path_edit, 1)
+        backup_path_layout.addWidget(browse_button)
+        backup_path_layout.addWidget(reset_button)
 
         run_backup_button = QPushButton("Run backup now")
         run_backup_button.clicked.connect(self._run_backup)
 
-        dialog_buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        dialog_buttons.accepted.connect(self.accept)
-        dialog_buttons.rejected.connect(self.reject)
-
         form_layout.addRow(self.backup_check)
-        form_layout.addRow(location_label)
+        form_layout.addRow("Backup location:", backup_path_layout)
         form_layout.addRow(run_backup_button)
-        form_layout.addRow(dialog_buttons)
+
+    def _pick_backup_path(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Select backup folder")
+        if folder:
+            self.backup_path_edit.setText(folder)
+            self._save_settings()
+
+    def _reset_path(self) -> None:
+        self.backup_path_edit.clear()
+        self._save_settings()
+
+    def _save_settings(self) -> None:
+        config.backup_enabled = self.backup_check.isChecked()
+        text = self.backup_path_edit.text().strip()
+        config.backup_path = text if text else None
+        config.save()
+        owner_window = self.parent()
+        if owner_window and hasattr(owner_window, 'log'):
+            owner_window.log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
 
     def _run_backup(self) -> None:
         if not config.mods_path:
@@ -159,10 +183,6 @@ class SettingsDialog(QDialog):
         if owner_window and hasattr(owner_window, 'log'):
             owner_window.log("Manual backup complete")
 
-    @property
-    def result_backup_enabled(self) -> bool:
-        return self.backup_check.isChecked()
-
 
 class DragApp(QWidget):
     loaded_mods = config.loaded_mods
@@ -171,7 +191,12 @@ class DragApp(QWidget):
         super().__init__(parent)
 
         self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
-        self.resize(1161, 550)
+        if config.window_geometry:
+            self.restoreGeometry(
+                QByteArray(config.decode_state(config.window_geometry))
+            )
+        else:
+            self.resize(1161, 550)
         self.pending_toggles: dict = {}
         self._mod_files_cache: dict = {}
         self._populating: bool = False
@@ -179,6 +204,9 @@ class DragApp(QWidget):
         self.initUi()
 
     def closeEvent(self, close_event) -> None:
+        config.window_geometry = config.encode_state(
+            bytes(self.saveGeometry())
+        )
         config.splitter_state = config.encode_state(
             bytes(self._splitter.saveState())
         )
@@ -718,11 +746,7 @@ class DragApp(QWidget):
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        config.backup_enabled = dialog.result_backup_enabled
-        config.save()
-        self.log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
+        dialog.exec()
 
     def _maybe_backup(self) -> None:
         if not config.backup_enabled or not config.mods_path:
@@ -765,9 +789,15 @@ class DragApp(QWidget):
 
     def _on_item_double_clicked(self, index) -> None:
         list_item = self.model.itemFromIndex(index)
-        if not list_item.data(SEPARATOR_ROLE):
+        if list_item.data(SEPARATOR_ROLE):
+            self._edit_separator(list_item)
             return
-        self._edit_separator(list_item)
+        ctrl_held = QApplication.keyboardModifiers() & Qt.ControlModifier
+        if ctrl_held:
+            mod_folder = list_item.data(Qt.UserRole)
+            folder_path = os.path.join(config.mods_path, mod_folder)
+            if os.path.isdir(folder_path):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(folder_path))
 
     def _edit_separator(self, list_item) -> None:
         separator_data = list_item.data(SEPARATOR_ROLE)

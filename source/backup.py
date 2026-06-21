@@ -74,6 +74,11 @@ def backup_all(mods_path: str, backup_root: str, mod_list: list) -> None:
             backup_mod(mod_folder, mods_path, backup_root)
 
 
+from . import config
+
+
 def get_backup_root(mods_path: str) -> str:
+    if config.backup_path:
+        return config.backup_path
     parent_directory = os.path.dirname(os.path.normpath(mods_path))
     return os.path.join(parent_directory, "backup")
