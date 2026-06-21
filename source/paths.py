@@ -1,82 +1,83 @@
 import os
 import re
 import sys
+from typing import Optional
 
-STEAM_APPID = 250900
-WORKSHOP_ID_RE = re.compile(r"_(\d+)$")
+STEAM_APPID: int = 250900
+WORKSHOP_ID_RE: re.Pattern = re.compile(r"_(\d+)$")
 
 if sys.platform == "win32":
-    appdata = os.path.expanduser("~") + "/AppData/IsaacMM"
+    appdata: str = os.path.expanduser("~") + "/AppData/IsaacMM"
 elif sys.platform == "darwin":
-    appdata = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
+    appdata: str = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
 else:
-    appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
+    appdata: str = os.path.expanduser("~") + "/.local/share/IsaacMM"
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-version = "0.0.0"
+version: str = "0.0.0"
 try:
     import toml
 
-    pp = os.path.join(BASE_DIR, "pyproject.toml")
-    if os.path.exists(pp):
-        version = toml.load(pp)["project"]["version"]
+    pyproject_path = os.path.join(BASE_DIR, "pyproject.toml")
+    if os.path.exists(pyproject_path):
+        version = toml.load(pyproject_path)["project"]["version"]
 except Exception:
     pass
 
 
-def find_isaac_mods_folder():
+def find_isaac_mods_folder() -> Optional[str]:
     match sys.platform:
         case "win32":
             return _resolve_windows_path()
         case "darwin":
-            p = os.path.expanduser(
+            mods_path = os.path.expanduser(
                 "~/Library/Application Support/Binding of Isaac Afterbirth+ Mods"
             )
-            return p if os.path.exists(p) else None
+            return mods_path if os.path.exists(mods_path) else None
         case "linux":
             return _resolve_linux_path()
     return None
 
 
-def _parse_vdf_path(steam_path):
+def _parse_vdf_path(steam_path: str) -> Optional[str]:
     try:
-        with open(f"{steam_path}/config/libraryfolders.vdf") as f:
-            for line in f:
+        with open(f"{steam_path}/config/libraryfolders.vdf") as vdf_file:
+            for line in vdf_file:
                 if '"path"' in line:
-                    game_root = line.split('"')[3]
+                    game_root_path = line.split('"')[3]
                 if f'"{STEAM_APPID}"' in line:
-                    candidate = (
-                        f"{game_root}/steamapps/common/"
+                    candidate_path = (
+                        f"{game_root_path}/steamapps/common/"
                         "The Binding of Isaac Rebirth/mods/"
                     )
-                    if os.path.exists(candidate):
-                        return game_root
+                    if os.path.exists(candidate_path):
+                        return game_root_path
     except (FileNotFoundError, IndexError):
         pass
     return None
 
 
-def _resolve_windows_path():
+def _resolve_windows_path() -> Optional[str]:
     try:
         import winreg
 
-        key = winreg.OpenKey(
+        registry_key = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"
         )
-        steam_path, _ = winreg.QueryValueEx(key, "SteamPath")
-        winreg.CloseKey(key)
-        root = _parse_vdf_path(steam_path)
-        if root:
-            return f"{root}/steamapps/common/The Binding of Isaac Rebirth/mods/"
+        steam_path, _ = winreg.QueryValueEx(registry_key, "SteamPath")
+        winreg.CloseKey(registry_key)
+        steam_root = _parse_vdf_path(steam_path)
+        if steam_root:
+            return f"{steam_root}/steamapps/common/The Binding of Isaac Rebirth/mods/"
     except Exception:
         pass
     return None
 
 
-def _resolve_linux_path():
-    home = os.path.expanduser("~")
-    steam_paths = [
+def _resolve_linux_path() -> Optional[str]:
+    home: str = os.path.expanduser("~")
+    steam_paths: list[str] = [
         f"{home}/.steam/steam",
         f"{home}/.local/share/Steam",
         f"{home}/snap/steam/common/.local/share/Steam",
@@ -87,12 +88,12 @@ def _resolve_linux_path():
         f"{home}/.var/app/com.valvesoftware.Steam/.steam/root",
         f"{home}/.var/app/com.valvesoftware.Steam/.steam",
     ]
-    for sp in steam_paths:
-        if os.path.exists(sp):
-            root = _parse_vdf_path(sp)
-            if root:
+    for steam_path in steam_paths:
+        if os.path.exists(steam_path):
+            steam_root = _parse_vdf_path(steam_path)
+            if steam_root:
                 return (
-                    f"{root}/steamapps/common/"
+                    f"{steam_root}/steamapps/common/"
                     "The Binding of Isaac Rebirth/mods/"
                 )
     return None

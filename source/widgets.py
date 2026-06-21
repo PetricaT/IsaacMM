@@ -2,13 +2,15 @@ import html
 import os
 import re
 import xml.etree.ElementTree as ET
+from typing import Optional
 
-from PySide6.QtCore import Qt, QSize, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QMovie, QPixmap
+from PySide6.QtCore import QByteArray, Qt, QSize, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QMovie, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -23,8 +25,9 @@ from PySide6.QtWidgets import (
 
 from . import config, paths
 
-def bbcode_to_html(text):
-    text = html.escape(text)
+
+def bbcode_to_html(input_text: str) -> str:
+    text = html.escape(input_text)
     text = re.sub(r'\[b\](.*?)\[/b\]', r'<b>\1</b>', text, flags=re.DOTALL)
     text = re.sub(r'\[i\](.*?)\[/i\]', r'<i>\1</i>', text, flags=re.DOTALL)
     text = re.sub(r'\[u\](.*?)\[/u\]', r'<u>\1</u>', text, flags=re.DOTALL)
@@ -42,27 +45,25 @@ def bbcode_to_html(text):
 
 
 class ModInfoPanel(QWidget):
-    PRIORITY_ICON_NAMES = [
-        "title",
-        "thumbnail",
-        "Thumbnail",
-        "icon",
-        "images",
-        "modicon",
-        "logo",
+    PRIORITY_ICON_NAMES: list[str] = [
+        "title", "thumbnail", "Thumbnail", "icon", "images", "modicon", "logo",
         "spider thumbnail",
     ]
-    IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif"}
+    IMAGE_EXTENSIONS: set[str] = {".png", ".jpg", ".jpeg", ".gif"}
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
 
-        self._movie = None
-        self._mod_path = None
+        self._movie: Optional[QMovie] = None
+        self._mod_path: Optional[str] = None
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
         )
+        modinfo_label = QLabel("<b>Mod Info</b>")
+        modinfo_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(modinfo_label)
+
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(128, 128)
         self.icon_label.setAlignment(Qt.AlignCenter)
@@ -85,14 +86,14 @@ class ModInfoPanel(QWidget):
         self.folder_button.clicked.connect(self._open_folder)
         self.folder_button.setEnabled(False)
 
-        btn_col = QVBoxLayout()
-        btn_col.addWidget(self.workshop_button)
-        btn_col.addWidget(self.folder_button)
+        button_column = QVBoxLayout()
+        button_column.addWidget(self.workshop_button)
+        button_column.addWidget(self.folder_button)
 
-        top_row = QHBoxLayout()
-        top_row.addWidget(self.icon_label)
-        top_row.addWidget(self.tags_box, 1)
-        top_row.addLayout(btn_col)
+        top_layout = QHBoxLayout()
+        top_layout.addWidget(self.icon_label)
+        top_layout.addWidget(self.tags_box, 1)
+        top_layout.addLayout(button_column)
 
         self.tabs = QTabWidget()
 
@@ -107,6 +108,18 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree = QTreeWidget()
         self.conflicts_tree.setHeaderLabels(["Mod", "File"])
         self.conflicts_tree.setRootIsDecorated(True)
+        self.conflicts_tree.setAlternatingRowColors(True)
+        current_palette = self.conflicts_tree.palette()
+        base_color = current_palette.color(QPalette.Base)
+        alternate_color = (
+            base_color.lighter(120) if base_color.lightness() < 128
+            else base_color.darker(108)
+        )
+        current_palette.setColor(QPalette.AlternateBase, alternate_color)
+        self.conflicts_tree.setPalette(current_palette)
+        self.conflicts_tree.header().setStretchLastSection(False)
+        self.conflicts_tree.header().resizeSection(1, 350)
+        self.conflicts_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.conflicts_tree.itemDoubleClicked.connect(self._open_conflict_file)
         self.tabs.addTab(self.conflicts_tree, "Conflicts")
 
@@ -114,41 +127,47 @@ class ModInfoPanel(QWidget):
         self.folder_label.setStyleSheet("color: gray; font-size: 10px;")
         self.folder_label.setWordWrap(True)
 
-        layout.addLayout(top_row)
+        layout.addLayout(top_layout)
         layout.addWidget(self.tabs)
         layout.addWidget(self.folder_label)
 
-    def show_mod_info(self, mod_name, mod_folder=None, check_state=None, conflicts=None):
+    def show_mod_info(
+        self,
+        mod_name: str,
+        mod_folder: Optional[str] = None,
+        check_state=None,
+        conflicts: Optional[dict] = None,
+    ) -> None:
         if mod_folder is None:
-            for mod in config.loaded_mods:
-                if mod[0] == mod_name:
-                    mod_folder = mod[1]
+            for loaded_mod in config.loaded_mods:
+                if loaded_mod[0] == mod_name:
+                    mod_folder = loaded_mod[1]
                     break
 
         if mod_folder is None:
             self.clear()
             return
 
-        mod_path = os.path.join(config.mods_path, mod_folder)
-        self._mod_path = mod_path
+        full_mod_path = os.path.join(config.mods_path, mod_folder)
+        self._mod_path = full_mod_path
         self.folder_button.setEnabled(True)
 
         icon_path = None
         try:
-            files = os.listdir(mod_path)
-            file_set = set(files)
-            for name in self.PRIORITY_ICON_NAMES:
-                for ext in self.IMAGE_EXTENSIONS:
-                    candidate = f"{name}{ext}"
-                    if candidate in file_set:
-                        icon_path = os.path.join(mod_path, candidate)
+            directory_entries = os.listdir(full_mod_path)
+            file_name_set = set(directory_entries)
+            for priority_name in self.PRIORITY_ICON_NAMES:
+                for image_extension in self.IMAGE_EXTENSIONS:
+                    candidate = f"{priority_name}{image_extension}"
+                    if candidate in file_name_set:
+                        icon_path = os.path.join(full_mod_path, candidate)
                         break
                 if icon_path:
                     break
             if icon_path is None:
-                for f in files:
-                    if os.path.splitext(f.lower())[1] in self.IMAGE_EXTENSIONS:
-                        icon_path = os.path.join(mod_path, f)
+                for file_name in directory_entries:
+                    if os.path.splitext(file_name.lower())[1] in self.IMAGE_EXTENSIONS:
+                        icon_path = os.path.join(full_mod_path, file_name)
                         break
         except OSError:
             pass
@@ -156,19 +175,19 @@ class ModInfoPanel(QWidget):
         self._stop_movie()
         if icon_path:
             if icon_path.lower().endswith(".gif"):
-                movie = QMovie(icon_path)
-                movie.setScaledSize(QSize(128, 128))
-                if movie.isValid():
-                    self._movie = movie
-                    self.icon_label.setMovie(movie)
-                    movie.start()
+                animated_movie = QMovie(icon_path)
+                animated_movie.setScaledSize(QSize(128, 128))
+                if animated_movie.isValid():
+                    self._movie = animated_movie
+                    self.icon_label.setMovie(animated_movie)
+                    animated_movie.start()
                 else:
                     self._show_placeholder()
             else:
-                pixmap = QPixmap(icon_path)
-                if not pixmap.isNull():
+                loaded_pixmap = QPixmap(icon_path)
+                if not loaded_pixmap.isNull():
                     self.icon_label.setPixmap(
-                        pixmap.scaled(
+                        loaded_pixmap.scaled(
                             128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation
                         )
                     )
@@ -179,52 +198,52 @@ class ModInfoPanel(QWidget):
 
         self.conflicts_tree.clear()
         if conflicts:
-            for mod, data in sorted(conflicts.items()):
-                folder = data["folder"]
-                color = "#65A665" if data["overwrites"] else "#9E4D4D"
-                mod_item = QTreeWidgetItem([mod, ""])
-                mod_item.setForeground(0, QColor(color))
-                for f in data["files"]:
-                    file_item = QTreeWidgetItem(["", f])
-                    file_item.setData(0, Qt.UserRole, (folder, f))
-                    mod_item.addChild(file_item)
-                self.conflicts_tree.addTopLevelItem(mod_item)
+            for conflict_mod_name, conflict_data in sorted(conflicts.items()):
+                conflict_folder = conflict_data["folder"]
+                overwrite_color = "#65A665" if conflict_data["overwrites"] else "#9E4D4D"
+                mod_tree_item = QTreeWidgetItem([conflict_mod_name, ""])
+                mod_tree_item.setForeground(0, QColor(overwrite_color))
+                for conflict_file in conflict_data["files"]:
+                    file_tree_item = QTreeWidgetItem(["", conflict_file])
+                    file_tree_item.setData(0, Qt.UserRole, (conflict_folder, conflict_file))
+                    mod_tree_item.addChild(file_tree_item)
+                self.conflicts_tree.addTopLevelItem(mod_tree_item)
             self.conflicts_tree.expandAll()
 
         try:
-            tree = ET.parse(os.path.join(mod_path, "metadata.xml"))
-            root = tree.getroot()
-            desc = root.find("description")
-            if desc is not None and desc.text:
-                self.description_text.setHtml(bbcode_to_html(desc.text.strip()))
+            metadata_tree = ET.parse(os.path.join(full_mod_path, "metadata.xml"))
+            xml_root = metadata_tree.getroot()
+            description_element = xml_root.find("description")
+            if description_element is not None and description_element.text:
+                self.description_text.setHtml(bbcode_to_html(description_element.text.strip()))
             else:
                 self.description_text.setHtml("(no description)")
 
             self.tags_box.clear()
-            tags_el = root.find("tags")
-            if tags_el is not None:
-                tag_iter = tags_el.findall("tag")
+            tags_element = xml_root.find("tags")
+            if tags_element is not None:
+                tag_elements = tags_element.findall("tag")
             else:
-                tag_iter = root.findall("tag")
-            for tag in tag_iter:
-                tid = tag.get("id", "")
-                if not tid:
+                tag_elements = xml_root.findall("tag")
+            for tag_element in tag_elements:
+                tag_id = tag_element.get("id", "")
+                if not tag_id:
                     continue
-                item = QListWidgetItem(tid)
-                item.setBackground(QColor("#9BB7D4"))
-                item.setForeground(QColor("#111111"))
-                self.tags_box.addItem(item)
+                tag_item = QListWidgetItem(tag_id)
+                tag_item.setBackground(QColor("#9BB7D4"))
+                tag_item.setForeground(QColor("#111111"))
+                self.tags_box.addItem(tag_item)
 
         except Exception:
             self.description_text.setHtml("(could not load description)")
 
         self.folder_label.setText(f"Folder: {mod_folder}")
 
-        m = paths.WORKSHOP_ID_RE.search(mod_folder)
-        self._workshop_id = int(m.group(1)) if m else None
+        workshop_match = paths.WORKSHOP_ID_RE.search(mod_folder)
+        self._workshop_id = int(workshop_match.group(1)) if workshop_match else None
         self.workshop_button.setEnabled(self._workshop_id is not None)
 
-    def _show_placeholder(self):
+    def _show_placeholder(self) -> None:
         self._stop_movie()
         self.icon_label.setPixmap(
             self._placeholder.scaled(
@@ -232,38 +251,47 @@ class ModInfoPanel(QWidget):
             )
         )
 
-    def _stop_movie(self):
+    def _stop_movie(self) -> None:
         if self._movie is not None:
             self._movie.stop()
             self._movie = None
 
-    def _open_link(self, url):
+    def _open_link(self, url: QUrl) -> None:
         QDesktopServices.openUrl(QUrl(url))
 
-    def _open_workshop(self):
+    def _open_workshop(self) -> None:
         if self._workshop_id:
-            url = QUrl(f"https://steamcommunity.com/sharedfiles/filedetails/?id={self._workshop_id}")
-            QDesktopServices.openUrl(url)
+            workshop_url = QUrl(
+                f"https://steamcommunity.com/sharedfiles/filedetails/?id={self._workshop_id}"
+            )
+            QDesktopServices.openUrl(workshop_url)
 
-    def _open_folder(self):
+    def _open_folder(self) -> None:
         if self._mod_path and os.path.isdir(self._mod_path):
             QDesktopServices.openUrl(QUrl.fromLocalFile(self._mod_path))
 
-    def _open_conflict_file(self, item, column):
-        data = item.data(0, Qt.UserRole)
-        if data is None:
+    def save_column_state(self) -> bytes:
+        return bytes(self.conflicts_tree.header().saveState())
+
+    def restore_column_state(self, state_data: bytes) -> None:
+        if state_data:
+            self.conflicts_tree.header().restoreState(QByteArray(state_data))
+
+    def _open_conflict_file(self, item, tree_column: int) -> None:
+        conflict_data = item.data(0, Qt.UserRole)
+        if conflict_data is None:
             return
-        mod_folder, rel_path = data
-        full_path = os.path.join(config.mods_path, mod_folder, rel_path)
+        conflict_folder, relative_file_path = conflict_data
+        full_path = os.path.join(config.mods_path, conflict_folder, relative_file_path)
         if not os.path.exists(full_path):
             return
-        ctrl = QApplication.keyboardModifiers() & Qt.ControlModifier
-        if ctrl:
+        ctrl_pressed = QApplication.keyboardModifiers() & Qt.ControlModifier
+        if ctrl_pressed:
             QDesktopServices.openUrl(QUrl.fromLocalFile(full_path))
         else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(full_path)))
 
-    def clear(self):
+    def clear(self) -> None:
         self._stop_movie()
         self._show_placeholder()
         self.description_text.clear()

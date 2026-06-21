@@ -3,6 +3,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from typing import Any, Callable, Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -10,43 +11,43 @@ import yaml
 
 from . import paths
 
-MASTERLIST_URL = "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
-CACHE_FILE = os.path.join(paths.appdata, "masterlist.yaml")
-USER_RULES_FILE = os.path.join(paths.appdata, "user_rules.yaml")
-LAST_ORDER_FILE = os.path.join(paths.appdata, "last_order.yaml")
-CACHE_TTL = timedelta(hours=24)
+MASTERLIST_URL: str = "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
+CACHE_FILE: str = os.path.join(paths.appdata, "masterlist.yaml")
+USER_RULES_FILE: str = os.path.join(paths.appdata, "user_rules.yaml")
+LAST_ORDER_FILE: str = os.path.join(paths.appdata, "last_order.yaml")
+CACHE_TTL: timedelta = timedelta(hours=24)
 
-_masterlist = None
+_masterlist: Optional[dict] = None
 
 
-def get_masterlist():
+def get_masterlist() -> dict:
     global _masterlist
     if _masterlist is not None:
         return _masterlist
 
-    data = None
+    yaml_data = None
     if _is_cache_fresh():
-        data = _try_cache()
+        yaml_data = _try_cache()
 
-    if data is None:
-        data = _try_fetch()
+    if yaml_data is None:
+        yaml_data = _try_fetch()
 
-    if data is None:
-        data = _try_cache()
+    if yaml_data is None:
+        yaml_data = _try_cache()
 
-    if data is None:
-        data = _try_bundled()
+    if yaml_data is None:
+        yaml_data = _try_bundled()
 
-    _masterlist = data if data else {"groups": [], "mods": []}
+    _masterlist = yaml_data if yaml_data else {"groups": [], "mods": []}
     return _masterlist
 
 
-def fetch_initial():
+def fetch_initial() -> None:
     get_masterlist()
     if not os.path.exists(USER_RULES_FILE):
         os.makedirs(paths.appdata, exist_ok=True)
-        with open(USER_RULES_FILE, "w") as f:
-            f.write(
+        with open(USER_RULES_FILE, "w") as rules_file:
+            rules_file.write(
                 "# User-defined load order rules\n"
                 "# -----------------------------------------------\n"
                 "# Add custom before/after constraints by Steam Workshop ID.\n"
@@ -59,227 +60,241 @@ def fetch_initial():
             )
 
 
-def _is_cache_fresh():
+def _is_cache_fresh() -> bool:
     try:
         if not os.path.exists(CACHE_FILE):
             return False
-        mtime = datetime.fromtimestamp(os.path.getmtime(CACHE_FILE))
-        return datetime.now() - mtime <= CACHE_TTL
+        file_mtime = datetime.fromtimestamp(os.path.getmtime(CACHE_FILE))
+        return datetime.now() - file_mtime <= CACHE_TTL
     except OSError:
         return False
 
 
-def _try_fetch():
+def _try_fetch() -> Optional[dict]:
     try:
-        req = Request(MASTERLIST_URL, headers={"User-Agent": "IsaacMM/1.0"})
-        with urlopen(req, timeout=10) as resp:
-            raw = resp.read().decode("utf-8")
-        data = yaml.safe_load(raw)
+        request = Request(MASTERLIST_URL, headers={"User-Agent": "IsaacMM/1.0"})
+        with urlopen(request, timeout=10) as response:
+            raw_content = response.read().decode("utf-8")
+        yaml_data = yaml.safe_load(raw_content)
         os.makedirs(paths.appdata, exist_ok=True)
-        with open(CACHE_FILE, "w") as f:
-            f.write(raw)
-        return data
+        with open(CACHE_FILE, "w") as cache_file:
+            cache_file.write(raw_content)
+        return yaml_data
     except (URLError, OSError, yaml.YAMLError):
         return None
 
 
-def _try_cache():
+def _try_cache() -> Optional[dict]:
     try:
-        with open(CACHE_FILE) as f:
-            return yaml.safe_load(f)
+        with open(CACHE_FILE) as cache_file:
+            return yaml.safe_load(cache_file)
     except (OSError, yaml.YAMLError):
         return None
 
 
-def _try_bundled():
-    bundled = os.path.join(paths.BASE_DIR, "masterlist.yaml")
+def _try_bundled() -> Optional[dict]:
+    bundled_path = os.path.join(paths.BASE_DIR, "masterlist.yaml")
     try:
-        with open(bundled) as f:
-            return yaml.safe_load(f)
+        with open(bundled_path) as bundled_file:
+            return yaml.safe_load(bundled_file)
     except (OSError, yaml.YAMLError):
         return None
 
 
-def save_last_order(folder_order):
+def save_last_order(folder_order: list) -> None:
     os.makedirs(paths.appdata, exist_ok=True)
-    with open(LAST_ORDER_FILE, "w") as f:
-        yaml.dump({"ordered_folders": folder_order}, f, default_flow_style=False)
+    with open(LAST_ORDER_FILE, "w") as order_file:
+        yaml.dump({"ordered_folders": folder_order}, order_file, default_flow_style=False)
 
 
-def load_last_order():
+def load_last_order() -> Optional[list]:
     try:
-        with open(LAST_ORDER_FILE) as f:
-            data = yaml.safe_load(f)
-            return data.get("ordered_folders") if data else None
+        with open(LAST_ORDER_FILE) as order_file:
+            yaml_data = yaml.safe_load(order_file)
+            return yaml_data.get("ordered_folders") if yaml_data else None
     except (OSError, yaml.YAMLError):
         return None
 
 
-def _load_user_rules():
+def _load_user_rules() -> list:
     try:
-        with open(USER_RULES_FILE) as f:
-            data = yaml.safe_load(f)
-            return data.get("rules", []) if data else []
+        with open(USER_RULES_FILE) as rules_file:
+            yaml_data = yaml.safe_load(rules_file)
+            return yaml_data.get("rules", []) if yaml_data else []
     except (OSError, yaml.YAMLError):
         return []
 
 
-def _merge_user_rules(lookup, rules):
+def _merge_user_rules(mod_lookup: dict, rules: list) -> None:
     for rule in rules:
-        rid = rule.get("id")
-        if rid is None:
+        rule_id = rule.get("id")
+        if rule_id is None:
             continue
-        if rid in lookup:
-            entry = lookup[rid]
+        if rule_id in mod_lookup:
+            existing_entry = mod_lookup[rule_id]
             for key in ("after", "before"):
                 if key in rule:
-                    entry.setdefault(key, [])
-                    for dep in rule[key]:
-                        if dep not in entry[key]:
-                            entry[key].append(dep)
+                    existing_entry.setdefault(key, [])
+                    for dependency in rule[key]:
+                        if dependency not in existing_entry[key]:
+                            existing_entry[key].append(dependency)
         else:
-            entry = {"id": rid, "group": "unknown"}
+            new_entry: dict = {"id": rule_id, "group": "unknown"}
             if "after" in rule:
-                entry["after"] = list(rule["after"])
+                new_entry["after"] = list(rule["after"])
             if "before" in rule:
-                entry["before"] = list(rule["before"])
-            lookup[rid] = entry
+                new_entry["before"] = list(rule["before"])
+            mod_lookup[rule_id] = new_entry
 
 
-def _extract_workshop_id(folder_name):
-    m = paths.WORKSHOP_ID_RE.search(folder_name)
-    return int(m.group(1)) if m else None
+def _extract_workshop_id(folder_name: str) -> Optional[int]:
+    workshop_match = paths.WORKSHOP_ID_RE.search(folder_name)
+    return int(workshop_match.group(1)) if workshop_match else None
 
 
-def _read_tags(mod_path):
+def _read_tags(mod_path: str) -> list:
     try:
-        tree = ET.parse(os.path.join(mod_path, "metadata.xml"))
-        root = tree.getroot()
-        tags = root.find("tags")
-        if tags is not None:
-            return [t.get("id", "") for t in tags.findall("tag")]
+        metadata_tree = ET.parse(os.path.join(mod_path, "metadata.xml"))
+        xml_root = metadata_tree.getroot()
+        tags_element = xml_root.find("tags")
+        if tags_element is not None:
+            return [tag.get("id", "") for tag in tags_element.findall("tag")]
     except Exception:
         pass
     return []
 
 
-def _build_group_index(masterlist):
-    return {g["name"]: g["priority"] for g in masterlist.get("groups", [])}
+def _build_group_index(masterlist: dict) -> dict:
+    return {group["name"]: group["priority"] for group in masterlist.get("groups", [])}
 
 
-def _build_mod_lookup(masterlist):
-    lookup = {}
-    patterns = []
-    tag_entries = []
-    for mod in masterlist.get("mods", []):
-        if "id" in mod:
-            if mod["id"] not in lookup:
-                lookup[mod["id"]] = mod
-        if "pattern" in mod:
-            patterns.append((re.compile(mod["pattern"], re.IGNORECASE), mod))
-        if "tag" in mod:
-            tag_entries.append((mod["tag"], mod))
-    return lookup, patterns, tag_entries
+def _build_mod_lookup(masterlist: dict) -> tuple[dict, list, list]:
+    mod_lookup: dict = {}
+    pattern_entries: list = []
+    tag_entries: list = []
+    for mod_entry in masterlist.get("mods", []):
+        if "id" in mod_entry:
+            if mod_entry["id"] not in mod_lookup:
+                mod_lookup[mod_entry["id"]] = mod_entry
+        if "pattern" in mod_entry:
+            pattern_entries.append((re.compile(mod_entry["pattern"], re.IGNORECASE), mod_entry))
+        if "tag" in mod_entry:
+            tag_entries.append((mod_entry["tag"], mod_entry))
+    return mod_lookup, pattern_entries, tag_entries
 
 
-def _match_mod(folder_name, mod_path, mod_name, lookup, patterns, tag_entries):
-    wid = _extract_workshop_id(folder_name)
-    if wid is not None and wid in lookup:
-        return lookup[wid]
+def _match_mod(
+    folder_name: str,
+    mod_path: str,
+    mod_name: str,
+    mod_lookup: dict,
+    pattern_entries: list,
+    tag_entries: list,
+) -> Optional[dict]:
+    workshop_id = _extract_workshop_id(folder_name)
+    if workshop_id is not None and workshop_id in mod_lookup:
+        return mod_lookup[workshop_id]
 
-    for pat, entry in patterns:
-        if pat.search(folder_name):
-            return entry
+    for compiled_pattern, mod_entry in pattern_entries:
+        if compiled_pattern.search(folder_name):
+            return mod_entry
 
-    tags = _read_tags(mod_path)
-    for tag, entry in tag_entries:
-        if tag in tags:
-            return entry
+    mod_tags = _read_tags(mod_path)
+    for tag_name, mod_entry in tag_entries:
+        if tag_name in mod_tags:
+            return mod_entry
 
     return None
 
 
-def _topological_sort(items, key_fn, before_fn, after_fn):
+def _topological_sort(
+    items: list,
+    key_function: Callable,
+    before_function: Callable,
+    after_function: Callable,
+) -> list:
     if not items:
         return []
 
-    item_map = {key_fn(item): item for item in items}
+    item_map = {key_function(item): item for item in items}
     all_keys = set(item_map.keys())
 
-    in_degree = {k: 0 for k in all_keys}
-    graph = defaultdict(list)
+    in_degree = {key: 0 for key in all_keys}
+    graph: dict = defaultdict(list)
 
     for item in items:
-        k = key_fn(item)
-        for dep in after_fn(item):
-            if dep in all_keys:
-                graph[dep].append(k)
-                in_degree[k] += 1
-        for dep in before_fn(item):
-            if dep in all_keys:
-                graph[k].append(dep)
-                in_degree[dep] += 1
+        current_key = key_function(item)
+        for dependency in after_function(item):
+            if dependency in all_keys:
+                graph[dependency].append(current_key)
+                in_degree[current_key] += 1
+        for dependency in before_function(item):
+            if dependency in all_keys:
+                graph[current_key].append(dependency)
+                in_degree[dependency] += 1
 
-    queue = deque([k for k in all_keys if in_degree[k] == 0])
-    result = []
+    traversal_queue = deque([key for key in all_keys if in_degree[key] == 0])
+    sorted_items = []
 
-    while queue:
-        k = queue.popleft()
-        result.append(item_map[k])
-        for neighbor in graph[k]:
-            in_degree[neighbor] -= 1
-            if in_degree[neighbor] == 0:
-                queue.append(neighbor)
+    while traversal_queue:
+        current_key = traversal_queue.popleft()
+        sorted_items.append(item_map[current_key])
+        for adjacent_key in graph[current_key]:
+            in_degree[adjacent_key] -= 1
+            if in_degree[adjacent_key] == 0:
+                traversal_queue.append(adjacent_key)
 
-    remaining = [item for item in items if key_fn(item) not in {key_fn(r) for r in result}]
-    result.extend(remaining)
+    result_keys = {key_function(item) for item in sorted_items}
+    remaining_items = [item for item in items if key_function(item) not in result_keys]
+    sorted_items.extend(remaining_items)
 
-    return result
+    return sorted_items
 
 
-def auto_sort(loaded_mods, mods_path):
-    ml = get_masterlist()
-    group_priorities = _build_group_index(ml)
-    lookup, patterns, tag_entries = _build_mod_lookup(ml)
+def auto_sort(mod_entries: list, mods_path: str) -> list:
+    masterlist = get_masterlist()
+    group_priorities = _build_group_index(masterlist)
+    mod_lookup, pattern_entries, tag_entries = _build_mod_lookup(masterlist)
 
-    rules = _load_user_rules()
-    if rules:
-        _merge_user_rules(lookup, rules)
+    user_rules = _load_user_rules()
+    if user_rules:
+        _merge_user_rules(mod_lookup, user_rules)
 
-    classified = []
-    for name, folder in loaded_mods:
-        mod_path = os.path.join(mods_path, folder)
-        entry = _match_mod(folder, mod_path, name, lookup, patterns, tag_entries)
-        group_name = entry["group"] if entry else "unknown"
-        classified.append((name, folder, group_name, entry))
+    classified_mods = []
+    for mod_name, mod_folder in mod_entries:
+        full_mod_path = os.path.join(mods_path, mod_folder)
+        matched_entry = _match_mod(mod_folder, full_mod_path, mod_name, mod_lookup, pattern_entries, tag_entries)
+        group_name = matched_entry["group"] if matched_entry else "unknown"
+        classified_mods.append((mod_name, mod_folder, group_name, matched_entry))
 
-    groups = defaultdict(list)
-    for name, folder, group_name, entry in classified:
-        groups[group_name].append((name, folder, entry))
+    groups: dict = defaultdict(list)
+    for mod_name, mod_folder, group_name, matched_entry in classified_mods:
+        groups[group_name].append((mod_name, mod_folder, matched_entry))
 
-    sorted_groups = sorted(groups.items(), key=lambda x: group_priorities.get(x[0], 99))
+    sorted_groups = sorted(groups.items(), key=lambda group_item: group_priorities.get(group_item[0], 99))
 
-    result = []
-    for group_name, group_items in sorted_groups:
-        def key_fn(item):
-            entry = item[2]
-            if entry and "id" in entry:
-                return ("id", entry["id"])
+    result: list = []
+    for group_name, group_mods in sorted_groups:
+
+        def key_function(item: tuple) -> tuple:
+            matched_entry = item[2]
+            if matched_entry and "id" in matched_entry:
+                return ("id", matched_entry["id"])
             return ("folder", item[1])
 
-        def after_fn(item):
-            entry = item[2]
-            if entry and "after" in entry:
-                return [("id", dep) for dep in entry["after"]]
+        def after_function(item: tuple) -> list:
+            matched_entry = item[2]
+            if matched_entry and "after" in matched_entry:
+                return [("id", dependency) for dependency in matched_entry["after"]]
             return []
 
-        def before_fn(item):
-            entry = item[2]
-            if entry and "before" in entry:
-                return [("id", dep) for dep in entry["before"]]
+        def before_function(item: tuple) -> list:
+            matched_entry = item[2]
+            if matched_entry and "before" in matched_entry:
+                return [("id", dependency) for dependency in matched_entry["before"]]
             return []
 
-        sorted_items = _topological_sort(group_items, key_fn, before_fn, after_fn)
+        sorted_items = _topological_sort(group_mods, key_function, before_function, after_function)
         result.extend([(item[0], item[1]) for item in sorted_items])
 
     return result

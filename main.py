@@ -9,16 +9,16 @@ from source.window import DragApp
 if __name__ == "__main__":
     config.load()
 
-    app = QApplication(sys.argv)
-    app.setStyle("fusion")
+    application = QApplication(sys.argv)
+    application.setStyle("fusion")
 
     if sys.platform == "win32":
-        app.setWindowIcon(QIcon("assets/icon.ico"))
+        application.setWindowIcon(QIcon("assets/icon.ico"))
     elif sys.platform == "darwin":
-        app.setWindowIcon(QIcon("assets/icon.icns"))
+        application.setWindowIcon(QIcon("assets/icon.icns"))
     else:
-        app.setWindowIcon(QIcon("assets/icon.png"))
+        application.setWindowIcon(QIcon("assets/icon.png"))
 
-    window = DragApp()
-    window.show()
-    sys.exit(app.exec())
+    main_window = DragApp()
+    main_window.show()
+    sys.exit(application.exec())
