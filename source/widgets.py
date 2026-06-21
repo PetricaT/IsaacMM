@@ -203,10 +203,7 @@ class ModInfoPanel(QWidget):
                 overwrite_color = "#65A665" if conflict_data["overwrites"] else "#9E4D4D"
                 mod_tree_item = QTreeWidgetItem([conflict_mod_name, ""])
                 mod_tree_item.setForeground(0, QColor(overwrite_color))
-                for conflict_file in conflict_data["files"]:
-                    file_tree_item = QTreeWidgetItem(["", conflict_file])
-                    file_tree_item.setData(0, Qt.UserRole, (conflict_folder, conflict_file))
-                    mod_tree_item.addChild(file_tree_item)
+                self._populate_file_tree(mod_tree_item, conflict_data["files"], conflict_folder)
                 self.conflicts_tree.addTopLevelItem(mod_tree_item)
             self.conflicts_tree.expandAll()
 
@@ -269,6 +266,31 @@ class ModInfoPanel(QWidget):
     def _open_folder(self) -> None:
         if self._mod_path and os.path.isdir(self._mod_path):
             QDesktopServices.openUrl(QUrl.fromLocalFile(self._mod_path))
+
+    def _populate_file_tree(self, parent_item, file_paths: list, conflict_folder: str) -> None:
+        path_tree = {}
+        for relative_path in file_paths:
+            normalized = relative_path.replace("\\", "/")
+            parts = normalized.split("/")
+            current_level = path_tree
+            for segment in parts:
+                current_level = current_level.setdefault(segment, {})
+
+        def add_branches(subtree, parent, accumulated_path=""):
+            for name in sorted(subtree.keys(), key=lambda k: (not subtree[k], k.lower())):
+                child_subtree = subtree[name]
+                segment_path = f"{accumulated_path}/{name}" if accumulated_path else name
+                if child_subtree:
+                    folder_item = QTreeWidgetItem([name, ""])
+                    folder_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+                    parent.addChild(folder_item)
+                    add_branches(child_subtree, folder_item, segment_path)
+                else:
+                    file_item = QTreeWidgetItem(["", name])
+                    file_item.setData(0, Qt.UserRole, (conflict_folder, segment_path))
+                    parent.addChild(file_item)
+
+        add_branches(path_tree, parent_item)
 
     def save_column_state(self) -> bytes:
         return bytes(self.conflicts_tree.header().saveState())
