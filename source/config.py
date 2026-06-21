@@ -4,16 +4,18 @@ import toml
 from . import paths, sorter
 
 mods_path = ""
+backup_enabled = False
 loaded_mods = []
 
 
 def load():
-    global mods_path
+    global mods_path, backup_enabled
     try:
         cfg = toml.load(f"{paths.appdata}/config.toml")
         mods_path = cfg["paths"]["mods"]
         if mods_path == "":
             print("Mods path malformed, check if path is correct")
+        backup_enabled = cfg.get("settings", {}).get("backup_enabled", False)
     except FileNotFoundError:
         _create_default()
 
@@ -26,7 +28,7 @@ def _create_default():
     sorter.fetch_initial()
     cfg = {
         "paths": {"mods": mods_path},
-        "settings": {"remove_marks": False},
+        "settings": {"remove_marks": False, "backup_enabled": False},
     }
     with open(f"{paths.appdata}/config.toml", "w") as f:
         toml.dump(cfg, f)
@@ -35,7 +37,7 @@ def _create_default():
 def save():
     cfg = {
         "paths": {"mods": mods_path},
-        "settings": {},
+        "settings": {"backup_enabled": backup_enabled},
     }
     os.makedirs(paths.appdata, exist_ok=True)
     with open(f"{paths.appdata}/config.toml", "w") as f:

@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QPalette, QPixmap, QStandardItem
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QColorDialog,
     QDialog,
     QDialogButtonBox,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListView,
     QPushButton,
@@ -93,6 +95,47 @@ from .widgets import ModInfoPanel
 sorted_pattern = re.compile(r"[0-9]{3}\s.*")
 
 
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Settings")
+        self.setMinimumWidth(400)
+        layout = QFormLayout(self)
+
+        self.backup_check = QCheckBox("Back up mods on apply / auto-sort")
+        self.backup_check.setChecked(config.backup_enabled)
+
+        if config.mods_path:
+            from .backup import get_backup_root
+            br = get_backup_root(config.mods_path)
+            loc_label = QLabel(f"Backup location: {br}")
+        else:
+            loc_label = QLabel("(set mods path first)")
+        loc_label.setStyleSheet("color: gray;")
+
+        run_btn = QPushButton("Run backup now")
+        run_btn.clicked.connect(self._run_backup)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout.addRow(self.backup_check)
+        layout.addRow(loc_label)
+        layout.addRow(run_btn)
+        layout.addRow(buttons)
+
+    def _run_backup(self):
+        if not config.mods_path:
+            return
+        from .backup import backup_all, get_backup_root
+        backup_all(config.mods_path, get_backup_root(config.mods_path), config.loaded_mods)
+
+    @property
+    def result_backup_enabled(self):
+        return self.backup_check.isChecked()
+
+
 class DragApp(QWidget):
     loaded_mods = config.loaded_mods
 
@@ -122,6 +165,7 @@ class DragApp(QWidget):
         btn_row.addWidget(self.restoreOrder)
         btn_row.addStretch()
         btn_row.addWidget(self.addSeparatorBtn)
+        btn_row.addWidget(self.settingsBtn)
         self.baseLayout.addLayout(btn_row, 5, 0)
 
         bottom_row = QHBoxLayout()
@@ -171,6 +215,8 @@ class DragApp(QWidget):
         self.currentPath.setReadOnly(True)
         self.addSeparatorBtn = QPushButton("Add Separator")
         self.addSeparatorBtn.clicked.connect(self._create_separator)
+        self.settingsBtn = QPushButton("Settings")
+        self.settingsBtn.clicked.connect(self._open_settings)
         self.listView.doubleClicked.connect(self._on_item_double_clicked)
 
         self.getModList()
@@ -331,6 +377,7 @@ class DragApp(QWidget):
             self.model.appendRow(item)
 
         self._populating = False
+        self._maybe_backup()
         self._update_conflict_indicators()
         self._update_path_button_style()
 
@@ -510,7 +557,21 @@ class DragApp(QWidget):
             if folder not in sep_lookup
         ]
         self._populating = False
+        self._maybe_backup()
         self._update_conflict_indicators()
+
+    def _open_settings(self):
+        dlg = SettingsDialog(self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        config.backup_enabled = dlg.result_backup_enabled
+        config.save()
+
+    def _maybe_backup(self):
+        if not config.backup_enabled or not config.mods_path:
+            return
+        from .backup import backup_all, get_backup_root
+        backup_all(config.mods_path, get_backup_root(config.mods_path), config.loaded_mods)
 
     def _create_separator(self):
         dlg = SeparatorDialog("Create Separator", parent=self)
