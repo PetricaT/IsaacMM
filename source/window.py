@@ -110,6 +110,7 @@ class SeparatorDialog(QDialog):
 
 
 from . import config, paths, sorter
+from .backup import get_backup_root
 from .models import FlatDropModel
 from .widgets import ModInfoPanel
 
@@ -127,25 +128,38 @@ class SettingsDialog(QDialog):
         tabs = QTabWidget()
 
         behavior_tab = QWidget()
-        behavior_layout = QVBoxLayout(behavior_tab)
-        behavior_layout.addWidget(QLabel("work in progress"))
-        behavior_layout.addStretch()
-        tabs.addTab(behavior_tab, "Behavior")
+        behavior_layout = QFormLayout(behavior_tab)
 
-        backup_tab = QWidget()
-        backup_layout = QFormLayout(backup_tab)
+        mods_path_layout = QHBoxLayout()
+        self.mods_path_edit = QLineEdit()
+        detected_mods = paths.find_isaac_mods_folder() or ""
+        self.mods_path_edit.setPlaceholderText(detected_mods if detected_mods else "(not set)")
+        if config.mods_path == detected_mods or not config.mods_path:
+            self.mods_path_edit.setText("")
+        else:
+            self.mods_path_edit.setText(config.mods_path)
+        self.mods_path_edit.editingFinished.connect(self._save_settings)
+        browse_mods_btn = QPushButton("Browse...")
+        browse_mods_btn.clicked.connect(self._pick_mods_path)
+        mods_path_layout.addWidget(self.mods_path_edit, 1)
+        mods_path_layout.addWidget(browse_mods_btn)
+        behavior_layout.addRow("Mods folder:", mods_path_layout)
+
+        sep = QLabel("— Backup —")
+        sep.setAlignment(Qt.AlignCenter)
+        sep.setStyleSheet("font-weight: bold; margin-top: 8px;")
+        behavior_layout.addRow(sep)
 
         self.backup_check = QCheckBox("Back up mods on apply / auto-sort")
         self.backup_check.setChecked(config.backup_enabled)
         self.backup_check.toggled.connect(self._save_settings)
+        behavior_layout.addRow(self.backup_check)
 
         backup_path_layout = QHBoxLayout()
         self.backup_path_edit = QLineEdit()
-        from .backup import get_backup_root
-        default_path = get_backup_root(config.mods_path) if config.mods_path else ""
-        self.backup_path_edit.setPlaceholderText(f"(default: {default_path})")
-        current_backup = config.backup_path or ""
-        self.backup_path_edit.setText(current_backup)
+        default_backup = get_backup_root(config.mods_path) if config.mods_path else ""
+        self.backup_path_edit.setPlaceholderText(default_backup)
+        self.backup_path_edit.setText(config.backup_path or "")
         self.backup_path_edit.editingFinished.connect(self._save_settings)
         browse_button = QPushButton("Browse...")
         browse_button.clicked.connect(self._pick_backup_path)
@@ -154,14 +168,13 @@ class SettingsDialog(QDialog):
         backup_path_layout.addWidget(self.backup_path_edit, 1)
         backup_path_layout.addWidget(browse_button)
         backup_path_layout.addWidget(reset_button)
+        behavior_layout.addRow("Backup location:", backup_path_layout)
 
         run_backup_button = QPushButton("Run backup now")
         run_backup_button.clicked.connect(self._run_backup)
+        behavior_layout.addRow(run_backup_button)
 
-        backup_layout.addRow(self.backup_check)
-        backup_layout.addRow("Backup location:", backup_path_layout)
-        backup_layout.addRow(run_backup_button)
-        tabs.addTab(backup_tab, "Backup")
+        tabs.addTab(behavior_tab, "Behavior")
 
         theme_tab = QWidget()
         theme_layout = QFormLayout(theme_tab)
@@ -205,9 +218,19 @@ class SettingsDialog(QDialog):
                     f"background-color : {config.accent_color}"
                 )
 
+    def _pick_mods_path(self) -> None:
+        starting = config.mods_path if config.mods_path and os.path.isdir(config.mods_path) else ""
+        folder = QFileDialog.getExistingDirectory(self, "Select Mods Folder", starting)
+        if folder:
+            self.mods_path_edit.setText(folder)
+            self._save_settings()
+
     def _pick_backup_path(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Select backup folder")
         if folder:
+            if "backup" not in os.path.basename(folder).lower():
+                folder = os.path.join(folder, "backup")
+                os.makedirs(folder, exist_ok=True)
             self.backup_path_edit.setText(folder)
             self._save_settings()
 
@@ -217,9 +240,16 @@ class SettingsDialog(QDialog):
 
     def _save_settings(self) -> None:
         prev_backup = config.backup_enabled
+        prev_mods = config.mods_path
         config.backup_enabled = self.backup_check.isChecked()
         text = self.backup_path_edit.text().strip()
         config.backup_path = text if text else None
+        mods_text = self.mods_path_edit.text().strip()
+        if mods_text:
+            config.mods_path = mods_text
+        else:
+            detected = paths.find_isaac_mods_folder()
+            config.mods_path = detected or config.mods_path
         new_theme = self.theme_combo.currentData()
         if new_theme != config.theme:
             config.theme = new_theme
@@ -228,6 +258,10 @@ class SettingsDialog(QDialog):
                 style_name = getattr(config, "_native_style", None) if new_theme == "native" else new_theme
                 if style_name:
                     app.setStyle(style_name)
+        if config.mods_path != prev_mods:
+            owner_window = self.parent()
+            if owner_window and hasattr(owner_window, 'getModList'):
+                owner_window.getModList()
         owner_window = self.parent()
         if owner_window and hasattr(owner_window, 'log') and config.backup_enabled != prev_backup:
             owner_window.log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
@@ -335,16 +369,11 @@ class DragApp(QWidget):
         self._splitter = horizontal_splitter
         self.baseLayout.addWidget(horizontal_splitter, 1)
 
-        bottom_layout = QHBoxLayout()
-        bottom_layout.addWidget(self.pickModsPath)
-        bottom_layout.addWidget(self.currentPath, 1)
-        self.baseLayout.addLayout(bottom_layout)
         self.baseLayout.addWidget(self.console)
 
         self.applyOrder.clicked.connect(self.applyModOrder)
         self.autoSort.clicked.connect(self.autoSortMods)
         self.restoreOrder.clicked.connect(self.restoreLastOrder)
-        self.pickModsPath.clicked.connect(self.setModsPath)
         self.listView.selectionModel().selectionChanged.connect(
             self.on_mod_selected
         )
@@ -386,9 +415,6 @@ class DragApp(QWidget):
         self.autoSort = QPushButton("Auto Sort")
         self.restoreOrder = QPushButton("Restore Last Order")
         self.restoreOrder.setEnabled(sorter.load_last_order() is not None)
-        self.pickModsPath = QPushButton("Select Mods Folder")
-        self.currentPath = QLineEdit(f"{config.mods_path}")
-        self.currentPath.setReadOnly(True)
         self.settingsBtn = QPushButton("Settings")
         self.settingsBtn.clicked.connect(self._open_settings)
         self.listView.doubleClicked.connect(self._on_item_double_clicked)
@@ -397,25 +423,6 @@ class DragApp(QWidget):
 
         self.getModList()
         self.applyOrder.setStyleSheet(f"background-color : {self.accent_color}")
-        self._update_path_button_style()
-
-    def setModsPath(self) -> None:
-        starting_directory = ""
-        if config.mods_path and os.path.isdir(config.mods_path):
-            starting_directory = config.mods_path
-        else:
-            detected_path = paths.find_isaac_mods_folder()
-            if detected_path and os.path.isdir(detected_path):
-                starting_directory = detected_path
-        selected_path = QFileDialog.getExistingDirectory(
-            self, "Select Mods Folder", starting_directory
-        )
-        if selected_path:
-            self.log(f"Set mods path to {selected_path}")
-            config.mods_path = selected_path
-            config.save()
-            self.currentPath.setText(selected_path)
-            self.getModList()
 
     def applyModOrder(self) -> None:
         self.log("Applying sort order...")
@@ -492,12 +499,6 @@ class DragApp(QWidget):
         self.log(f"Restored order for {sort_index - 1} mods")
         self.getModList()
 
-    def _update_path_button_style(self) -> None:
-        if config.mods_path == "" or config.loaded_mods == []:
-            self.pickModsPath.setStyleSheet("background-color : red")
-        else:
-            self.pickModsPath.setStyleSheet("")
-
     def log(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
         level_colors = {"info": "#d4d4d4", "warning": "#ffa500", "error": "#ff4444"}
@@ -512,7 +513,6 @@ class DragApp(QWidget):
 
     def getModList(self) -> None:
         if config.mods_path == "":
-            self._update_path_button_style()
             return
 
         self._populating = True
@@ -599,7 +599,6 @@ class DragApp(QWidget):
             )
         self._maybe_backup()
         self._update_conflict_indicators()
-        self._update_path_button_style()
 
     def _on_rows_inserted(self, parent, first_row: int, last_row: int) -> None:
         if self._populating:
