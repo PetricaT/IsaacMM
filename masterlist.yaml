@@ -141,18 +141,13 @@ mods:
     group: content
 
   # ── Tweaks ─────────────────────────────────────────────────────────────
-  - id: 3455888206
-    name: "Inisaacable intro"
+  - id: 2492654252
+    name: "Boss Rush Wave Counter [REP | AB+]"
     group: tweaks
 
   - id: 2603224299
     name: "Completion Mark Reminder"
     group: tweaks
-
-  - id: 2851861015
-    name: "Improved Chargebars [REP+]"
-    group: tweaks
-    after: [1978904635]
 
   - id: 2833146105
     name: "Instant Fires and Poops"
@@ -190,14 +185,6 @@ mods:
     name: "Stats+"
     group: tweaks
 
-  - id: 3334902042
-    name: "Unlocks Reminder"
-    group: tweaks
-
-  - id: 3345496670
-    name: "visible challenges unlocks colored"
-    group: tweaks
-
   - id: 3288668288
     name: "Visible Audio Cues"
     group: tweaks
@@ -206,33 +193,45 @@ mods:
     name: "Damage Tracker"
     group: tweaks
 
-  - id: 3369194114
-    name: "The Specialist for Good Items [REP+]"
-    group: tweaks
-
   - id: 2807310556
     name: "Smosh SHUT UP during ascent"
-    group: tweaks
-
-  - id: 2499552332
-    name: "Better Vomit Grimace Sprite"
-    group: tweaks
-
-  - id: 2521412603
-    name: "Make Gimpy Awful"
     group: tweaks
 
   - id: 3387673993
     name: "Low Firerate Tear Chargebar"
     group: tweaks
 
-  - id: 3343581511
-    name: "trite does stupid backflip"
-    group: tweaks
-
   # ── Graphics / UI ──────────────────────────────────────────────────────
   - id: 3345262813
     name: "100% Accurate Character Select"
+    group: graphics
+
+  - id: 3334902042
+    name: "Unlocks Reminder"
+    group: graphics
+
+  - id: 3455888206
+    name: "Inisaacable intro"
+    group: graphics
+
+  - id: 3345496670
+    name: "visible challenges unlocks colored"
+    group: graphics
+
+  - id: 3369194114
+    name: "The Specialist for Good Items [REP+]"
+    group: graphics
+
+  - id: 2499552332
+    name: "Better Vomit Grimace Sprite"
+    group: graphics
+
+  - id: 2521412603
+    name: "Make Gimpy Awful"
+    group: graphics
+
+  - id: 3343581511
+    name: "trite does stupid backflip"
     group: graphics
 
   - id: 2879232973
@@ -320,18 +319,11 @@ mods:
     name: "Custom Wall Holes!"
     group: graphics
 
-  - id: 2492654252
-    name: "Boss Rush Wave Counter [REP | AB+]"
-    group: graphics
 
   - id: 3585879877
     name: "Door Overhaul"
     group: graphics
     after: [1978904635]
-
-  - id: 3169073644
-    name: "falling stage anim"
-    group: graphics
 
   - id: 2610645873
     name: "Maggy's Toy Box"

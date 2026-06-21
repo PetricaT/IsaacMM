@@ -9,6 +9,8 @@ from . import paths, sorter
 mods_path: str = ""
 backup_enabled: bool = False
 backup_path: Optional[str] = None
+theme: str = "fusion"
+accent_color: str = "#3daee9"
 splitter_state: Optional[str] = None
 column_state: Optional[str] = None
 window_geometry: Optional[str] = None
@@ -16,7 +18,8 @@ loaded_mods: list = []
 
 
 def load() -> None:
-    global mods_path, backup_enabled, backup_path, splitter_state, column_state, window_geometry
+    global mods_path, backup_enabled, backup_path, theme, accent_color
+    global splitter_state, column_state, window_geometry
     try:
         config_data = toml.load(f"{paths.appdata}/config.toml")
         mods_path = config_data["paths"]["mods"]
@@ -25,6 +28,9 @@ def load() -> None:
         settings_section = config_data.get("settings", {})
         backup_enabled = settings_section.get("backup_enabled", False)
         backup_path = settings_section.get("backup_path") or None
+        theme = settings_section.get("theme", "fusion")
+        theme_section = config_data.get("theme", {})
+        accent_color = theme_section.get("accent", "#3daee9")
         layout_section = config_data.get("layout", {})
         splitter_state = layout_section.get("splitter_state")
         column_state = layout_section.get("column_state")
@@ -61,6 +67,10 @@ def save() -> None:
         "settings": {
             "backup_enabled": backup_enabled,
             "backup_path": backup_path,
+            "theme": theme,
+        },
+        "theme": {
+            "accent": accent_color,
         },
         "layout": {
             "splitter_state": splitter_state,

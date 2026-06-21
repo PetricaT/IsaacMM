@@ -10,7 +10,9 @@ if __name__ == "__main__":
     config.load()
 
     application = QApplication(sys.argv)
-    application.setStyle("fusion")
+    config._native_style = application.style().name()
+    if config.theme != "native":
+        application.setStyle(config.theme)
 
     if sys.platform == "win32":
         application.setWindowIcon(QIcon("assets/icon.ico"))

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QColorDialog,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -35,6 +36,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStyledItemDelegate,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -119,7 +121,19 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(500)
-        form_layout = QFormLayout(self)
+        self.setMinimumHeight(300)
+
+        main_layout = QVBoxLayout(self)
+        tabs = QTabWidget()
+
+        behavior_tab = QWidget()
+        behavior_layout = QVBoxLayout(behavior_tab)
+        behavior_layout.addWidget(QLabel("work in progress"))
+        behavior_layout.addStretch()
+        tabs.addTab(behavior_tab, "Behavior")
+
+        backup_tab = QWidget()
+        backup_layout = QFormLayout(backup_tab)
 
         self.backup_check = QCheckBox("Back up mods on apply / auto-sort")
         self.backup_check.setChecked(config.backup_enabled)
@@ -144,9 +158,52 @@ class SettingsDialog(QDialog):
         run_backup_button = QPushButton("Run backup now")
         run_backup_button.clicked.connect(self._run_backup)
 
-        form_layout.addRow(self.backup_check)
-        form_layout.addRow("Backup location:", backup_path_layout)
-        form_layout.addRow(run_backup_button)
+        backup_layout.addRow(self.backup_check)
+        backup_layout.addRow("Backup location:", backup_path_layout)
+        backup_layout.addRow(run_backup_button)
+        tabs.addTab(backup_tab, "Backup")
+
+        theme_tab = QWidget()
+        theme_layout = QFormLayout(theme_tab)
+
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("Fusion", "fusion")
+        self.theme_combo.addItem("Native (platform default)", "native")
+        from PySide6.QtWidgets import QStyleFactory
+        for style_key in QStyleFactory.keys():
+            lower = style_key.lower()
+            if lower not in ("fusion",):
+                self.theme_combo.addItem(style_key, lower)
+        index = self.theme_combo.findData(config.theme)
+        if index >= 0:
+            self.theme_combo.setCurrentIndex(index)
+        self.theme_combo.currentIndexChanged.connect(self._save_settings)
+
+        self.accent_btn = QPushButton()
+        self.accent_btn.setFixedWidth(60)
+        self.accent_btn.setStyleSheet(f"background-color: {config.accent_color};")
+        self.accent_btn.clicked.connect(self._pick_accent)
+
+        theme_layout.addRow("Theme:", self.theme_combo)
+        theme_layout.addRow("Accent color:", self.accent_btn)
+        tabs.addTab(theme_tab, "Theme")
+
+        main_layout.addWidget(tabs)
+
+    def _pick_accent(self) -> None:
+        color = QColorDialog.getColor(QColor(config.accent_color), self)
+        if color.isValid():
+            config.accent_color = color.name()
+            self.accent_btn.setStyleSheet(f"background-color: {config.accent_color};")
+            self._save_settings()
+            owner_window = self.parent()
+            if owner_window and hasattr(owner_window, 'listView'):
+                owner_window.listView.setStyleSheet(
+                    f"QListView::item:selected {{ background-color: {config.accent_color}; }}"
+                )
+                owner_window.applyOrder.setStyleSheet(
+                    f"background-color : {config.accent_color}"
+                )
 
     def _pick_backup_path(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Select backup folder")
@@ -159,13 +216,22 @@ class SettingsDialog(QDialog):
         self._save_settings()
 
     def _save_settings(self) -> None:
+        prev_backup = config.backup_enabled
         config.backup_enabled = self.backup_check.isChecked()
         text = self.backup_path_edit.text().strip()
         config.backup_path = text if text else None
-        config.save()
+        new_theme = self.theme_combo.currentData()
+        if new_theme != config.theme:
+            config.theme = new_theme
+            app = QApplication.instance()
+            if app:
+                style_name = getattr(config, "_native_style", None) if new_theme == "native" else new_theme
+                if style_name:
+                    app.setStyle(style_name)
         owner_window = self.parent()
-        if owner_window and hasattr(owner_window, 'log'):
+        if owner_window and hasattr(owner_window, 'log') and config.backup_enabled != prev_backup:
             owner_window.log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
+        config.save()
 
     def _run_backup(self) -> None:
         if not config.mods_path:
@@ -200,6 +266,7 @@ class DragApp(QWidget):
         self.pending_toggles: dict = {}
         self._mod_files_cache: dict = {}
         self._populating: bool = False
+        self._first_load: bool = True
 
         self.initUi()
 
@@ -290,6 +357,9 @@ class DragApp(QWidget):
     def modListWidget(self) -> None:
         self.accent_color = self._get_accent_color_hex()
         self.listView = QListView(self)
+        self.listView.setStyleSheet(
+            f"QListView::item:selected {{ background-color: {self.accent_color}; }}"
+        )
         self.listView.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.listView.setDragEnabled(True)
         self.listView.setAcceptDrops(True)
@@ -322,6 +392,8 @@ class DragApp(QWidget):
         self.settingsBtn = QPushButton("Settings")
         self.settingsBtn.clicked.connect(self._open_settings)
         self.listView.doubleClicked.connect(self._on_item_double_clicked)
+        self.listView.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.listView.customContextMenuRequested.connect(self._on_context_menu)
 
         self.getModList()
         self.applyOrder.setStyleSheet(f"background-color : {self.accent_color}")
@@ -520,9 +592,11 @@ class DragApp(QWidget):
             self.model.appendRow(list_item)
 
         self._populating = False
-        self.log(
-            f"Loaded {len(config.loaded_mods)} mods, {len(separator_map)} separators"
-        )
+        if self._first_load:
+            self._first_load = False
+            self.log(
+                f"Loaded {len(config.loaded_mods)} mods, {len(separator_map)} separators"
+            )
         self._maybe_backup()
         self._update_conflict_indicators()
         self._update_path_button_style()
@@ -781,6 +855,7 @@ class DragApp(QWidget):
                 xml_declaration=True,
             )
             self.log(f"Created separator '{separator_name}'")
+            self._save_current_order()
             self.getModList()
         except OSError as exception:
             self.log(f"Creating separator: {exception}", "error")
@@ -898,14 +973,41 @@ class DragApp(QWidget):
         xml_tree = ET.ElementTree(xml_root)
         xml_tree.write(separator_xml_path, encoding="utf-8", xml_declaration=True)
         self.log(f"Updated separator '{new_separator_name}'")
+        self._save_current_order()
         self.getModList()
 
-    def _get_accent_color_hex(self) -> str:
-        from PySide6.QtWidgets import QApplication
+    def _on_context_menu(self, position) -> None:
+        index = self.listView.indexAt(position)
+        if not index or not index.isValid():
+            return
+        list_item = self.model.itemFromIndex(index)
+        if not list_item.data(SEPARATOR_ROLE):
+            return
+        context_menu = QMenu(self)
+        context_menu.setStyleSheet("QMenu { border: 1px solid palette(mid); }")
+        context_menu.addAction("Edit", lambda: self._edit_separator(list_item))
+        context_menu.addAction("Delete", lambda: self._delete_separator(list_item))
+        context_menu.exec(self.listView.viewport().mapToGlobal(position))
 
-        qt_application = QApplication.instance()
-        if not qt_application:
-            qt_application = QApplication([])
-        application_palette = qt_application.palette()
-        highlight_color = application_palette.color(QPalette.ColorRole.Highlight)
-        return highlight_color.name()
+    def _delete_separator(self, list_item) -> None:
+        separator_folder = list_item.data(Qt.UserRole)
+        folder_path = os.path.join(config.mods_path, separator_folder)
+        try:
+            import shutil
+            shutil.rmtree(folder_path)
+            self.log(f"Deleted separator '{list_item.text()}'")
+            self._save_current_order()
+            self.getModList()
+        except OSError as exception:
+            self.log(f"Deleting separator: {exception}", "error")
+
+    def _save_current_order(self) -> None:
+        ordered_folders = []
+        for row_index in range(self.model.rowCount()):
+            ordered_folders.append(
+                self.model.item(row_index).data(Qt.UserRole)
+            )
+        sorter.save_last_order(ordered_folders)
+
+    def _get_accent_color_hex(self) -> str:
+        return config.accent_color
