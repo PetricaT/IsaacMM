@@ -55,6 +55,7 @@ class ModInfoPanel(QWidget):
         layout = QVBoxLayout(self)
 
         self._movie = None
+        self._mod_path = None
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
         )
@@ -76,10 +77,18 @@ class ModInfoPanel(QWidget):
         self.workshop_button.clicked.connect(self._open_workshop)
         self.workshop_button.setEnabled(False)
 
+        self.folder_button = QPushButton("Open Folder")
+        self.folder_button.clicked.connect(self._open_folder)
+        self.folder_button.setEnabled(False)
+
+        btn_col = QVBoxLayout()
+        btn_col.addWidget(self.workshop_button)
+        btn_col.addWidget(self.folder_button)
+
         top_row = QHBoxLayout()
         top_row.addWidget(self.icon_label)
         top_row.addWidget(self.tags_box, 1)
-        top_row.addWidget(self.workshop_button)
+        top_row.addLayout(btn_col)
 
         self.state_label = QLabel("Select a mod")
         self.state_label.setAlignment(Qt.AlignCenter)
@@ -112,6 +121,8 @@ class ModInfoPanel(QWidget):
             return
 
         mod_path = os.path.join(config.mods_path, mod_folder)
+        self._mod_path = mod_path
+        self.folder_button.setEnabled(True)
 
         icon_path = None
         try:
@@ -222,6 +233,10 @@ class ModInfoPanel(QWidget):
             url = QUrl(f"https://steamcommunity.com/sharedfiles/filedetails/?id={self._workshop_id}")
             QDesktopServices.openUrl(url)
 
+    def _open_folder(self):
+        if self._mod_path and os.path.isdir(self._mod_path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self._mod_path))
+
     def clear(self):
         self._stop_movie()
         self._show_placeholder()
@@ -230,5 +245,7 @@ class ModInfoPanel(QWidget):
         self.description_text.clear()
         self.folder_label.clear()
         self._workshop_id = None
+        self._mod_path = None
         self.workshop_button.setEnabled(False)
+        self.folder_button.setEnabled(False)
         self.tags_box.clear()

@@ -389,12 +389,15 @@ class DragApp(QWidget):
         sep_data = item.data(SEPARATOR_ROLE)
         if sep_data:
             self.modInfoPanel.clear()
+            folder = item.data(Qt.UserRole)
+            self.modInfoPanel._mod_path = os.path.join(config.mods_path, folder)
+            self.modInfoPanel.folder_button.setEnabled(True)
             self.modInfoPanel.state_label.setText(sep_data["name"])
             self.modInfoPanel.state_label.setStyleSheet(
                 f"color: {sep_data['color']}; font-weight: bold; font-size: 14px;"
             )
             self.modInfoPanel.folder_label.setText(
-                f"Separator folder: {item.data(Qt.UserRole)}"
+                f"Separator folder: {folder}"
             )
             return
 
