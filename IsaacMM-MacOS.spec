@@ -49,7 +49,7 @@ coll = COLLECT(
 
 app = BUNDLE(
     coll,
-    name='IsaacMM-MacOS.app',
+    name='IsaacMM.app',
     icon='./assets/icon.icns',
     bundle_identifier="com.isaacmm.app",
 )
