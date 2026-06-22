@@ -293,10 +293,35 @@ class SettingsDialog(QDialog):
             owner_window.log("Running manual backup...")
         from .backup import backup_all, get_backup_root
 
+        def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
+            i = 0
+            while i < len(old) and i < len(new) and old[i] == new[i]:
+                i += 1
+            segments: list[tuple[str, Optional[str]]] = []
+            if old:
+                segments.append((old[:i], None))
+                if old[i:]:
+                    segments.append((old[i:], "#9E4D4D"))
+            segments.append((" \u2192 ", None))
+            if new:
+                segments.append((new[:i], None))
+                if new[i:]:
+                    segments.append((new[i:], "#65A665"))
+            return segments
+
+        def on_backup_done(mod_name: str, _mod_folder: str, old_ver: str, new_ver: str) -> None:
+            if old_ver == new_ver:
+                return
+            segments = [(f"{mod_name}: ", None)]
+            segments.extend(_colorize(old_ver, new_ver))
+            if owner_window and hasattr(owner_window, 'log_colored'):
+                owner_window.log_colored(segments)
+
         backup_all(
             config.mods_path,
             get_backup_root(config.mods_path),
             config.loaded_mods,
+            on_backup_done=on_backup_done,
         )
         if owner_window and hasattr(owner_window, 'log'):
             owner_window.log("Manual backup complete")
@@ -526,6 +551,23 @@ class DragApp(QWidget):
         char_format = QTextCharFormat()
         char_format.setForeground(QColor(log_color))
         text_cursor.insertText(f"[{timestamp}] {message}\n", char_format)
+        self.console.setTextCursor(text_cursor)
+        self.console.ensureCursorVisible()
+
+    def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None:
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        text_cursor = self.console.textCursor()
+        text_cursor.movePosition(QTextCursor.MoveOperation.End)
+        char_format = QTextCharFormat()
+        char_format.setForeground(QColor("#d4d4d4"))
+        text_cursor.insertText(f"[{timestamp}] ", char_format)
+        for text, color in segments:
+            if color:
+                char_format.setForeground(QColor(color))
+            else:
+                char_format.setForeground(QColor("#d4d4d4"))
+            text_cursor.insertText(text, char_format)
+        text_cursor.insertText("\n", char_format)
         self.console.setTextCursor(text_cursor)
         self.console.ensureCursorVisible()
 
