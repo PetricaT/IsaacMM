@@ -325,9 +325,9 @@ class ModInfoPanel(QWidget):
             return
         ctrl_pressed = QApplication.keyboardModifiers() & Qt.ControlModifier
         if ctrl_pressed:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(full_path))
-        else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(full_path)))
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(full_path))
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self.conflicts_tree.viewport():
