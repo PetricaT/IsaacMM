@@ -12,6 +12,7 @@ backup_path: Optional[str] = None
 theme: str = "fusion"
 accent_color: str = "#3daee9"
 animate_icons: bool = True
+preview_images: bool = True
 splitter_state: Optional[str] = None
 column_state: Optional[str] = None
 window_geometry: Optional[str] = None
@@ -19,7 +20,7 @@ loaded_mods: list = []
 
 
 def load() -> None:
-    global mods_path, backup_enabled, backup_path, theme, accent_color, animate_icons
+    global mods_path, backup_enabled, backup_path, theme, accent_color, animate_icons, preview_images
     global splitter_state, column_state, window_geometry
     try:
         config_data = toml.load(f"{paths.appdata}/config.toml")
@@ -31,6 +32,7 @@ def load() -> None:
         backup_path = settings_section.get("backup_path") or None
         theme = settings_section.get("theme", "fusion")
         animate_icons = settings_section.get("animate_icons", True)
+        preview_images = settings_section.get("preview_images", True)
         theme_section = config_data.get("theme", {})
         accent_color = theme_section.get("accent", "#3daee9")
         layout_section = config_data.get("layout", {})
@@ -71,6 +73,7 @@ def save() -> None:
             "backup_path": backup_path,
             "theme": theme,
             "animate_icons": animate_icons,
+            "preview_images": preview_images,
         },
         "theme": {
             "accent": accent_color,
