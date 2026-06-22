@@ -174,6 +174,11 @@ class SettingsDialog(QDialog):
         run_backup_button.clicked.connect(self._run_backup)
         behavior_layout.addRow(run_backup_button)
 
+        self.animate_check = QCheckBox("Animate mod icons (GIF)")
+        self.animate_check.setChecked(config.animate_icons)
+        self.animate_check.toggled.connect(self._save_settings)
+        behavior_layout.addRow(self.animate_check)
+
         tabs.addTab(behavior_tab, "Behavior")
 
         theme_tab = QWidget()
@@ -244,6 +249,7 @@ class SettingsDialog(QDialog):
         config.backup_enabled = self.backup_check.isChecked()
         text = self.backup_path_edit.text().strip()
         config.backup_path = text if text else None
+        config.animate_icons = self.animate_check.isChecked()
         mods_text = self.mods_path_edit.text().strip()
         if mods_text:
             config.mods_path = mods_text

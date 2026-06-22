@@ -186,7 +186,7 @@ class ModInfoPanel(QWidget):
 
         self._stop_movie()
         if icon_path:
-            if icon_path.lower().endswith(".gif"):
+            if icon_path.lower().endswith(".gif") and config.animate_icons:
                 animated_movie = QMovie(icon_path)
                 animated_movie.setScaledSize(QSize(128, 128))
                 if animated_movie.isValid():
