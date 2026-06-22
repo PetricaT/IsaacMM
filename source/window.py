@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -128,8 +129,10 @@ class SettingsDialog(QDialog):
         tabs = QTabWidget()
 
         behavior_tab = QWidget()
-        behavior_layout = QFormLayout(behavior_tab)
+        behavior_layout = QVBoxLayout(behavior_tab)
 
+        setup_group = QGroupBox("Setup")
+        setup_layout = QFormLayout(setup_group)
         mods_path_layout = QHBoxLayout()
         self.mods_path_edit = QLineEdit()
         detected_mods = paths.find_isaac_mods_folder() or ""
@@ -143,17 +146,15 @@ class SettingsDialog(QDialog):
         browse_mods_btn.clicked.connect(self._pick_mods_path)
         mods_path_layout.addWidget(self.mods_path_edit, 1)
         mods_path_layout.addWidget(browse_mods_btn)
-        behavior_layout.addRow("Mods folder:", mods_path_layout)
+        setup_layout.addRow("Mods folder:", mods_path_layout)
+        behavior_layout.addWidget(setup_group)
 
-        sep = QLabel("— Backup —")
-        sep.setAlignment(Qt.AlignCenter)
-        sep.setStyleSheet("font-weight: bold; margin-top: 8px;")
-        behavior_layout.addRow(sep)
-
+        backup_group = QGroupBox("Backup")
+        backup_layout = QFormLayout(backup_group)
         self.backup_check = QCheckBox("Back up mods on apply / auto-sort")
         self.backup_check.setChecked(config.backup_enabled)
         self.backup_check.toggled.connect(self._save_settings)
-        behavior_layout.addRow(self.backup_check)
+        backup_layout.addRow(self.backup_check)
 
         backup_path_layout = QHBoxLayout()
         self.backup_path_edit = QLineEdit()
@@ -168,17 +169,27 @@ class SettingsDialog(QDialog):
         backup_path_layout.addWidget(self.backup_path_edit, 1)
         backup_path_layout.addWidget(browse_button)
         backup_path_layout.addWidget(reset_button)
-        behavior_layout.addRow("Backup location:", backup_path_layout)
+        backup_layout.addRow("Backup location:", backup_path_layout)
 
         run_backup_button = QPushButton("Run backup now")
         run_backup_button.clicked.connect(self._run_backup)
-        behavior_layout.addRow(run_backup_button)
+        backup_layout.addRow(run_backup_button)
+        behavior_layout.addWidget(backup_group)
 
+        display_group = QGroupBox("Display")
+        display_layout = QFormLayout(display_group)
         self.animate_check = QCheckBox("Animate mod icons (GIF)")
         self.animate_check.setChecked(config.animate_icons)
         self.animate_check.toggled.connect(self._save_settings)
-        behavior_layout.addRow(self.animate_check)
+        display_layout.addRow(self.animate_check)
 
+        self.preview_check = QCheckBox("Image tooltip preview")
+        self.preview_check.setChecked(config.preview_images)
+        self.preview_check.toggled.connect(self._save_settings)
+        display_layout.addRow(self.preview_check)
+        behavior_layout.addWidget(display_group)
+
+        behavior_layout.addStretch()
         tabs.addTab(behavior_tab, "Behavior")
 
         theme_tab = QWidget()
@@ -250,6 +261,7 @@ class SettingsDialog(QDialog):
         text = self.backup_path_edit.text().strip()
         config.backup_path = text if text else None
         config.animate_icons = self.animate_check.isChecked()
+        config.preview_images = self.preview_check.isChecked()
         mods_text = self.mods_path_edit.text().strip()
         if mods_text:
             config.mods_path = mods_text

@@ -4,7 +4,7 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, Qt, QSize, QUrl
+from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QUrl
 from PySide6.QtGui import (
     QColor, QDesktopServices, QIcon, QMovie, QPalette, QPixmap,
 )
@@ -129,6 +129,12 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.header().resizeSection(1, 350)
         self.conflicts_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.conflicts_tree.itemDoubleClicked.connect(self._open_conflict_file)
+        self.conflicts_tree.viewport().installEventFilter(self)
+        self.conflicts_tree.viewport().setMouseTracking(True)
+        self._preview_label = QLabel(self, Qt.ToolTip | Qt.FramelessWindowHint)
+        self._preview_label.setStyleSheet("border: 1px solid #888; background: #fff; padding: 2px;")
+        self._preview_label.hide()
+        self._preview_path: str | None = None
         self.tabs.addTab(self.conflicts_tree, "Conflicts")
 
         self.folder_label = QPushButton()
@@ -326,11 +332,53 @@ class ModInfoPanel(QWidget):
         else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(full_path)))
 
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self.conflicts_tree.viewport():
+            if event.type() == QEvent.MouseMove:
+                if config.preview_images:
+                    item = self.conflicts_tree.itemAt(event.pos())
+                    if item and not item.childCount():
+                        self._show_preview(item, event.globalPos())
+                        return False
+                self._preview_label.hide()
+                return False
+            if event.type() == QEvent.Leave:
+                self._preview_label.hide()
+                return False
+        return super().eventFilter(obj, event)
+
+    def _show_preview(self, item, global_pos: QPoint) -> None:
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            self._preview_label.hide()
+            return
+        conflict_folder, relative_path = data
+        if not relative_path.lower().endswith(".png"):
+            self._preview_label.hide()
+            return
+        full_path = os.path.join(config.mods_path, conflict_folder, relative_path)
+        if not os.path.exists(full_path):
+            self._preview_label.hide()
+            return
+        if self._preview_path != full_path:
+            pixmap = QPixmap(full_path)
+            if pixmap.isNull():
+                self._preview_label.hide()
+                return
+            scaled = pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.FastTransformation)
+            self._preview_label.setPixmap(scaled)
+            self._preview_label.adjustSize()
+            self._preview_path = full_path
+        self._preview_label.move(global_pos + QPoint(15, 15))
+        self._preview_label.show()
+
     def clear(self) -> None:
         self._stop_movie()
         self._show_placeholder()
         self.description_text.clear()
         self.conflicts_tree.clear()
+        self._preview_label.hide()
+        self._preview_path = None
         self.folder_label.setText("")
         self._workshop_id = None
         self._mod_path = None
