@@ -60,7 +60,8 @@ class ModInfoPanel(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
 
-        self._movie: Optional[QMovie] = None
+        self._movie = QMovie()
+        self._movie.setScaledSize(QSize(128, 128))
         self._mod_path: Optional[str] = None
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
@@ -187,12 +188,10 @@ class ModInfoPanel(QWidget):
         self._stop_movie()
         if icon_path:
             if icon_path.lower().endswith(".gif") and config.animate_icons:
-                animated_movie = QMovie(icon_path)
-                animated_movie.setScaledSize(QSize(128, 128))
-                if animated_movie.isValid():
-                    self._movie = animated_movie
-                    self.icon_label.setMovie(animated_movie)
-                    animated_movie.start()
+                self._movie.setFileName(icon_path)
+                if self._movie.isValid():
+                    self.icon_label.setMovie(self._movie)
+                    self._movie.start()
                 else:
                     self._show_placeholder()
             else:
@@ -261,9 +260,7 @@ class ModInfoPanel(QWidget):
         )
 
     def _stop_movie(self) -> None:
-        if self._movie is not None:
-            self._movie.stop()
-            self._movie = None
+        self._movie.stop()
 
     def _open_link(self, url: QUrl) -> None:
         QDesktopServices.openUrl(QUrl(url))
