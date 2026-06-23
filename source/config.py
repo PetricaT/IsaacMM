@@ -11,17 +11,19 @@ backup_enabled: bool = False
 backup_path: Optional[str] = None
 theme: str = "fusion"
 accent_color: str = "#3daee9"
+download_icons: bool = False
 animate_icons: bool = True
 preview_images: bool = True
 splitter_state: Optional[str] = None
 column_state: Optional[str] = None
 window_geometry: Optional[str] = None
 loaded_mods: list = []
+workshop_timestamps: list[float] = []
 
 
 def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, animate_icons, preview_images
-    global splitter_state, column_state, window_geometry
+    global splitter_state, column_state, window_geometry, download_icons, workshop_timestamps
     try:
         config_data = toml.load(f"{paths.appdata}/config.toml")
         mods_path = config_data["paths"]["mods"]
@@ -33,12 +35,15 @@ def load() -> None:
         theme = settings_section.get("theme", "fusion")
         animate_icons = settings_section.get("animate_icons", True)
         preview_images = settings_section.get("preview_images", True)
+        download_icons = settings_section.get("download_icons", False)
         theme_section = config_data.get("theme", {})
         accent_color = theme_section.get("accent", "#3daee9")
         layout_section = config_data.get("layout", {})
         splitter_state = layout_section.get("splitter_state")
         column_state = layout_section.get("column_state")
         window_geometry = layout_section.get("window_geometry")
+        workshop_section = config_data.get("workshop", {})
+        workshop_timestamps = workshop_section.get("timestamps", [])
     except FileNotFoundError:
         _create_default()
 
@@ -74,6 +79,7 @@ def save() -> None:
             "theme": theme,
             "animate_icons": animate_icons,
             "preview_images": preview_images,
+            "download_icons": download_icons,
         },
         "theme": {
             "accent": accent_color,
@@ -82,6 +88,9 @@ def save() -> None:
             "splitter_state": splitter_state,
             "column_state": column_state,
             "window_geometry": window_geometry,
+        },
+        "workshop": {
+            "timestamps": workshop_timestamps,
         },
     }
     os.makedirs(paths.appdata, exist_ok=True)

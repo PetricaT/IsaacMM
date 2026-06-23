@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -113,7 +115,7 @@ class SeparatorDialog(QDialog):
 from . import config, paths, sorter
 from .backup import get_backup_root
 from .models import FlatDropModel
-from .widgets import ModInfoPanel
+from .widgets import ModInfoPanel, _init_workshop_limiter, _workshop_limiter_state, _sync_workshop_limiter, WORKSHOP_RATE_LIMIT
 
 sorted_pattern = re.compile(r"[0-9]{3}\s.*")
 
@@ -187,6 +189,11 @@ class SettingsDialog(QDialog):
         self.preview_check.setChecked(config.preview_images)
         self.preview_check.toggled.connect(self._save_settings)
         display_layout.addRow(self.preview_check)
+
+        self.download_icons_check = QCheckBox("Download missing icons from workshop")
+        self.download_icons_check.setChecked(config.download_icons)
+        self.download_icons_check.toggled.connect(self._save_settings)
+        display_layout.addRow(self.download_icons_check)
         behavior_layout.addWidget(display_group)
 
         behavior_layout.addStretch()
@@ -262,6 +269,7 @@ class SettingsDialog(QDialog):
         config.backup_path = text if text else None
         config.animate_icons = self.animate_check.isChecked()
         config.preview_images = self.preview_check.isChecked()
+        config.download_icons = self.download_icons_check.isChecked()
         mods_text = self.mods_path_edit.text().strip()
         if mods_text:
             config.mods_path = mods_text
@@ -364,6 +372,7 @@ class DragApp(QWidget):
         self._populating: bool = False
         self._first_load: bool = True
 
+        _init_workshop_limiter()
         self.initUi()
 
     def closeEvent(self, close_event) -> None:
@@ -376,6 +385,7 @@ class DragApp(QWidget):
         config.column_state = config.encode_state(
             self.modInfoPanel.save_column_state()
         )
+        _sync_workshop_limiter()
         config.save()
         super().closeEvent(close_event)
 
@@ -388,8 +398,30 @@ class DragApp(QWidget):
         self.console.setStyleSheet(
             "background-color: #1e1e1e; color: #d4d4d4; border: 1px solid #333;"
         )
+
+        self.rate_bar = QFrame(self)
+        self.rate_bar.setFixedHeight(24)
+        self.rate_bar.setStyleSheet(
+            "background-color: #252526; border: 1px solid #333; border-top: none;"
+        )
+        rate_layout = QHBoxLayout(self.rate_bar)
+        rate_layout.setContentsMargins(8, 0, 8, 0)
+        rate_layout.setSpacing(0)
+        self.rate_label = QLabel("Workshop: 0/5")
+        self.rate_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+        self.rate_timer_label = QLabel("—")
+        self.rate_timer_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+        rate_layout.addWidget(self.rate_label)
+        rate_layout.addStretch()
+        rate_layout.addWidget(self.rate_timer_label)
+
+        self._rate_timer = QTimer(self)
+        self._rate_timer.timeout.connect(self._update_rate_bar)
+        self._rate_timer.start(1000)
+        self._update_rate_bar()
         self.modListWidget()
         self.modInfoPanel = ModInfoPanel()
+        self.modInfoPanel.log_message.connect(self.log)
 
         left_panel = QWidget()
         left_panel_layout = QVBoxLayout(left_panel)
@@ -432,6 +464,7 @@ class DragApp(QWidget):
         self.baseLayout.addWidget(horizontal_splitter, 1)
 
         self.baseLayout.addWidget(self.console)
+        self.baseLayout.addWidget(self.rate_bar)
 
         self.applyOrder.clicked.connect(self.applyModOrder)
         self.autoSort.clicked.connect(self.autoSortMods)
@@ -590,8 +623,25 @@ class DragApp(QWidget):
         self.console.setTextCursor(text_cursor)
         self.console.ensureCursorVisible()
 
+    def _update_rate_bar(self) -> None:
+        count, next_available = _workshop_limiter_state()
+        self.rate_label.setText(f"Workshop: {count}/{WORKSHOP_RATE_LIMIT}")
+        if next_available is not None:
+            remaining = int(next_available - time.time())
+            if remaining > 0:
+                mins, secs = divmod(remaining, 60)
+                self.rate_timer_label.setText(f"Cooldown: {mins}m {secs}s")
+                self.rate_timer_label.setStyleSheet("color: #ffa500; font-size: 11px;")
+            else:
+                self.rate_timer_label.setText("—")
+                self.rate_timer_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+        else:
+            self.rate_timer_label.setText("—")
+            self.rate_timer_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+
     def getModList(self) -> None:
         if config.mods_path == "":
+            self.log("No mods folder set — open Settings to configure one", "warning")
             return
 
         self._populating = True
@@ -603,7 +653,14 @@ class DragApp(QWidget):
         all_entries = []
         separator_map = {}
 
-        for directory_entry in os.listdir(config.mods_path):
+        try:
+            directory_entries = os.listdir(config.mods_path)
+        except OSError as exc:
+            self.log(f"Failed to list mods folder: {exc}", "error")
+            self._populating = False
+            return
+
+        for directory_entry in directory_entries:
             if directory_entry in (".DS_Store", "Thumbs.db"):
                 continue
             full_path = os.path.join(config.mods_path, directory_entry)
@@ -810,8 +867,8 @@ class DragApp(QWidget):
                     )
                     if '/' in relative_path or '\\' in relative_path:
                         conflict_files.add(relative_path)
-        except OSError:
-            pass
+        except OSError as exc:
+            self.log(f"Failed to scan mod files for {mod_folder_name}: {exc}", "warning")
         self._mod_files_cache[mod_folder_name] = conflict_files
         return conflict_files
 
@@ -1022,9 +1079,15 @@ class DragApp(QWidget):
         ctrl_held = QApplication.keyboardModifiers() & Qt.ControlModifier
         if ctrl_held:
             mod_folder = list_item.data(Qt.UserRole)
+            if not mod_folder:
+                return
             folder_path = os.path.join(config.mods_path, mod_folder)
-            if os.path.isdir(folder_path):
-                QDesktopServices.openUrl(QUrl.fromLocalFile(folder_path))
+            if not os.path.isdir(folder_path):
+                self.log(f"Folder does not exist: {folder_path}", "warning")
+                return
+            from .widgets import open_path
+            if not open_path(folder_path):
+                self.log(f"Failed to open folder: {folder_path}", "error")
 
     def _edit_separator(self, list_item) -> None:
         separator_data = list_item.data(SEPARATOR_ROLE)
@@ -1048,7 +1111,8 @@ class DragApp(QWidget):
                     os.path.join(config.mods_path, old_separator_folder),
                     os.path.join(config.mods_path, new_separator_folder),
                 )
-            except OSError:
+            except OSError as exc:
+                self.log(f"Failed to rename separator folder: {exc}", "error")
                 return
         separator_xml_path = os.path.join(
             config.mods_path, new_separator_folder, "separator.xml"

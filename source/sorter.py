@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
@@ -80,7 +81,11 @@ def _try_fetch() -> Optional[dict]:
         with open(CACHE_FILE, "w") as cache_file:
             cache_file.write(raw_content)
         return yaml_data
-    except (URLError, OSError, yaml.YAMLError):
+    except URLError:
+        print("[IsaacMM] Warning: no network, cannot fetch latest masterlist", file=sys.stderr)
+        return None
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"[IsaacMM] Error loading masterlist: {exc}", file=sys.stderr)
         return None
 
 
@@ -102,9 +107,12 @@ def _try_bundled() -> Optional[dict]:
 
 
 def save_last_order(folder_order: list) -> None:
-    os.makedirs(paths.appdata, exist_ok=True)
-    with open(LAST_ORDER_FILE, "w") as order_file:
-        yaml.dump({"ordered_folders": folder_order}, order_file, default_flow_style=False)
+    try:
+        os.makedirs(paths.appdata, exist_ok=True)
+        with open(LAST_ORDER_FILE, "w") as order_file:
+            yaml.dump({"ordered_folders": folder_order}, order_file, default_flow_style=False)
+    except OSError as exc:
+        print(f"[IsaacMM] Failed to save last order: {exc}", file=sys.stderr)
 
 
 def load_last_order() -> Optional[list]:
@@ -159,8 +167,8 @@ def _read_tags(mod_path: str) -> list:
         tags_element = xml_root.find("tags")
         if tags_element is not None:
             return [tag.get("id", "") for tag in tags_element.findall("tag")]
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[IsaacMM] Failed to read tags from {mod_path}: {exc}", file=sys.stderr)
     return []
 
 

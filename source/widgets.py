@@ -1,10 +1,17 @@
+import subprocess
 import html
 import os
+import sys
 import re
+import time
+import urllib.error
+import urllib.request
 import xml.etree.ElementTree as ET
+from collections import deque
+from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QUrl
+from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QUrl, Signal
 from PySide6.QtGui import (
     QColor, QDesktopServices, QIcon, QMovie, QPalette, QPixmap,
 )
@@ -23,6 +30,128 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+_WORKSHOP_LIMITER: deque = deque()
+WORKSHOP_RATE_LIMIT: int = 5
+WORKSHOP_RATE_WINDOW: int = 1200
+
+
+def _init_workshop_limiter() -> None:
+    now = time.time()
+    _WORKSHOP_LIMITER.clear()
+    for ts in config.workshop_timestamps:
+        if ts >= now - WORKSHOP_RATE_WINDOW:
+            _WORKSHOP_LIMITER.append(ts)
+
+
+def _sync_workshop_limiter() -> None:
+    config.workshop_timestamps = list(_WORKSHOP_LIMITER)
+
+
+def _workshop_limiter_state() -> tuple[int, Optional[float]]:
+    now = time.time()
+    while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
+        _WORKSHOP_LIMITER.popleft()
+    count = len(_WORKSHOP_LIMITER)
+    next_available = None
+    if count >= WORKSHOP_RATE_LIMIT:
+        next_available = _WORKSHOP_LIMITER[0] + WORKSHOP_RATE_WINDOW
+    return count, next_available
+
+
+def _check_workshop_rate_limit() -> bool:
+    now = time.time()
+    while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
+        _WORKSHOP_LIMITER.popleft()
+    if len(_WORKSHOP_LIMITER) >= WORKSHOP_RATE_LIMIT:
+        return False
+    _WORKSHOP_LIMITER.append(now)
+    return True
+
+
+def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
+    if not _check_workshop_rate_limit():
+        raise RuntimeError("rate_limited")
+
+    try:
+        workshop_url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={ws_id}"
+        req = urllib.request.Request(
+            workshop_url, headers={"User-Agent": "IsaacMM/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            html_content = resp.read().decode("utf-8", errors="replace")
+
+        m = re.search(
+            r"onclick=\"ShowEnlargedImagePreview\(\s*'([^']+)'",
+            html_content,
+        )
+        if not m:
+            raise RuntimeError("no_preview")
+
+        img_url = m.group(1).replace("&amp;", "&")
+        img_url = re.sub(r"imw=\d+", "imw=512", img_url)
+        img_url = re.sub(r"imh=\d+", "imh=512", img_url)
+
+        req_img = urllib.request.Request(
+            img_url, headers={"User-Agent": "IsaacMM/1.0"}
+        )
+        with urllib.request.urlopen(req_img, timeout=10) as resp_img:
+            img_data = resp_img.read()
+
+        os.makedirs(os.path.dirname(cached_path), exist_ok=True)
+        with open(cached_path, "wb") as f:
+            f.write(img_data)
+
+        return ws_id
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            now = time.time()
+            for _ in range(WORKSHOP_RATE_LIMIT):
+                _WORKSHOP_LIMITER.append(now)
+            raise RuntimeError("rate_limited")
+        raise
+
+
+def open_path(path: str) -> bool:
+    if sys.platform.startswith("linux"):
+        env = os.environ.copy()
+        env.pop("LD_LIBRARY_PATH", None)
+        env.pop("APPDIR", None)
+        env.pop("APPIMAGE", None)
+        proc = subprocess.Popen(["xdg-open", path], env=env,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc.communicate(timeout=5)
+        if proc.returncode != 0:
+            return False
+        return True
+    elif sys.platform == "darwin":
+        proc = subprocess.Popen(["open", path],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc.communicate(timeout=5)
+        return proc.returncode == 0
+    else:
+        return QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+
+
+def open_url(url: str) -> bool:
+    if sys.platform.startswith("linux"):
+        env = os.environ.copy()
+        env.pop("LD_LIBRARY_PATH", None)
+        env.pop("APPDIR", None)
+        env.pop("APPIMAGE", None)
+        proc = subprocess.Popen(["xdg-open", url], env=env,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc.communicate(timeout=5)
+        if proc.returncode != 0:
+            return False
+        return True
+    elif sys.platform == "darwin":
+        proc = subprocess.Popen(["open", url],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc.communicate(timeout=5)
+        return proc.returncode == 0
+    else:
+        return QDesktopServices.openUrl(QUrl(url))
 
 from . import config, paths
 
@@ -50,6 +179,8 @@ class ConflictTreeWidget(QTreeWidget):
 
 
 class ModInfoPanel(QWidget):
+    log_message = Signal(str, str)  # message, level
+
     PRIORITY_ICON_NAMES: list[str] = [
         "title", "thumbnail", "Thumbnail", "icon", "images", "modicon", "logo",
         "spider thumbnail",
@@ -63,6 +194,7 @@ class ModInfoPanel(QWidget):
         self._movie = QMovie()
         self._movie.setScaledSize(QSize(128, 128))
         self._mod_path: Optional[str] = None
+        self._icon_thread = None
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
         )
@@ -211,7 +343,8 @@ class ModInfoPanel(QWidget):
                 else:
                     self._show_placeholder()
         else:
-            self._show_placeholder()
+            if not config.download_icons or not self._try_download_icon(mod_folder):
+                self._show_placeholder()
 
         self.conflicts_tree.clear()
         if conflicts:
@@ -248,7 +381,8 @@ class ModInfoPanel(QWidget):
                 tag_item.setForeground(QColor("#111111"))
                 self.tags_box.addItem(tag_item)
 
-        except Exception:
+        except Exception as exc:
+            print(f"[IsaacMM] Failed to load mod description: {exc}", file=sys.stderr)
             self.description_text.setHtml("(could not load description)")
 
         self.folder_label.setText(f"Folder: {mod_folder}")
@@ -268,19 +402,66 @@ class ModInfoPanel(QWidget):
     def _stop_movie(self) -> None:
         self._movie.stop()
 
+    def _try_download_icon(self, mod_folder: str) -> bool:
+        ws_match = paths.WORKSHOP_ID_RE.search(mod_folder)
+        if not ws_match:
+            return False
+        ws_id = ws_match.group(1)
+        cache_dir = os.path.join(paths.appdata, "cache", "icons")
+        cached_path = os.path.join(cache_dir, f"{ws_id}.png")
+
+        if os.path.isfile(cached_path):
+            loaded = QPixmap(cached_path)
+            if not loaded.isNull():
+                self.icon_label.setPixmap(
+                    loaded.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
+                return True
+
+        from .worker import WorkerThread
+
+        if self._icon_thread is not None:
+            try:
+                self._icon_thread.finished.disconnect()
+                self._icon_thread.error.disconnect()
+            except RuntimeError:
+                pass
+
+        def on_done(_result):
+            loaded = QPixmap(cached_path)
+            if not loaded.isNull():
+                self.icon_label.setPixmap(
+                    loaded.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
+
+        def on_error(_msg: str):
+            self._show_placeholder()
+
+        def _clear_thread():
+            self._icon_thread = None
+
+        self._icon_thread = WorkerThread(_download_workshop_icon, ws_id, cached_path)
+        self._icon_thread.finished.connect(on_done)
+        self._icon_thread.error.connect(on_error)
+        self._icon_thread.finished.connect(_clear_thread)
+        self._icon_thread.finished.connect(self._icon_thread.deleteLater)
+        self._icon_thread.start()
+        return False
+
     def _open_link(self, url: QUrl) -> None:
-        QDesktopServices.openUrl(QUrl(url))
+        if not open_url(url.toString()):
+            print(f"[IsaacMM] Failed to open URL: {url}", file=sys.stderr)
 
     def _open_workshop(self) -> None:
         if self._workshop_id:
-            workshop_url = QUrl(
-                f"https://steamcommunity.com/sharedfiles/filedetails/?id={self._workshop_id}"
-            )
-            QDesktopServices.openUrl(workshop_url)
+            url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={self._workshop_id}"
+            if not open_url(url):
+                print(f"[IsaacMM] Failed to open workshop page: {url}", file=sys.stderr)
 
     def _open_folder(self) -> None:
         if self._mod_path and os.path.isdir(self._mod_path):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(self._mod_path))
+            if not open_path(self._mod_path):
+                print(f"[IsaacMM] Failed to open folder: {self._mod_path}", file=sys.stderr)
 
     def _populate_file_tree(self, parent_item, file_paths: list, conflict_folder: str) -> None:
         path_tree = {}
@@ -322,12 +503,15 @@ class ModInfoPanel(QWidget):
         conflict_folder, relative_file_path = conflict_data
         full_path = os.path.join(config.mods_path, conflict_folder, relative_file_path)
         if not os.path.exists(full_path):
+            print(f"[IsaacMM] Path does not exist: {full_path}", file=sys.stderr)
             return
         ctrl_pressed = QApplication.keyboardModifiers() & Qt.ControlModifier
         if ctrl_pressed:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(full_path)))
+            if not open_path(os.path.dirname(full_path)):
+                print(f"[IsaacMM] Failed to open folder: {os.path.dirname(full_path)}", file=sys.stderr)
         else:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(full_path))
+            if not open_path(full_path):
+                print(f"[IsaacMM] Failed to open file: {full_path}", file=sys.stderr)
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self.conflicts_tree.viewport():
