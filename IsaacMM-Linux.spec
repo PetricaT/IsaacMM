@@ -2,11 +2,27 @@
 
 
 a = Analysis(
-    ['main.py'],
+    ["main.py"],
     pathex=[],
     binaries=[],
-    datas=[('masterlist.yaml', '.'), ('pyproject.toml', '.'), ('assets/icon.png', 'assets'), ('assets/no_image.png', 'assets'), ('assets/warning.png', 'assets')],
-    hiddenimports=['source.paths', 'source.config', 'source.models', 'source.widgets', 'source.window', 'source.sorter', 'toml', 'yaml'],
+    datas=[
+        ("masterlist.yaml", "."),
+        ("pyproject.toml", "."),
+        ("assets/icon.png", "assets"),
+        ("assets/no_image.png", "assets"),
+        ("assets/warning.png", "assets"),
+        ("assets/folder-yellow.png", "assets"),
+    ],
+    hiddenimports=[
+        "source.paths",
+        "source.config",
+        "source.models",
+        "source.widgets",
+        "source.window",
+        "source.sorter",
+        "toml",
+        "yaml",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -21,7 +37,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='IsaacMM-Linux.elf',
+    name="IsaacMM-Linux.elf",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -34,7 +50,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets/icon.png'],
+    icon=["assets/icon.png"],
 )
 
 coll = COLLECT(
@@ -44,5 +60,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='IsaacMM-Linux',
+    name="IsaacMM-Linux",
 )

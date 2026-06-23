@@ -2,11 +2,27 @@
 
 
 a = Analysis(
-    ['main.py'],
+    ["main.py"],
     pathex=[],
     binaries=[],
-    datas=[('masterlist.yaml', '.'), ('pyproject.toml', '.'), ('assets/icon.ico', 'assets'), ('assets/no_image.png', 'assets'), ('assets/warning.png', 'assets')],
-    hiddenimports=['source.paths', 'source.config', 'source.models', 'source.widgets', 'source.window', 'source.sorter', 'toml', 'yaml'],
+    datas=[
+        ("masterlist.yaml", "."),
+        ("pyproject.toml", "."),
+        ("assets/icon.ico", "assets"),
+        ("assets/no_image.png", "assets"),
+        ("assets/warning.png", "assets"),
+        ("assets/folder-yellow.png", "assets"),
+    ],
+    hiddenimports=[
+        "source.paths",
+        "source.config",
+        "source.models",
+        "source.widgets",
+        "source.window",
+        "source.sorter",
+        "toml",
+        "yaml",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -22,7 +38,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='IsaacMM-Windows',
+    name="IsaacMM-Windows",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -35,5 +51,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets\\icon.ico'],
+    icon=["assets\\icon.ico"],
 )

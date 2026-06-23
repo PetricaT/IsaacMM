@@ -48,7 +48,7 @@ Since the addition of the auto-sort, user defined rules are also accepted, and s
 
 ### Windows
 ```
-%APPDATA%/IsaacMM/user_rules.yaml
+%LOCALAPPDATA%/IsaacMM/user_rules.yaml
 ```
 ### Linux
 ```

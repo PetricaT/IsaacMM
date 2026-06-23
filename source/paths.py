@@ -6,12 +6,13 @@ from typing import Optional
 STEAM_APPID: int = 250900
 WORKSHOP_ID_RE: re.Pattern = re.compile(r"_(\d+)$")
 
+appdata: str = ""
 if sys.platform == "win32":
-    appdata: str = os.path.expanduser("~") + "/AppData/IsaacMM"
+    appdata = os.path.expanduser("~") + "/AppData/Local/IsaacMM"
 elif sys.platform == "darwin":
-    appdata: str = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
+    appdata = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
 else:
-    appdata: str = os.path.expanduser("~") + "/.local/share/IsaacMM"
+    appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
 
 BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -62,9 +63,7 @@ def _resolve_windows_path() -> Optional[str]:
     try:
         import winreg
 
-        registry_key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"
-        )
+        registry_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
         steam_path, _ = winreg.QueryValueEx(registry_key, "SteamPath")
         winreg.CloseKey(registry_key)
         steam_root = _parse_vdf_path(steam_path)
@@ -93,7 +92,6 @@ def _resolve_linux_path() -> Optional[str]:
             steam_root = _parse_vdf_path(steam_path)
             if steam_root:
                 return (
-                    f"{steam_root}/steamapps/common/"
-                    "The Binding of Isaac Rebirth/mods/"
+                    f"{steam_root}/steamapps/common/The Binding of Isaac Rebirth/mods/"
                 )
     return None
