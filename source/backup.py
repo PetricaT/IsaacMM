@@ -1,7 +1,6 @@
 import os
 import shutil
 import xml.etree.ElementTree as ET
-from typing import Callable, Optional
 
 
 def _read_version(mod_folder: str, mods_path: str) -> str:
@@ -44,16 +43,16 @@ def backup_all(
     mods_path: str,
     backup_root: str,
     mod_list: list,
-    on_backup_done: Optional[Callable[[str, str, str, str], None]] = None,
-) -> None:
+) -> list[tuple[str, str, str]]:
     os.makedirs(backup_root, exist_ok=True)
+    results: list[tuple[str, str, str]] = []
     for mod_name, mod_folder in mod_list:
         if backup_needed(mod_folder, mods_path, backup_root):
             old_version = _read_version(mod_folder, backup_root)
             backup_mod(mod_folder, mods_path, backup_root)
             new_version = _read_version(mod_folder, mods_path)
-            if on_backup_done:
-                on_backup_done(mod_name, mod_folder, old_version, new_version)
+            results.append((mod_name, old_version, new_version))
+    return results
 
 
 from . import config

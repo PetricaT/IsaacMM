@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, Qt, QTimer, QUrl
+from PySide6.QtCore import QByteArray, Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -123,7 +123,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(500)
-        self.setMinimumHeight(300)
+        self.setMinimumHeight(395)
 
         main_layout = QVBoxLayout(self)
         tabs = QTabWidget()
@@ -289,9 +289,13 @@ class SettingsDialog(QDialog):
         if not config.mods_path:
             return
         owner_window = self.parent()
+        if hasattr(owner_window, '_backup_thread') and owner_window._backup_thread:
+            return
         if owner_window and hasattr(owner_window, 'log'):
             owner_window.log("Running manual backup...")
+
         from .backup import backup_all, get_backup_root
+        from .worker import WorkerThread
 
         def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
             i = 0
@@ -309,22 +313,37 @@ class SettingsDialog(QDialog):
                     segments.append((new[i:], "#65A665"))
             return segments
 
-        def on_backup_done(mod_name: str, _mod_folder: str, old_ver: str, new_ver: str) -> None:
-            if old_ver == new_ver:
-                return
-            segments = [(f"{mod_name}: ", None)]
-            segments.extend(_colorize(old_ver, new_ver))
-            if owner_window and hasattr(owner_window, 'log_colored'):
-                owner_window.log_colored(segments)
+        def _on_finished(results: list[tuple[str, str, str]]) -> None:
+            for mod_name, old_ver, new_ver in results:
+                if old_ver == "?":
+                    if owner_window and hasattr(owner_window, 'log_colored'):
+                        owner_window.log_colored([("Added: ", None), (mod_name, "#65A665")])
+                    continue
+                if old_ver == new_ver:
+                    continue
+                segments = [(f"{mod_name}: ", None)]
+                segments.extend(_colorize(old_ver, new_ver))
+                if owner_window and hasattr(owner_window, 'log_colored'):
+                    owner_window.log_colored(segments)
+            if owner_window and hasattr(owner_window, 'log'):
+                owner_window.log("Manual backup complete")
 
-        backup_all(
+        def _on_error(error_msg: str) -> None:
+            if owner_window and hasattr(owner_window, 'log'):
+                owner_window.log(f"Backup failed: {error_msg}", "error")
+
+        thread = WorkerThread(
+            backup_all,
             config.mods_path,
             get_backup_root(config.mods_path),
             config.loaded_mods,
-            on_backup_done=on_backup_done,
         )
-        if owner_window and hasattr(owner_window, 'log'):
-            owner_window.log("Manual backup complete")
+        thread.finished.connect(_on_finished)
+        thread.error.connect(_on_error)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(owner_window, '_backup_thread', None))
+        owner_window._backup_thread = thread
+        thread.start()
 
 
 class DragApp(QWidget):
@@ -882,15 +901,23 @@ class DragApp(QWidget):
     def _maybe_backup(self) -> None:
         if not config.backup_enabled or not config.mods_path:
             return
+        if hasattr(self, '_backup_thread') and self._backup_thread:
+            return
         self.log("Backing up modified mods...")
         from .backup import backup_all, get_backup_root
+        from .worker import WorkerThread
 
-        backup_all(
+        thread = WorkerThread(
+            backup_all,
             config.mods_path,
             get_backup_root(config.mods_path),
             config.loaded_mods,
         )
-        self.log("Backup complete")
+        thread.finished.connect(lambda: self.log("Backup complete"))
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(self, '_backup_thread', None))
+        self._backup_thread = thread
+        thread.start()
 
     def _create_separator(self) -> None:
         dialog = SeparatorDialog("Create Separator", parent=self)
