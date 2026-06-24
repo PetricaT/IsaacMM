@@ -225,8 +225,24 @@ class SettingsDialog(QDialog):
         self.accent_btn.setStyleSheet(f"background-color: {config.accent_color};")
         self.accent_btn.clicked.connect(self._pick_accent)
 
+        self.disabled_mod_btn = QPushButton()
+        self.disabled_mod_btn.setFixedWidth(60)
+        self.disabled_mod_btn.setStyleSheet(f"background-color: {config.disabled_mod_color};")
+        self.disabled_mod_btn.clicked.connect(
+            lambda: self._pick_color("disabled_mod_color", self.disabled_mod_btn)
+        )
+
+        self.overwritten_mod_btn = QPushButton()
+        self.overwritten_mod_btn.setFixedWidth(60)
+        self.overwritten_mod_btn.setStyleSheet(f"background-color: {config.overwritten_mod_color};")
+        self.overwritten_mod_btn.clicked.connect(
+            lambda: self._pick_color("overwritten_mod_color", self.overwritten_mod_btn)
+        )
+
         theme_layout.addRow("Theme:", self.theme_combo)
         theme_layout.addRow("Accent color:", self.accent_btn)
+        theme_layout.addRow("Disabled mod color:", self.disabled_mod_btn)
+        theme_layout.addRow("Overwritten mod color:", self.overwritten_mod_btn)
         tabs.addTab(theme_tab, "Theme")
 
         main_layout.addWidget(tabs)
@@ -243,6 +259,14 @@ class SettingsDialog(QDialog):
                 update_style = getattr(owner_window, "update_accent_style", None)
                 if callable(update_style):
                     update_style(color.name())
+
+    def _pick_color(self, attr_name: str, button: QPushButton) -> None:
+        current = getattr(config, attr_name, "#777777")
+        color = QColorDialog.getColor(QColor(current), self)
+        if color.isValid():
+            setattr(config, attr_name, color.name())
+            button.setStyleSheet(f"background-color: {color.name()};")
+            self._save_settings()
 
     def _pick_mods_path(self) -> None:
         starting = config.mods_path if config.mods_path and os.path.isdir(config.mods_path) else ""

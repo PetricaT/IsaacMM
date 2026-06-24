@@ -41,6 +41,7 @@ class ModListPanel(QWidget):
         self._mod_files_cache: dict = {}
         self._populating: bool = False
         self._first_load: bool = True
+        self._updating_conflicts: bool = False
         self._accent_color = config.accent_color
 
         layout = QVBoxLayout(self)
@@ -199,7 +200,7 @@ class ModListPanel(QWidget):
                     config.mods_path, entry_folder, "disable.it"
                 )
                 list_item.setCheckState(
-                    Qt.Unchecked if os.path.exists(disable_file_path) else Qt.Checked
+                    Qt.CheckState.Unchecked if os.path.exists(disable_file_path) else Qt.CheckState.Checked
                 )
             self.model.appendRow(list_item)
 
@@ -222,32 +223,51 @@ class ModListPanel(QWidget):
         self._update_conflict_indicators()
 
     def _update_conflict_indicators(self) -> None:
-        for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
-            if list_item is None:
-                continue
-            list_item.setData(None, CONFLICT_ROLE)
-            separator_data = list_item.data(SEPARATOR_ROLE)
-            if separator_data:
-                list_item.setBackground(QColor(separator_data["color"]))
-                list_item.setTextAlignment(Qt.AlignCenter)
+        if self._updating_conflicts:
+            return
+        self._updating_conflicts = True
+        self.model.blockSignals(True)
+        try:
+            default_fg = self.listView.palette().color(QPalette.Text)
+            for row_index in range(self.model.rowCount()):
+                list_item = self.model.item(row_index)
+                if list_item is None:
+                    continue
+                list_item.setData(None, CONFLICT_ROLE)
+                list_item.setForeground(QColor(default_fg))
+                list_item.setBackground(QBrush())
+                separator_data = list_item.data(SEPARATOR_ROLE)
+                if separator_data:
+                    list_item.setBackground(QColor(separator_data["color"]))
+                    list_item.setTextAlignment(Qt.AlignCenter)
 
-        for first_index in range(self.model.rowCount()):
-            first_item = self.model.item(first_index)
-            if first_item is None or first_item.data(SEPARATOR_ROLE):
-                continue
-            for second_index in range(first_index + 1, self.model.rowCount()):
-                second_item = self.model.item(second_index)
-                if second_item is None or second_item.data(SEPARATOR_ROLE):
+            seen_files: set = set()
+            for first_index in range(self.model.rowCount()):
+                first_item = self.model.item(first_index)
+                if first_item is None or first_item.data(SEPARATOR_ROLE):
                     continue
-                common_files = (
-                    self._scan_mod_files(first_item.data(Qt.UserRole))
-                    & self._scan_mod_files(second_item.data(Qt.UserRole))
-                )
-                if not common_files:
+                first_files = self._scan_mod_files(first_item.data(Qt.UserRole))
+                if first_item.checkState() != Qt.CheckState.Checked:
+                    first_item.setForeground(QColor(config.disabled_mod_color))
                     continue
-                first_item.setData(True, CONFLICT_ROLE)
-                second_item.setData(True, CONFLICT_ROLE)
+                if first_files and first_files <= seen_files:
+                    first_item.setForeground(QColor(config.overwritten_mod_color))
+                    first_item.setBackground(QColor("#2A2A2A"))
+                seen_files.update(first_files)
+                for second_index in range(first_index + 1, self.model.rowCount()):
+                    second_item = self.model.item(second_index)
+                    if second_item is None or second_item.data(SEPARATOR_ROLE):
+                        continue
+                    if second_item.checkState() != Qt.CheckState.Checked:
+                        continue
+                    common_files = first_files & self._scan_mod_files(second_item.data(Qt.UserRole))
+                    if not common_files:
+                        continue
+                    first_item.setData(True, CONFLICT_ROLE)
+                    second_item.setData(True, CONFLICT_ROLE)
+        finally:
+            self.model.blockSignals(False)
+            self._updating_conflicts = False
 
     def _on_mod_selected(self, selected, deselected) -> None:
         if self._populating:
@@ -279,6 +299,14 @@ class ModListPanel(QWidget):
             return
 
         mod_folder = selected_item.data(Qt.UserRole)
+        if selected_item.checkState() != Qt.CheckState.Checked:
+            self.mod_selected.emit(
+                selected_item.text(),
+                mod_folder,
+                {},
+            )
+            return
+
         current_mod_files = self._scan_mod_files(mod_folder)
         current_mod_index = next(
             (
@@ -294,6 +322,8 @@ class ModListPanel(QWidget):
             other_item = self.model.item(row_index)
             other_mod_folder = other_item.data(Qt.UserRole)
             if other_mod_folder == mod_folder:
+                continue
+            if other_item.checkState() != Qt.CheckState.Checked:
                 continue
             common_files = current_mod_files & self._scan_mod_files(other_mod_folder)
             if not common_files:
@@ -327,12 +357,10 @@ class ModListPanel(QWidget):
                 walk_dirs[:] = [
                     directory
                     for directory in walk_dirs
-                    if directory not in ('.git', '__pycache__')
+                    if directory not in config.IGNORED_DIRS
                 ]
                 for file_name in file_names:
-                    if file_name in (
-                        'metadata.xml', 'disable.it', '.DS_Store', 'Thumbs.db'
-                    ):
+                    if file_name in config.IGNORED_FILES:
                         continue
                     file_extension = os.path.splitext(file_name)[1].lower()
                     if file_extension not in self._CONFLICT_EXTS:
@@ -353,6 +381,7 @@ class ModListPanel(QWidget):
         mod_folder = list_item.data(Qt.UserRole)
         if mod_folder:
             self.pending_toggles[mod_folder] = list_item.checkState()
+            self._update_conflict_indicators()
 
     def apply_mod_order(self) -> None:
         self.log_message.emit("Applying sort order...", "info")
@@ -387,7 +416,7 @@ class ModListPanel(QWidget):
             disable_file_path = os.path.join(
                 config.mods_path, folder_name, "disable.it"
             )
-            if toggle_state == Qt.Unchecked:
+            if toggle_state == Qt.CheckState.Unchecked:
                 try:
                     open(disable_file_path, "a").close()
                 except OSError as exception:
@@ -487,7 +516,7 @@ class ModListPanel(QWidget):
             else:
                 mod_info = mod_data_lookup.get(entry_folder, {})
                 list_item.setCheckable(True)
-                list_item.setCheckState(mod_info.get("checked", Qt.Checked))
+                list_item.setCheckState(mod_info.get("checked", Qt.CheckState.Checked))
             self.model.appendRow(list_item)
 
         config.loaded_mods = [
