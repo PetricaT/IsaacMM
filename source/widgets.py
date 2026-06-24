@@ -1,26 +1,22 @@
-import html
-import json
 import os
-import re
-import ssl
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 import xml.etree.ElementTree as ET
-from collections import deque
 from typing import Optional
-
-import certifi
 
 from . import config, logger, paths
 from .worker import WorkerThread
+from .components.workshop import (
+    _prune_failures, _permanent_failures, _pending_workshop_ids,
+    _failed_workshop_ids, _download_workshop_icon,
+)
+from .components.file_utils import open_path, open_url
+from .components.text_utils import bbcode_to_html
 
 from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QUrl, Signal
 from PySide6.QtGui import (
-    QColor, QDesktopServices, QIcon, QMovie, QPalette, QPixmap,
+    QColor, QIcon, QMovie, QPalette, QPixmap,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -37,179 +33,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-_ssl_context = ssl.create_default_context(cafile=certifi.where())
-
-_WORKSHOP_LIMITER: deque = deque()
-WORKSHOP_RATE_LIMIT: int = 5
-WORKSHOP_RATE_WINDOW: int = 1200
-WORKSHOP_RETRY_COOLDOWN: int = 1200
-_failed_workshop_ids: dict[str, float] = {}
-_permanent_failures: set[str] = set()
-_pending_workshop_ids: set[str] = set()
-
-
-def _init_workshop_limiter() -> None:
-    now = time.time()
-    _WORKSHOP_LIMITER.clear()
-    for ts in config.workshop_timestamps:
-        if ts >= now - WORKSHOP_RATE_WINDOW:
-            _WORKSHOP_LIMITER.append(ts)
-    _permanent_failures.clear()
-    _permanent_failures.update(config.dead_workshop_ids)
-
-
-def _sync_workshop_limiter() -> None:
-    config.workshop_timestamps = list(_WORKSHOP_LIMITER)
-
-
-def _workshop_limiter_state() -> tuple[int, Optional[float]]:
-    now = time.time()
-    while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
-        _WORKSHOP_LIMITER.popleft()
-    count = len(_WORKSHOP_LIMITER)
-    next_available = None
-    if count >= WORKSHOP_RATE_LIMIT:
-        next_available = _WORKSHOP_LIMITER[0] + WORKSHOP_RATE_WINDOW
-    return count, next_available
-
-
-def _prune_failures() -> None:
-    cutoff = time.time() - WORKSHOP_RETRY_COOLDOWN
-    for ws_id in list(_failed_workshop_ids):
-        if _failed_workshop_ids[ws_id] < cutoff:
-            del _failed_workshop_ids[ws_id]
-
-
-def _check_workshop_rate_limit() -> bool:
-    now = time.time()
-    while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
-        _WORKSHOP_LIMITER.popleft()
-    if len(_WORKSHOP_LIMITER) >= WORKSHOP_RATE_LIMIT:
-        return False
-    _WORKSHOP_LIMITER.append(now)
-    return True
-
-
-def _fetch_workshop_preview_url(ws_id: str) -> str:
-    data = {"itemcount": 1, "publishedfileids[0]": ws_id}
-    payload = urllib.parse.urlencode(data).encode()
-    try:
-        req = urllib.request.Request(
-            "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/",
-            data=payload,
-            headers={"User-Agent": "IsaacMM/1.0"},
-        )
-        with urllib.request.urlopen(req, timeout=10, context=_ssl_context) as resp:
-            result = json.loads(resp.read())
-    except (urllib.error.URLError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"workshop {ws_id}: API request failed: {exc}")
-
-    details = result.get("response", {}).get("publishedfiledetails", [])
-    if not details:
-        raise RuntimeError(f"workshop {ws_id}: no publishedfiledetails in API response")
-
-    match details[0].get("result", 0):
-        case 1:
-            return details[0]["preview_url"]
-        case 9:
-            raise FileNotFoundError(f"workshop {ws_id}: file not found (result=9)")
-        case other:
-            raise RuntimeError(f"workshop {ws_id}: API returned result={other} (expected 1)")
-
-
-def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
-    if not _check_workshop_rate_limit():
-        raise RuntimeError("rate_limited")
-
-    try:
-        preview_url = _fetch_workshop_preview_url(ws_id)
-
-        req_img = urllib.request.Request(
-            preview_url, headers={"User-Agent": "IsaacMM/1.0"}
-        )
-        with urllib.request.urlopen(req_img, timeout=10, context=_ssl_context) as resp_img:
-            img_data = resp_img.read()
-
-        os.makedirs(os.path.dirname(cached_path), exist_ok=True)
-        with open(cached_path, "wb") as f:
-            f.write(img_data)
-
-        return ws_id
-    except FileNotFoundError:
-        _permanent_failures.add(ws_id)
-        config.dead_workshop_ids = sorted(_permanent_failures)
-        config.save()
-        raise RuntimeError(f"workshop {ws_id}: file not found (permanent)")
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429:
-            now = time.time()
-            for _ in range(WORKSHOP_RATE_LIMIT):
-                _WORKSHOP_LIMITER.append(now)
-            raise RuntimeError("rate_limited")
-        raise RuntimeError(f"workshop {ws_id}: image download failed: {exc}")
-    except Exception as exc:
-        raise RuntimeError(f"workshop {ws_id}: {exc}")
-
-
-def open_path(path: str) -> bool:
-    if sys.platform.startswith("linux"):
-        env = os.environ.copy()
-        env.pop("LD_LIBRARY_PATH", None)
-        env.pop("APPDIR", None)
-        env.pop("APPIMAGE", None)
-        proc = subprocess.Popen(["xdg-open", path], env=env,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        proc.communicate(timeout=5)
-        if proc.returncode != 0:
-            return False
-        return True
-    elif sys.platform == "darwin":
-        proc = subprocess.Popen(["open", path],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        proc.communicate(timeout=5)
-        return proc.returncode == 0
-    else:
-        return QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-
-
-def open_url(url: str) -> bool:
-    if sys.platform.startswith("linux"):
-        env = os.environ.copy()
-        env.pop("LD_LIBRARY_PATH", None)
-        env.pop("APPDIR", None)
-        env.pop("APPIMAGE", None)
-        proc = subprocess.Popen(["xdg-open", url], env=env,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        proc.communicate(timeout=5)
-        if proc.returncode != 0:
-            return False
-        return True
-    elif sys.platform == "darwin":
-        proc = subprocess.Popen(["open", url],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        proc.communicate(timeout=5)
-        return proc.returncode == 0
-    else:
-        return QDesktopServices.openUrl(QUrl(url))
-
-
-def bbcode_to_html(input_text: str) -> str:
-    text = html.escape(input_text)
-    text = re.sub(r'\[b\](.*?)\[/b\]', r'<b>\1</b>', text, flags=re.DOTALL)
-    text = re.sub(r'\[i\](.*?)\[/i\]', r'<i>\1</i>', text, flags=re.DOTALL)
-    text = re.sub(r'\[u\](.*?)\[/u\]', r'<u>\1</u>', text, flags=re.DOTALL)
-    text = re.sub(r'\[h1\](.*?)\[/h1\]', r'<h1>\1</h1>', text, flags=re.DOTALL)
-    text = re.sub(r'\[h2\](.*?)\[/h2\]', r'<h2>\1</h2>', text, flags=re.DOTALL)
-    text = re.sub(r'\[h3\](.*?)\[/h3\]', r'<h3>\1</h3>', text, flags=re.DOTALL)
-    text = re.sub(r'\[url=([^\]]+)\](.*?)\[/url\]', r'<a href="\1">\2</a>', text, flags=re.DOTALL)
-    text = re.sub(r'\[url\](.*?)\[/url\]', r'<a href="\1">\1</a>', text, flags=re.DOTALL)
-    text = re.sub(r'\[img\](.*?)\[/img\]', r'<img src="\1">', text, flags=re.DOTALL)
-    text = re.sub(r'\[list\]', '<ul>', text)
-    text = re.sub(r'\[/list\]', '</ul>', text)
-    text = re.sub(r'\[\*\]', '<li>', text)
-    text = text.replace('\n', '<br>')
-    return f"<html><body style='font-size: 12pt;'>{text}</body></html>"
 
 
 class ConflictTreeWidget(QTreeWidget):
@@ -347,16 +170,17 @@ class ModInfoPanel(QWidget):
         check_state=None,
         conflicts: Optional[dict] = None,
     ) -> None:
-        if mod_folder is None:
+        if not mod_folder:
             for loaded_mod in config.loaded_mods:
                 if loaded_mod[0] == mod_name:
                     mod_folder = loaded_mod[1]
                     break
 
-        if mod_folder is None:
+        if not mod_folder:
             self.clear()
             return
 
+        self.tabs.setEnabled(True)
         full_mod_path = os.path.join(config.mods_path, mod_folder)
         self._mod_path = full_mod_path
         self.folder_button.setEnabled(True)
@@ -689,6 +513,21 @@ class ModInfoPanel(QWidget):
         self._preview_label.move(global_pos + QPoint(15, 15))
         self._preview_label.show()
 
+    def show_separator(self, separator_name: str, folder: str) -> None:
+        self._stop_movie()
+        self._show_placeholder()
+        self.description_text.clear()
+        self.conflicts_tree.clear()
+        self._preview_label.hide()
+        self._preview_path = None
+        self.tags_box.clear()
+        self._workshop_id = None
+        self._mod_path = os.path.join(config.mods_path, folder)
+        self.folder_button.setEnabled(True)
+        self.folder_label.setText(f"Separator: {separator_name}")
+        self.workshop_button.setEnabled(False)
+        self.tabs.setEnabled(False)
+
     def clear(self) -> None:
         self._stop_movie()
         self._show_placeholder()
@@ -702,3 +541,4 @@ class ModInfoPanel(QWidget):
         self.workshop_button.setEnabled(False)
         self.folder_button.setEnabled(False)
         self.tags_box.clear()
+        self.tabs.setEnabled(False)
