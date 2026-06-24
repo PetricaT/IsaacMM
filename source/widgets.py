@@ -410,9 +410,13 @@ class ModInfoPanel(QWidget):
         except OSError:
             return
         for entry in entries:
+            if entry in config.IGNORED_FILES:
+                continue
             full_entry = os.path.join(current_path, entry)
             rel_path = f"{relative_prefix}/{entry}" if relative_prefix else entry
             if os.path.isdir(full_entry):
+                if entry in config.IGNORED_DIRS:
+                    continue
                 dir_item = QTreeWidgetItem([entry])
                 dir_item.setIcon(0, self._folder_icon)
                 dir_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
