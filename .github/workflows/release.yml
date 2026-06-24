@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows:
+      - Build AppImage
+      - Build Flatpak
+      - Build macOS
+      - Build Windows
+    types:
+      - completed
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

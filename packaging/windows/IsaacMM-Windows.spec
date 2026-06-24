@@ -2,16 +2,16 @@
 
 
 a = Analysis(
-    ["main.py"],
-    pathex=[],
+    ["../../main.py"],
+    pathex=["../.."],
     binaries=[],
     datas=[
-        ("masterlist.yaml", "."),
-        ("pyproject.toml", "."),
-        ("assets/icon.png", "assets"),
-        ("assets/no_image.png", "assets"),
-        ("assets/warning.png", "assets"),
-        ("assets/folder-yellow.png", "assets"),
+        ("../../masterlist.yaml", "."),
+        ("../../pyproject.toml", "."),
+        ("../../assets/icon.ico", "assets"),
+        ("../../assets/no_image.png", "assets"),
+        ("../../assets/warning.png", "assets"),
+        ("../../assets/folder-yellow.png", "assets"),
     ],
     hiddenimports=[
         "source.paths",
@@ -35,9 +35,10 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
-    name="IsaacMM-Linux.elf",
+    name="IsaacMM-Windows",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -50,15 +51,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=["assets/icon.png"],
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="IsaacMM-Linux",
+    icon=["../../assets/icon.ico"],
 )

@@ -2,16 +2,16 @@
 
 
 a = Analysis(
-    ["main.py"],
-    pathex=[],
+    ["../../main.py"],
+    pathex=["../.."],
     binaries=[],
     datas=[
-        ("masterlist.yaml", "."),
-        ("pyproject.toml", "."),
-        ("assets/icon.icns", "assets"),
-        ("assets/no_image.png", "assets"),
-        ("assets/warning.png", "assets"),
-        ("assets/folder-yellow.png", "assets"),
+        ("../../masterlist.yaml", "."),
+        ("../../pyproject.toml", "."),
+        ("../../assets/icon.png", "assets"),
+        ("../../assets/no_image.png", "assets"),
+        ("../../assets/warning.png", "assets"),
+        ("../../assets/folder-yellow.png", "assets"),
     ],
     hiddenimports=[
         "source.paths",
@@ -37,7 +37,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="IsaacMM",
+    name="IsaacMM-Linux.elf",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -50,7 +50,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=["assets/icon.icns"],
+    icon=["../../assets/icon.png"],
 )
 
 coll = COLLECT(
@@ -60,12 +60,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="IsaacMM",
-)
-
-app = BUNDLE(
-    coll,
-    name="IsaacMM.app",
-    icon="./assets/icon.icns",
-    bundle_identifier="com.isaacmm.app",
+    name="IsaacMM-Linux",
 )

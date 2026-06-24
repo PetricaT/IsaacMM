@@ -12,9 +12,15 @@ if sys.platform == "win32":
 elif sys.platform == "darwin":
     appdata = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
 else:
-    appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
+    xdg_data = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
+    appdata = os.path.join(xdg_data, "IsaacMM")
 
-BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if getattr(sys, "frozen", False):
+    BASE_DIR: str = sys._MEIPASS
+elif os.environ.get("FLATPAK_ID"):
+    BASE_DIR = "/app/share/IsaacMM"
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 version: str = "0.0.0"
 try:

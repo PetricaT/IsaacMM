@@ -1,0 +1,23 @@
+name: Build Flatpak
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: IsaacMM.flatpak
+          manifest-path: packaging/flatpak/io.github.PetricaT.IsaacMM.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+          restore-cache: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak
+          path: IsaacMM.flatpak

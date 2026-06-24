@@ -1,0 +1,49 @@
+id: io.github.PetricaT.IsaacMM
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: "6.9"
+command: isaacmm
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+  - --filesystem=~/.steam
+  - --filesystem=~/.local/share/Steam
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  env:
+    BASEAPP_REMOVE_WEBENGINE: "1"
+    BASEAPP_DISABLE_NUMPY: "1"
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+modules:
+  - name: python-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-build-isolation --prefix=/app toml pyyaml
+
+  - name: isaacmm
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/IsaacMM
+      - cp -r source main.py masterlist.yaml pyproject.toml /app/share/IsaacMM/
+      - cp -r assets /app/share/IsaacMM/assets
+      - install -Dm755 packaging/flatpak/isaacmm.sh /app/bin/isaacmm
+      - install -Dm644 packaging/shared/IsaacMM-flatpak.desktop
+          /app/share/applications/io.github.PetricaT.IsaacMM.desktop
+      - install -Dm644 assets/icon.png
+          /app/share/icons/hicolor/256x256/apps/io.github.PetricaT.IsaacMM.png
+      - install -Dm644 packaging/flatpak/io.github.PetricaT.IsaacMM.metainfo.xml
+          /app/share/metainfo/io.github.PetricaT.IsaacMM.metainfo.xml
+    sources:
+      - type: dir
+        path: ../..

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+cd "$(dirname "$0")/../.."
 
 if [ ! -d .venv ]; then
     uv venv
@@ -12,7 +13,7 @@ VERSION=$(python3 -c "import toml; print(toml.load('pyproject.toml')['project'][
 APPNAME="IsaacMM-${VERSION}"
 APPDIR="${APPNAME}.AppDir"
 
-pyinstaller IsaacMM-Linux.spec
+pyinstaller packaging/appimage/IsaacMM-Linux.spec
 
 # Build AppImage ----------------------------------------------------------
 rm -rf "${APPDIR}"
@@ -27,7 +28,7 @@ exec "${HERE}/usr/bin/IsaacMM-Linux.elf" "$@"
 EOF
 chmod +x "${APPDIR}/AppRun"
 
-cp IsaacMM.desktop "${APPDIR}/"
+cp packaging/shared/IsaacMM-appimage.desktop "${APPDIR}/IsaacMM.desktop"
 cp assets/icon.png "${APPDIR}/IsaacMM.png"
 
 if ! command -v appimagetool &>/dev/null && [ ! -f appimagetool ]; then
