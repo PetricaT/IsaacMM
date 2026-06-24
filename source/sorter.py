@@ -8,12 +8,11 @@ from typing import Callable, Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-import certifi
 import yaml
 
 from . import logger, paths
 
-_ssl_context = ssl.create_default_context(cafile=certifi.where())
+_ssl_context = ssl.create_default_context()
 
 MASTERLIST_URL: str = "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
 CACHE_FILE: str = os.path.join(paths.appdata, "masterlist.yaml")

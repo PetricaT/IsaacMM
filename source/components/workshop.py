@@ -8,11 +8,9 @@ import urllib.request
 from collections import deque
 from typing import Optional
 
-import certifi
-
 from .. import config, logger, paths
 
-_ssl_context = ssl.create_default_context(cafile=certifi.where())
+_ssl_context = ssl.create_default_context()
 
 _WORKSHOP_LIMITER: deque = deque()
 WORKSHOP_RATE_LIMIT: int = 5
