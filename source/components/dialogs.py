@@ -182,6 +182,11 @@ class SettingsDialog(QDialog):
         self.preview_check.toggled.connect(self._save_settings)
         display_layout.addRow(self.preview_check)
 
+        self.animate_anm2_check = QCheckBox("Animate .anm2 preview")
+        self.animate_anm2_check.setChecked(config.animate_anm2_preview)
+        self.animate_anm2_check.toggled.connect(self._save_settings)
+        display_layout.addRow(self.animate_anm2_check)
+
         self.download_icons_check = QCheckBox("Download missing icons from workshop")
         self.download_icons_check.setChecked(config.download_icons)
         self.download_icons_check.toggled.connect(self._save_settings)
@@ -297,6 +302,7 @@ class SettingsDialog(QDialog):
         text = self.backup_path_edit.text().strip()
         config.backup_path = text if text else None
         config.animate_icons = self.animate_check.isChecked()
+        config.animate_anm2_preview = self.animate_anm2_check.isChecked()
         config.preview_images = self.preview_check.isChecked()
         config.download_icons = self.download_icons_check.isChecked()
         config.log_level = self.log_level_combo.currentData()
@@ -316,11 +322,13 @@ class SettingsDialog(QDialog):
                     app.setStyle(style_name)
         if config.mods_path != prev_mods:
             owner_window = self.parent()
-            if owner_window and hasattr(owner_window, 'getModList'):
-                owner_window.getModList()
+            get_mod_list = getattr(owner_window, "getModList", None)
+            if callable(get_mod_list):
+                get_mod_list()
         owner_window = self.parent()
-        if owner_window and hasattr(owner_window, 'log') and config.backup_enabled != prev_backup:
-            owner_window.log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
+        log = getattr(owner_window, "log", None)
+        if callable(log) and config.backup_enabled != prev_backup:
+            log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
         self._update_open_buttons()
         config.save()
 
@@ -328,10 +336,11 @@ class SettingsDialog(QDialog):
         if not config.mods_path:
             return
         owner_window = self.parent()
-        if hasattr(owner_window, '_backup_thread') and owner_window._backup_thread:
+        if getattr(owner_window, '_backup_thread', None):
             return
-        if owner_window and hasattr(owner_window, 'log'):
-            owner_window.log("Running manual backup...")
+        log = getattr(owner_window, 'log', None)
+        if callable(log):
+            log("Running manual backup...")
 
         def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
             i = 0
@@ -363,12 +372,14 @@ class SettingsDialog(QDialog):
                 log_colored = getattr(owner_window, 'log_colored', None)
                 if log_colored:
                     log_colored(segments)
-            if owner_window and hasattr(owner_window, 'log'):
-                owner_window.log("Manual backup complete")
+            log = getattr(owner_window, 'log', None)
+            if callable(log):
+                log("Manual backup complete")
 
         def _on_error(error_msg: str) -> None:
-            if owner_window and hasattr(owner_window, 'log'):
-                owner_window.log(f"Backup failed: {error_msg}", "error")
+            log = getattr(owner_window, 'log', None)
+            if callable(log):
+                log(f"Backup failed: {error_msg}", "error")
 
         thread = WorkerThread(
             backup_all,
@@ -379,6 +390,7 @@ class SettingsDialog(QDialog):
         thread.finished.connect(_on_finished)
         thread.error.connect(_on_error)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: setattr(owner_window, '_backup_thread', None))
-        owner_window._backup_thread = thread
+        if owner_window is not None:
+            thread.finished.connect(lambda: setattr(owner_window, '_backup_thread', None))
+            setattr(owner_window, '_backup_thread', thread)
         thread.start()
