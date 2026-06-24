@@ -310,6 +310,24 @@ class ModInfoPanel(QWidget):
         self._preview_path: str | None = None
         self.tabs.addTab(self.conflicts_tree, "Conflicts")
 
+        self.files_tree = QTreeWidget()
+        self.files_tree.setHeaderLabels(["Name"])
+        self.files_tree.setRootIsDecorated(True)
+        self.files_tree.setAlternatingRowColors(True)
+        current_palette = self.files_tree.palette()
+        base_color = current_palette.color(QPalette.Base)
+        alternate_color = (
+            base_color.lighter(120) if base_color.lightness() < 128
+            else base_color.darker(108)
+        )
+        current_palette.setColor(QPalette.AlternateBase, alternate_color)
+        self.files_tree.setPalette(current_palette)
+        self.files_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.files_tree.itemDoubleClicked.connect(self._open_file)
+        self.files_tree.viewport().installEventFilter(self)
+        self.files_tree.viewport().setMouseTracking(True)
+        self.tabs.addTab(self.files_tree, "Files")
+
         self.folder_label = QPushButton()
         self.folder_label.setFlat(True)
         self.folder_label.setStyleSheet(
@@ -396,6 +414,14 @@ class ModInfoPanel(QWidget):
                 self._populate_file_tree(mod_tree_item, conflict_data["files"], conflict_folder)
                 self.conflicts_tree.addTopLevelItem(mod_tree_item)
             self.conflicts_tree.expandAll()
+
+        self.files_tree.clear()
+        root_item = QTreeWidgetItem([mod_folder])
+        root_item.setIcon(0, self._folder_icon)
+        root_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+        self.files_tree.addTopLevelItem(root_item)
+        self._populate_mod_files(root_item, full_mod_path, "", mod_folder)
+        self.files_tree.expandAll()
 
         try:
             metadata_tree = ET.parse(os.path.join(full_mod_path, "metadata.xml"))
@@ -554,6 +580,46 @@ class ModInfoPanel(QWidget):
 
         add_branches(path_tree, parent_item)
 
+    def _populate_mod_files(self, parent_item, current_path: str, relative_prefix: str, mod_folder: str) -> None:
+        try:
+            entries = sorted(os.listdir(current_path))
+        except OSError:
+            return
+        for entry in entries:
+            full_entry = os.path.join(current_path, entry)
+            rel_path = f"{relative_prefix}/{entry}" if relative_prefix else entry
+            if os.path.isdir(full_entry):
+                dir_item = QTreeWidgetItem([entry])
+                dir_item.setIcon(0, self._folder_icon)
+                dir_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+                parent_item.addChild(dir_item)
+                self._populate_mod_files(dir_item, full_entry, rel_path, mod_folder)
+            else:
+                file_item = QTreeWidgetItem([entry])
+                file_item.setData(0, Qt.UserRole, (mod_folder, rel_path))
+                parent_item.addChild(file_item)
+
+    def _open_file(self, item, column) -> None:
+        data = item.data(0, Qt.UserRole)
+        if not data or not isinstance(data, tuple):
+            return
+        mod_folder, relative_path = data
+        full_path = os.path.join(config.mods_path, mod_folder, relative_path)
+        if not os.path.exists(full_path):
+            logger.log("warning", f"Path does not exist: {full_path}")
+            return
+        ext = os.path.splitext(full_path.lower())[1]
+        if sys.platform == "darwin" and ext in {".png", ".jpg", ".jpeg", ".gif"}:
+            subprocess.Popen(["qlmanage", "-p", full_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        ctrl_pressed = QApplication.keyboardModifiers() & Qt.ControlModifier
+        if ctrl_pressed:
+            if not open_path(os.path.dirname(full_path)):
+                logger.log("error", f"Failed to open folder: {os.path.dirname(full_path)}")
+        else:
+            if not open_path(full_path):
+                logger.log("error", f"Failed to open file: {full_path}")
+
     def save_column_state(self) -> bytes:
         return bytes(self.conflicts_tree.header().saveState())
 
@@ -579,10 +645,15 @@ class ModInfoPanel(QWidget):
                 logger.log("error", f"Failed to open file: {full_path}")
 
     def eventFilter(self, obj, event) -> bool:
+        tree = None
         if obj is self.conflicts_tree.viewport():
+            tree = self.conflicts_tree
+        elif obj is self.files_tree.viewport():
+            tree = self.files_tree
+        if tree is not None:
             if event.type() == QEvent.MouseMove:
                 if config.preview_images:
-                    item = self.conflicts_tree.itemAt(event.pos())
+                    item = tree.itemAt(event.pos())
                     if item and not item.childCount():
                         self._show_preview(item, event.globalPos())
                         return False
