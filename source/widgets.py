@@ -407,7 +407,7 @@ class ModInfoPanel(QWidget):
         if not ws_match:
             return False
         ws_id = ws_match.group(1)
-        cache_dir = os.path.join(paths.appdata, "cache", "icons")
+        cache_dir = os.path.join(paths.cache_dir, "icons")
         cached_path = os.path.join(cache_dir, f"{ws_id}.png")
 
         if os.path.isfile(cached_path):

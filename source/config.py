@@ -26,7 +26,7 @@ def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, animate_icons, preview_images
     global download_icons, workshop_timestamps
     try:
-        config_data = toml.load(f"{paths.appdata}/config.toml")
+        config_data = toml.load(f"{paths.config_dir}/config.toml")
         mods_path = config_data["paths"]["mods"]
         if mods_path == "":
             print("Mods path malformed, check if path is correct")
@@ -47,7 +47,7 @@ def load() -> None:
 
 def _create_default() -> None:
     global mods_path
-    os.makedirs(paths.appdata, exist_ok=True)
+    os.makedirs(paths.config_dir, exist_ok=True)
     detected_path = paths.find_isaac_mods_folder()
     mods_path = detected_path or ""
     sorter.fetch_initial()
@@ -55,7 +55,7 @@ def _create_default() -> None:
         "paths": {"mods": mods_path},
         "settings": {"remove_marks": False, "backup_enabled": False},
     }
-    with open(f"{paths.appdata}/config.toml", "w") as config_file:
+    with open(f"{paths.config_dir}/config.toml", "w") as config_file:
         toml.dump(config_data, config_file)
 
 
@@ -77,6 +77,6 @@ def save() -> None:
             "timestamps": workshop_timestamps,
         },
     }
-    os.makedirs(paths.appdata, exist_ok=True)
-    with open(f"{paths.appdata}/config.toml", "w") as config_file:
+    os.makedirs(paths.config_dir, exist_ok=True)
+    with open(f"{paths.config_dir}/config.toml", "w") as config_file:
         toml.dump(config_data, config_file)

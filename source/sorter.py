@@ -14,7 +14,7 @@ from . import paths
 
 MASTERLIST_URL: str = "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
 CACHE_FILE: str = os.path.join(paths.appdata, "masterlist.yaml")
-USER_RULES_FILE: str = os.path.join(paths.appdata, "user_rules.yaml")
+USER_RULES_FILE: str = os.path.join(paths.config_dir, "user_rules.yaml")
 LAST_ORDER_FILE: str = os.path.join(paths.appdata, "last_order.yaml")
 CACHE_TTL: timedelta = timedelta(hours=24)
 
@@ -46,7 +46,7 @@ def get_masterlist() -> dict:
 def fetch_initial() -> None:
     get_masterlist()
     if not os.path.exists(USER_RULES_FILE):
-        os.makedirs(paths.appdata, exist_ok=True)
+        os.makedirs(paths.config_dir, exist_ok=True)
         with open(USER_RULES_FILE, "w") as rules_file:
             rules_file.write(
                 "# User-defined load order rules\n"
