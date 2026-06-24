@@ -1,6 +1,6 @@
 import os
 import re
-import sys
+import ssl
 import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
@@ -8,9 +8,12 @@ from typing import Any, Callable, Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+import certifi
 import yaml
 
-from . import paths
+from . import logger, paths
+
+_ssl_context = ssl.create_default_context(cafile=certifi.where())
 
 MASTERLIST_URL: str = "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
 CACHE_FILE: str = os.path.join(paths.appdata, "masterlist.yaml")
@@ -74,7 +77,7 @@ def _is_cache_fresh() -> bool:
 def _try_fetch() -> Optional[dict]:
     try:
         request = Request(MASTERLIST_URL, headers={"User-Agent": "IsaacMM/1.0"})
-        with urlopen(request, timeout=10) as response:
+        with urlopen(request, timeout=10, context=_ssl_context) as response:
             raw_content = response.read().decode("utf-8")
         yaml_data = yaml.safe_load(raw_content)
         os.makedirs(paths.appdata, exist_ok=True)
@@ -82,10 +85,10 @@ def _try_fetch() -> Optional[dict]:
             cache_file.write(raw_content)
         return yaml_data
     except URLError:
-        print("[IsaacMM] Warning: no network, cannot fetch latest masterlist", file=sys.stderr)
+        logger.log("warning", "No network, cannot fetch latest masterlist")
         return None
     except (OSError, yaml.YAMLError) as exc:
-        print(f"[IsaacMM] Error loading masterlist: {exc}", file=sys.stderr)
+        logger.log("error", f"Error loading masterlist: {exc}")
         return None
 
 
@@ -112,7 +115,7 @@ def save_last_order(folder_order: list) -> None:
         with open(LAST_ORDER_FILE, "w") as order_file:
             yaml.dump({"ordered_folders": folder_order}, order_file, default_flow_style=False)
     except OSError as exc:
-        print(f"[IsaacMM] Failed to save last order: {exc}", file=sys.stderr)
+        logger.log("error", f"Failed to save last order: {exc}")
 
 
 def load_last_order() -> Optional[list]:
@@ -168,7 +171,7 @@ def _read_tags(mod_path: str) -> list:
         if tags_element is not None:
             return [tag.get("id", "") for tag in tags_element.findall("tag")]
     except Exception as exc:
-        print(f"[IsaacMM] Failed to read tags from {mod_path}: {exc}", file=sys.stderr)
+        logger.log("error", f"Failed to read tags from {mod_path}: {exc}")
     return []
 
 

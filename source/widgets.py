@@ -2,6 +2,7 @@ import html
 import json
 import os
 import re
+import ssl
 import subprocess
 import sys
 import time
@@ -12,6 +13,8 @@ import xml.etree.ElementTree as ET
 from collections import deque
 from pathlib import Path
 from typing import Optional
+
+import certifi
 
 from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QUrl, Signal
 from PySide6.QtGui import (
@@ -33,11 +36,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+_ssl_context = ssl.create_default_context(cafile=certifi.where())
+
 _WORKSHOP_LIMITER: deque = deque()
 WORKSHOP_RATE_LIMIT: int = 5
 WORKSHOP_RATE_WINDOW: int = 1200
 WORKSHOP_RETRY_COOLDOWN: int = 1200
 _failed_workshop_ids: dict[str, float] = {}
+_permanent_failures: set[str] = set()
 
 
 def _init_workshop_limiter() -> None:
@@ -89,15 +95,22 @@ def _fetch_workshop_preview_url(ws_id: str) -> str:
             data=payload,
             headers={"User-Agent": "IsaacMM/1.0"},
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=_ssl_context) as resp:
             result = json.loads(resp.read())
     except (urllib.error.URLError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"workshop {ws_id}: API request failed: {exc}")
 
     details = result.get("response", {}).get("publishedfiledetails", [])
-    if not details or details[0].get("result") != 1:
-        raise RuntimeError(f"workshop {ws_id}: no preview_url in API response")
-    return details[0]["preview_url"]
+    if not details:
+        raise RuntimeError(f"workshop {ws_id}: no publishedfiledetails in API response")
+
+    match details[0].get("result", 0):
+        case 1:
+            return details[0]["preview_url"]
+        case 9:
+            raise FileNotFoundError(f"workshop {ws_id}: file not found (result=9)")
+        case other:
+            raise RuntimeError(f"workshop {ws_id}: API returned result={other} (expected 1)")
 
 
 def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
@@ -110,7 +123,7 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
         req_img = urllib.request.Request(
             preview_url, headers={"User-Agent": "IsaacMM/1.0"}
         )
-        with urllib.request.urlopen(req_img, timeout=10) as resp_img:
+        with urllib.request.urlopen(req_img, timeout=10, context=_ssl_context) as resp_img:
             img_data = resp_img.read()
 
         os.makedirs(os.path.dirname(cached_path), exist_ok=True)
@@ -118,6 +131,9 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
             f.write(img_data)
 
         return ws_id
+    except FileNotFoundError:
+        _permanent_failures.add(ws_id)
+        raise RuntimeError(f"workshop {ws_id}: file not found (permanent)")
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
             now = time.time()
@@ -170,7 +186,7 @@ def open_url(url: str) -> bool:
     else:
         return QDesktopServices.openUrl(QUrl(url))
 
-from . import config, paths
+from . import config, logger, paths
 
 
 def bbcode_to_html(input_text: str) -> str:
@@ -399,7 +415,7 @@ class ModInfoPanel(QWidget):
                 self.tags_box.addItem(tag_item)
 
         except Exception as exc:
-            print(f"[IsaacMM] Failed to load mod description: {exc}", file=sys.stderr)
+            logger.log("error", f"Failed to load mod description: {exc}")
             self.description_text.setHtml("(could not load description)")
 
         self.folder_label.setText(f"Folder: {mod_folder}")
@@ -436,6 +452,8 @@ class ModInfoPanel(QWidget):
                 return True
 
         _prune_failures()
+        if ws_id in _permanent_failures:
+            return False
         last_fail = _failed_workshop_ids.get(ws_id)
         if last_fail is not None:
             return False
@@ -474,18 +492,18 @@ class ModInfoPanel(QWidget):
 
     def _open_link(self, url: QUrl) -> None:
         if not open_url(url.toString()):
-            print(f"[IsaacMM] Failed to open URL: {url}", file=sys.stderr)
+            logger.log("error", f"Failed to open URL: {url}")
 
     def _open_workshop(self) -> None:
         if self._workshop_id:
             url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={self._workshop_id}"
             if not open_url(url):
-                print(f"[IsaacMM] Failed to open workshop page: {url}", file=sys.stderr)
+                logger.log("error", f"Failed to open workshop page: {url}")
 
     def _open_folder(self) -> None:
         if self._mod_path and os.path.isdir(self._mod_path):
             if not open_path(self._mod_path):
-                print(f"[IsaacMM] Failed to open folder: {self._mod_path}", file=sys.stderr)
+                logger.log("error", f"Failed to open folder: {self._mod_path}")
 
     def _populate_file_tree(self, parent_item, file_paths: list, conflict_folder: str) -> None:
         path_tree = {}
@@ -527,15 +545,15 @@ class ModInfoPanel(QWidget):
         conflict_folder, relative_file_path = conflict_data
         full_path = os.path.join(config.mods_path, conflict_folder, relative_file_path)
         if not os.path.exists(full_path):
-            print(f"[IsaacMM] Path does not exist: {full_path}", file=sys.stderr)
+            logger.log("warning", f"Path does not exist: {full_path}")
             return
         ctrl_pressed = QApplication.keyboardModifiers() & Qt.ControlModifier
         if ctrl_pressed:
             if not open_path(os.path.dirname(full_path)):
-                print(f"[IsaacMM] Failed to open folder: {os.path.dirname(full_path)}", file=sys.stderr)
+                logger.log("error", f"Failed to open folder: {os.path.dirname(full_path)}")
         else:
             if not open_path(full_path):
-                print(f"[IsaacMM] Failed to open file: {full_path}", file=sys.stderr)
+                logger.log("error", f"Failed to open file: {full_path}")
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self.conflicts_tree.viewport():

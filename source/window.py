@@ -112,7 +112,7 @@ class SeparatorDialog(QDialog):
         return self._color
 
 
-from . import config, paths, sorter
+from . import config, logger, paths, sorter
 from .backup import get_backup_root
 from .models import FlatDropModel
 from .widgets import ModInfoPanel, _init_workshop_limiter, _workshop_limiter_state, _sync_workshop_limiter, WORKSHOP_RATE_LIMIT
@@ -196,6 +196,20 @@ class SettingsDialog(QDialog):
         display_layout.addRow(self.download_icons_check)
         behavior_layout.addWidget(display_group)
 
+        logging_group = QGroupBox("Logging")
+        logging_layout = QFormLayout(logging_group)
+        self.log_level_combo = QComboBox()
+        self.log_level_combo.addItem("Debug", "debug")
+        self.log_level_combo.addItem("Info", "info")
+        self.log_level_combo.addItem("Warning", "warning")
+        self.log_level_combo.addItem("Error", "error")
+        index = self.log_level_combo.findData(config.log_level)
+        if index >= 0:
+            self.log_level_combo.setCurrentIndex(index)
+        self.log_level_combo.currentIndexChanged.connect(self._save_settings)
+        logging_layout.addRow("Log level:", self.log_level_combo)
+        behavior_layout.addWidget(logging_group)
+
         behavior_layout.addStretch()
         tabs.addTab(behavior_tab, "Behavior")
 
@@ -270,6 +284,7 @@ class SettingsDialog(QDialog):
         config.animate_icons = self.animate_check.isChecked()
         config.preview_images = self.preview_check.isChecked()
         config.download_icons = self.download_icons_check.isChecked()
+        config.log_level = self.log_level_combo.currentData()
         mods_text = self.mods_path_edit.text().strip()
         if mods_text:
             config.mods_path = mods_text
@@ -393,6 +408,7 @@ class DragApp(QWidget):
         self.console.setStyleSheet(
             "background-color: #1e1e1e; color: #d4d4d4; border: 1px solid #333;"
         )
+        logger.set_handler(lambda lvl, msg: self._write_console(msg, lvl))
 
         self.rate_bar = QFrame(self)
         self.rate_bar.setFixedHeight(24)
@@ -589,6 +605,9 @@ class DragApp(QWidget):
         self.getModList()
 
     def log(self, message: str, level: str = "info") -> None:
+        logger.log(level, message)
+
+    def _write_console(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
         level_colors = {"info": "#d4d4d4", "warning": "#ffa500", "error": "#ff4444"}
         log_color = level_colors.get(level, "#d4d4d4")

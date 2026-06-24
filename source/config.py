@@ -16,6 +16,7 @@ animate_icons: bool = True
 preview_images: bool = True
 loaded_mods: list = []
 workshop_timestamps: list[float] = []
+log_level: str = "info"
 
 
 def get_settings() -> QSettings:
@@ -24,12 +25,13 @@ def get_settings() -> QSettings:
 
 def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, animate_icons, preview_images
-    global download_icons, workshop_timestamps
+    global download_icons, workshop_timestamps, log_level
     try:
         config_data = toml.load(f"{paths.config_dir}/config.toml")
         mods_path = config_data["paths"]["mods"]
         if mods_path == "":
-            print("Mods path malformed, check if path is correct")
+            from . import logger
+            logger.log("warning", "Mods path malformed, check if path is correct")
         settings_section = config_data.get("settings", {})
         backup_enabled = settings_section.get("backup_enabled", False)
         backup_path = settings_section.get("backup_path") or None
@@ -37,6 +39,7 @@ def load() -> None:
         animate_icons = settings_section.get("animate_icons", True)
         preview_images = settings_section.get("preview_images", True)
         download_icons = settings_section.get("download_icons", False)
+        log_level = settings_section.get("log_level", "info")
         theme_section = config_data.get("theme", {})
         accent_color = theme_section.get("accent", "#3daee9")
         workshop_section = config_data.get("workshop", {})
@@ -69,6 +72,7 @@ def save() -> None:
             "animate_icons": animate_icons,
             "preview_images": preview_images,
             "download_icons": download_icons,
+            "log_level": log_level,
         },
         "theme": {
             "accent": accent_color,
