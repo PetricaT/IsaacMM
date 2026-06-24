@@ -5,11 +5,10 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import QSettings, Qt, QThread, QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import (
     QBrush,
     QColor,
-    QDesktopServices,
     QFont,
     QPalette,
     QPixmap,
@@ -28,7 +27,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -113,9 +111,11 @@ class SeparatorDialog(QDialog):
 
 
 from . import config, logger, paths, sorter
-from .backup import get_backup_root
+from .backup import backup_all, get_backup_root
 from .models import FlatDropModel
-from .widgets import ModInfoPanel, _init_workshop_limiter, _workshop_limiter_state, _sync_workshop_limiter, WORKSHOP_RATE_LIMIT
+from .widgets import ModInfoPanel, open_path, _init_workshop_limiter, _workshop_limiter_state, _sync_workshop_limiter, WORKSHOP_RATE_LIMIT
+from .worker import WorkerThread
+from .modlist_io import export_modlist_csv, import_modlist_csv
 
 sorted_pattern = re.compile(r"[0-9]{3}\s.*")
 
@@ -144,10 +144,15 @@ class SettingsDialog(QDialog):
         else:
             self.mods_path_edit.setText(config.mods_path)
         self.mods_path_edit.editingFinished.connect(self._save_settings)
+        self.mods_path_edit.textChanged.connect(self._update_open_buttons)
         browse_mods_btn = QPushButton("Browse...")
         browse_mods_btn.clicked.connect(self._pick_mods_path)
+        self.open_mods_btn = QPushButton("\u2197")
+        self.open_mods_btn.setFixedWidth(28)
+        self.open_mods_btn.clicked.connect(self._open_mods_folder)
         mods_path_layout.addWidget(self.mods_path_edit, 1)
         mods_path_layout.addWidget(browse_mods_btn)
+        mods_path_layout.addWidget(self.open_mods_btn)
         setup_layout.addRow("Mods folder:", mods_path_layout)
         behavior_layout.addWidget(setup_group)
 
@@ -164,13 +169,18 @@ class SettingsDialog(QDialog):
         self.backup_path_edit.setPlaceholderText(default_backup)
         self.backup_path_edit.setText(config.backup_path or "")
         self.backup_path_edit.editingFinished.connect(self._save_settings)
+        self.backup_path_edit.textChanged.connect(self._update_open_buttons)
         browse_button = QPushButton("Browse...")
         browse_button.clicked.connect(self._pick_backup_path)
         reset_button = QPushButton("Reset")
         reset_button.clicked.connect(self._reset_path)
+        self.open_backup_btn = QPushButton("\u2197")
+        self.open_backup_btn.setFixedWidth(28)
+        self.open_backup_btn.clicked.connect(self._open_backup_folder)
         backup_path_layout.addWidget(self.backup_path_edit, 1)
         backup_path_layout.addWidget(browse_button)
         backup_path_layout.addWidget(reset_button)
+        backup_path_layout.addWidget(self.open_backup_btn)
         backup_layout.addRow("Backup location:", backup_path_layout)
 
         run_backup_button = QPushButton("Run backup now")
@@ -239,6 +249,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(theme_tab, "Theme")
 
         main_layout.addWidget(tabs)
+        self._update_open_buttons()
 
     def _pick_accent(self) -> None:
         color = QColorDialog.getColor(QColor(config.accent_color), self)
@@ -270,6 +281,32 @@ class SettingsDialog(QDialog):
                 os.makedirs(folder, exist_ok=True)
             self.backup_path_edit.setText(folder)
             self._save_settings()
+
+    def _update_open_buttons(self) -> None:
+        mods_folder = self.mods_path_edit.text().strip()
+        if not mods_folder:
+            mods_folder = paths.find_isaac_mods_folder() or ""
+        self.open_mods_btn.setEnabled(bool(mods_folder) and os.path.isdir(mods_folder))
+
+        backup_folder = self.backup_path_edit.text().strip()
+        if not backup_folder:
+            backup_folder = get_backup_root(config.mods_path) if config.mods_path else ""
+        self.open_backup_btn.setEnabled(bool(backup_folder) and os.path.isdir(backup_folder))
+
+    def _open_mods_folder(self) -> None:
+        folder = self.mods_path_edit.text().strip()
+        if not folder:
+            detected = paths.find_isaac_mods_folder()
+            folder = detected or ""
+        if folder and os.path.isdir(folder):
+            open_path(folder)
+
+    def _open_backup_folder(self) -> None:
+        folder = self.backup_path_edit.text().strip()
+        if not folder:
+            folder = get_backup_root(config.mods_path) if config.mods_path else ""
+        if folder and os.path.isdir(folder):
+            open_path(folder)
 
     def _reset_path(self) -> None:
         self.backup_path_edit.clear()
@@ -306,6 +343,7 @@ class SettingsDialog(QDialog):
         owner_window = self.parent()
         if owner_window and hasattr(owner_window, 'log') and config.backup_enabled != prev_backup:
             owner_window.log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
+        self._update_open_buttons()
         config.save()
 
     def _run_backup(self) -> None:
@@ -316,9 +354,6 @@ class SettingsDialog(QDialog):
             return
         if owner_window and hasattr(owner_window, 'log'):
             owner_window.log("Running manual backup...")
-
-        from .backup import backup_all, get_backup_root
-        from .worker import WorkerThread
 
         def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
             i = 0
@@ -974,8 +1009,6 @@ class DragApp(QWidget):
         if hasattr(self, '_backup_thread') and self._backup_thread:
             return
         self.log("Backing up modified mods...")
-        from .backup import backup_all, get_backup_root
-        from .worker import WorkerThread
 
         thread = WorkerThread(
             backup_all,
@@ -1031,7 +1064,6 @@ class DragApp(QWidget):
                 continue
             items.append((list_item.data(Qt.UserRole), list_item.text()))
         try:
-            from .modlist_io import export_modlist_csv
             count = export_modlist_csv(file_path, items)
             self.log(f"Exported {count} mods to {file_path}")
         except OSError as exception:
@@ -1044,8 +1076,6 @@ class DragApp(QWidget):
         if not file_path:
             return
         try:
-            from .modlist_io import import_modlist_csv
-
             known_mods = {}
             for row_index in range(self.model.rowCount()):
                 list_item = self.model.item(row_index)
@@ -1098,7 +1128,6 @@ class DragApp(QWidget):
             if not os.path.isdir(folder_path):
                 self.log(f"Folder does not exist: {folder_path}", "warning")
                 return
-            from .widgets import open_path
             if not open_path(folder_path):
                 self.log(f"Failed to open folder: {folder_path}", "error")
 

@@ -16,6 +16,7 @@ animate_icons: bool = True
 preview_images: bool = True
 loaded_mods: list = []
 workshop_timestamps: list[float] = []
+dead_workshop_ids: list[str] = []
 log_level: str = "info"
 
 
@@ -25,7 +26,7 @@ def get_settings() -> QSettings:
 
 def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, animate_icons, preview_images
-    global download_icons, workshop_timestamps, log_level
+    global download_icons, workshop_timestamps, dead_workshop_ids, log_level
     try:
         config_data = toml.load(f"{paths.config_dir}/config.toml")
         mods_path = config_data["paths"]["mods"]
@@ -44,6 +45,7 @@ def load() -> None:
         accent_color = theme_section.get("accent", "#3daee9")
         workshop_section = config_data.get("workshop", {})
         workshop_timestamps = workshop_section.get("timestamps", [])
+        dead_workshop_ids = settings_section.get("dead_workshop_ids", [])
     except FileNotFoundError:
         _create_default()
 
@@ -73,6 +75,7 @@ def save() -> None:
             "preview_images": preview_images,
             "download_icons": download_icons,
             "log_level": log_level,
+            "dead_workshop_ids": dead_workshop_ids,
         },
         "theme": {
             "accent": accent_color,

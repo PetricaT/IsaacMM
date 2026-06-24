@@ -52,8 +52,13 @@ Since the addition of the auto-sort, user defined rules are also accepted, and s
 ```
 ### Linux
 ```
-~/.local/share/IsaacMM/user_rules.yaml
+$XDG_CONFIG_HOME/IsaacMM/user_rules.yaml
 ```
+This project respects XDG variables, mainly XDG_DATA_HOME, XDG_CONFIG_HOME & XDG_CACHE_HOME
+
+If **XDG_CONFIG_HOME** is not defined, we fallback to `~/.local/share`)
+
+The cache is saved to **$XDG_CACHE_HOME**, with a fallback to `~/.cache`
 ### MacOS
 ```
 ~/Library/Application Support/IsaacMM/user_rules.yaml
@@ -78,8 +83,6 @@ We use the **steam workshop** ID to identify the mods.
 | Ugly, Unsorted, A mess, 🤢               | Clean, Organized, Pretty, 😎               |
 
 If you're anything like me and use more than 2 mods that change multiple textures, you are bound to encounter overlap. Most of this is solved by merging or renaming mods to be higher/lower on the load order. But this gets annoying, fast. Introduce, this tool, which makes mass-renaming much more easier by doing it in a visual way. 
-
-I am hoping to expand this a bit further, make it more like LOOT with a master-list of predefined rules, but I am not sure if I will ever dedicate that much effort to this project.
 
 ## 3. How it works
 

@@ -1,6 +1,9 @@
 import os
 import shutil
+import sys
 import xml.etree.ElementTree as ET
+
+from . import config, paths
 
 
 def _read_version(mod_folder: str, mods_path: str) -> str:
@@ -55,11 +58,12 @@ def backup_all(
     return results
 
 
-from . import config
 
 
 def get_backup_root(mods_path: str) -> str:
     if config.backup_path:
         return config.backup_path
+    if sys.platform == "darwin":
+        return os.path.join(paths.config_dir, "backup")
     parent_directory = os.path.dirname(os.path.normpath(mods_path))
     return os.path.join(parent_directory, "backup")

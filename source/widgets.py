@@ -11,10 +11,12 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import deque
-from pathlib import Path
 from typing import Optional
 
 import certifi
+
+from . import config, logger, paths
+from .worker import WorkerThread
 
 from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QUrl, Signal
 from PySide6.QtGui import (
@@ -44,6 +46,7 @@ WORKSHOP_RATE_WINDOW: int = 1200
 WORKSHOP_RETRY_COOLDOWN: int = 1200
 _failed_workshop_ids: dict[str, float] = {}
 _permanent_failures: set[str] = set()
+_pending_workshop_ids: set[str] = set()
 
 
 def _init_workshop_limiter() -> None:
@@ -52,6 +55,8 @@ def _init_workshop_limiter() -> None:
     for ts in config.workshop_timestamps:
         if ts >= now - WORKSHOP_RATE_WINDOW:
             _WORKSHOP_LIMITER.append(ts)
+    _permanent_failures.clear()
+    _permanent_failures.update(config.dead_workshop_ids)
 
 
 def _sync_workshop_limiter() -> None:
@@ -133,6 +138,8 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
         return ws_id
     except FileNotFoundError:
         _permanent_failures.add(ws_id)
+        config.dead_workshop_ids = sorted(_permanent_failures)
+        config.save()
         raise RuntimeError(f"workshop {ws_id}: file not found (permanent)")
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
@@ -186,8 +193,6 @@ def open_url(url: str) -> bool:
     else:
         return QDesktopServices.openUrl(QUrl(url))
 
-from . import config, logger, paths
-
 
 def bbcode_to_html(input_text: str) -> str:
     text = html.escape(input_text)
@@ -228,6 +233,8 @@ class ModInfoPanel(QWidget):
         self._movie.setScaledSize(QSize(128, 128))
         self._mod_path: Optional[str] = None
         self._icon_thread = None
+        self._icon_threads: set = set()
+        self.destroyed.connect(self._cleanup_threads, Qt.DirectConnection)
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
         )
@@ -454,11 +461,11 @@ class ModInfoPanel(QWidget):
         _prune_failures()
         if ws_id in _permanent_failures:
             return False
+        if ws_id in _pending_workshop_ids:
+            return False
         last_fail = _failed_workshop_ids.get(ws_id)
         if last_fail is not None:
             return False
-
-        from .worker import WorkerThread
 
         if self._icon_thread is not None:
             try:
@@ -466,8 +473,10 @@ class ModInfoPanel(QWidget):
                 self._icon_thread.error.disconnect()
             except RuntimeError:
                 pass
+            self._icon_thread.quit()
 
         def on_done(_result):
+            _pending_workshop_ids.discard(ws_id)
             loaded = QPixmap(cached_path)
             if not loaded.isNull():
                 self.icon_label.setPixmap(
@@ -475,20 +484,34 @@ class ModInfoPanel(QWidget):
                 )
 
         def on_error(msg: str):
+            _pending_workshop_ids.discard(ws_id)
             _failed_workshop_ids[ws_id] = time.time()
             self.log_message.emit(msg, "warning")
             self._show_placeholder()
 
-        def _clear_thread():
+        thread = WorkerThread(_download_workshop_icon, ws_id, cached_path)
+        _pending_workshop_ids.add(ws_id)
+        thread.finished.connect(on_done)
+        thread.error.connect(on_error)
+        thread.finished.connect(lambda: self._on_thread_done(thread))
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+        self._icon_threads.add(thread)
+        self._icon_thread = thread
+        return False
+
+    def _on_thread_done(self, thread) -> None:
+        self._icon_threads.discard(thread)
+        if self._icon_thread is thread:
             self._icon_thread = None
 
-        self._icon_thread = WorkerThread(_download_workshop_icon, ws_id, cached_path)
-        self._icon_thread.finished.connect(on_done)
-        self._icon_thread.error.connect(on_error)
-        self._icon_thread.finished.connect(_clear_thread)
-        self._icon_thread.finished.connect(self._icon_thread.deleteLater)
-        self._icon_thread.start()
-        return False
+    def _cleanup_threads(self) -> None:
+        for thread in self._icon_threads:
+            thread.quit()
+            thread.wait(5000)
+            thread.deleteLater()
+        self._icon_threads.clear()
+        self._icon_thread = None
 
     def _open_link(self, url: QUrl) -> None:
         if not open_url(url.toString()):
