@@ -7,14 +7,35 @@ STEAM_APPID: int = 250900
 WORKSHOP_ID_RE: re.Pattern = re.compile(r"_(\d+)$")
 
 appdata: str = ""
+config_dir: str = ""
+cache_dir: str = ""
 if sys.platform == "win32":
     appdata = os.path.expanduser("~") + "/AppData/Local/IsaacMM"
+    config_dir = appdata
+    cache_dir = os.path.join(appdata, "cache")
 elif sys.platform == "darwin":
     appdata = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
+    config_dir = appdata
+    cache_dir = os.path.join(appdata, "cache")
 else:
-    appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
+    xdg_data = os.environ.get("XDG_DATA_HOME")
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    if xdg_data or xdg_config or xdg_cache:
+        appdata = os.path.join(xdg_data or os.path.expanduser("~/.local/share"), "IsaacMM")
+        config_dir = os.path.join(xdg_config or os.path.expanduser("~/.config"), "IsaacMM")
+        cache_dir = os.path.join(xdg_cache or os.path.expanduser("~/.cache"), "IsaacMM")
+    else:
+        appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
+        config_dir = appdata
+        cache_dir = os.path.join(appdata, "cache")
 
-BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if getattr(sys, "frozen", False):
+    BASE_DIR: str = sys._MEIPASS
+elif os.environ.get("FLATPAK_ID"):
+    BASE_DIR = "/app/share/IsaacMM"
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 version: str = "0.0.0"
 try:

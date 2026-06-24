@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.PetricaT.IsaacMM</id>
+  <name>IsaacMM</name>
+  <summary>Mod manager for The Binding of Isaac: Rebirth</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>A Qt-based cross-platform mod manager for sorting mods in
+    The Binding of Isaac: Rebirth and its DLCs.</p>
+  </description>
+  <url type="homepage">https://github.com/PetricaT/IsaacMM</url>
+  <url type="bugtracker">https://github.com/PetricaT/IsaacMM/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/PetricaT/IsaacMM/main/assets/demo_window.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="v0.4.3" date="2026-06-23"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

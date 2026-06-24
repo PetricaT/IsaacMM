@@ -5,7 +5,7 @@ import toml
 
 from . import paths
 
-THEMES_DIR: str = os.path.join(paths.appdata, "themes")
+THEMES_DIR: str = os.path.join(paths.config_dir, "themes")
 
 
 def discover_themes() -> List[Dict[str, str]]:

@@ -2,16 +2,16 @@
 
 
 a = Analysis(
-    ["main.py"],
-    pathex=[],
+    ["../../main.py"],
+    pathex=["../.."],
     binaries=[],
     datas=[
-        ("masterlist.yaml", "."),
-        ("pyproject.toml", "."),
-        ("assets/icon.ico", "assets"),
-        ("assets/no_image.png", "assets"),
-        ("assets/warning.png", "assets"),
-        ("assets/folder-yellow.png", "assets"),
+        ("../../masterlist.yaml", "."),
+        ("../../pyproject.toml", "."),
+        ("../../assets/icon.icns", "assets"),
+        ("../../assets/no_image.png", "assets"),
+        ("../../assets/warning.png", "assets"),
+        ("../../assets/folder-yellow.png", "assets"),
     ],
     hiddenimports=[
         "source.paths",
@@ -35,10 +35,9 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
-    name="IsaacMM-Windows",
+    exclude_binaries=True,
+    name="IsaacMM",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -51,5 +50,22 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=["assets\\icon.ico"],
+    icon=["../../assets/icon.icns"],
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="IsaacMM",
+)
+
+app = BUNDLE(
+    coll,
+    name="IsaacMM.app",
+    icon="../../assets/icon.icns",
+    bundle_identifier="io.github.PetricaT.IsaacMM",
 )

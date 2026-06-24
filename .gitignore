@@ -8,6 +8,7 @@ __pycache__/
 
 # MacOS
 .DS_Store
+dmg/
 
 # Distribution / packaging
 .Python
@@ -196,3 +197,9 @@ __marimo__/
 # Linux Build
 appimagetool
 *.AppImage
+*.AppDir
+
+# Flatpak
+build-dir/
+.flatpak-builder/
+*.flatpak
