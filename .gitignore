@@ -8,6 +8,7 @@ __pycache__/
 
 # MacOS
 .DS_Store
+dmg/
 
 # Distribution / packaging
 .Python
