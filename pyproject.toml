@@ -1,6 +1,6 @@
 [project]
 name = "IsaacMM"
-version = "v0.4.4"
+version = "v0.4.5"
 description = "The Binding of Isaac Mod Manager"
 requires-python = ">=3.12"
 dependencies = [
