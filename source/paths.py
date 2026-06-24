@@ -84,9 +84,9 @@ def _resolve_windows_path() -> Optional[str]:
     try:
         import winreg
 
-        registry_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
-        steam_path, _ = winreg.QueryValueEx(registry_key, "SteamPath")
-        winreg.CloseKey(registry_key)
+        registry_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")    # pyright: ignore[reportAttributeAccessIssue]
+        steam_path, _ = winreg.QueryValueEx(registry_key, "SteamPath")                      # pyright: ignore[reportAttributeAccessIssue]
+        winreg.CloseKey(registry_key)                                                       # pyright: ignore[reportAttributeAccessIssue]
         steam_root = _parse_vdf_path(steam_path)
         if steam_root:
             return f"{steam_root}/steamapps/common/The Binding of Isaac Rebirth/mods/"

@@ -4,7 +4,7 @@ import ssl
 import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
