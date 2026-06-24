@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, Qt, QThread, QTimer, QUrl
+from PySide6.QtCore import QSettings, Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -361,10 +361,10 @@ class DragApp(QWidget):
         super().__init__(parent)
 
         self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
-        if config.window_geometry:
-            self.restoreGeometry(
-                QByteArray(config.decode_state(config.window_geometry))
-            )
+        s = config.get_settings()
+        geom = s.value("ui/window_geometry")
+        if geom:
+            self.restoreGeometry(geom)
         else:
             self.resize(1161, 550)
         self.pending_toggles: dict = {}
@@ -376,15 +376,10 @@ class DragApp(QWidget):
         self.initUi()
 
     def closeEvent(self, close_event) -> None:
-        config.window_geometry = config.encode_state(
-            bytes(self.saveGeometry())
-        )
-        config.splitter_state = config.encode_state(
-            bytes(self._splitter.saveState())
-        )
-        config.column_state = config.encode_state(
-            self.modInfoPanel.save_column_state()
-        )
+        s = config.get_settings()
+        s.setValue("ui/window_geometry", self.saveGeometry())
+        s.setValue("ui/splitter_state", self._splitter.saveState())
+        s.setValue("ui/column_state", self.modInfoPanel.conflicts_tree.header().saveState())
         _sync_workshop_limiter()
         config.save()
         super().closeEvent(close_event)
@@ -456,10 +451,10 @@ class DragApp(QWidget):
         horizontal_splitter.addWidget(self.modInfoPanel)
         horizontal_splitter.setStretchFactor(0, 1)
         horizontal_splitter.setStretchFactor(1, 1)
-        if config.splitter_state:
-            horizontal_splitter.restoreState(
-                QByteArray(config.decode_state(config.splitter_state))
-            )
+        s = config.get_settings()
+        splitter_state = s.value("ui/splitter_state")
+        if splitter_state:
+            horizontal_splitter.restoreState(splitter_state)
         self._splitter = horizontal_splitter
         self.baseLayout.addWidget(horizontal_splitter, 1)
 
@@ -473,10 +468,9 @@ class DragApp(QWidget):
             self.on_mod_selected
         )
 
-        if config.column_state:
-            self.modInfoPanel.restore_column_state(
-                config.decode_state(config.column_state)
-            )
+        column_state = s.value("ui/column_state")
+        if column_state:
+            self.modInfoPanel.restore_column_state(column_state)
 
     def modListWidget(self) -> None:
         self.accent_color = self._get_accent_color_hex()

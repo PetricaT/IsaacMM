@@ -1,8 +1,8 @@
-import base64
 import os
 from typing import Optional
 
 import toml
+from PySide6.QtCore import QSettings
 
 from . import paths, sorter
 
@@ -14,16 +14,17 @@ accent_color: str = "#3daee9"
 download_icons: bool = False
 animate_icons: bool = True
 preview_images: bool = True
-splitter_state: Optional[str] = None
-column_state: Optional[str] = None
-window_geometry: Optional[str] = None
 loaded_mods: list = []
 workshop_timestamps: list[float] = []
 
 
+def get_settings() -> QSettings:
+    return QSettings("PetricaT", "IsaacMM")
+
+
 def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, animate_icons, preview_images
-    global splitter_state, column_state, window_geometry, download_icons, workshop_timestamps
+    global download_icons, workshop_timestamps
     try:
         config_data = toml.load(f"{paths.appdata}/config.toml")
         mods_path = config_data["paths"]["mods"]
@@ -38,10 +39,6 @@ def load() -> None:
         download_icons = settings_section.get("download_icons", False)
         theme_section = config_data.get("theme", {})
         accent_color = theme_section.get("accent", "#3daee9")
-        layout_section = config_data.get("layout", {})
-        splitter_state = layout_section.get("splitter_state")
-        column_state = layout_section.get("column_state")
-        window_geometry = layout_section.get("window_geometry")
         workshop_section = config_data.get("workshop", {})
         workshop_timestamps = workshop_section.get("timestamps", [])
     except FileNotFoundError:
@@ -62,14 +59,6 @@ def _create_default() -> None:
         toml.dump(config_data, config_file)
 
 
-def encode_state(state_data: bytes) -> Optional[str]:
-    return base64.b85encode(state_data).decode("ascii") if state_data else None
-
-
-def decode_state(state_string: str) -> Optional[bytes]:
-    return base64.b85decode(state_string.encode("ascii")) if state_string else None
-
-
 def save() -> None:
     config_data = {
         "paths": {"mods": mods_path},
@@ -83,11 +72,6 @@ def save() -> None:
         },
         "theme": {
             "accent": accent_color,
-        },
-        "layout": {
-            "splitter_state": splitter_state,
-            "column_state": column_state,
-            "window_geometry": window_geometry,
         },
         "workshop": {
             "timestamps": workshop_timestamps,

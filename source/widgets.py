@@ -492,9 +492,9 @@ class ModInfoPanel(QWidget):
     def save_column_state(self) -> bytes:
         return bytes(self.conflicts_tree.header().saveState())
 
-    def restore_column_state(self, state_data: bytes) -> None:
+    def restore_column_state(self, state_data: QByteArray) -> None:
         if state_data:
-            self.conflicts_tree.header().restoreState(QByteArray(state_data))
+            self.conflicts_tree.header().restoreState(state_data)
 
     def _open_conflict_file(self, item, tree_column: int) -> None:
         conflict_data = item.data(0, Qt.UserRole)
