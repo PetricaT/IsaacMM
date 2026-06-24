@@ -1,10 +1,12 @@
-import subprocess
 import html
+import json
 import os
-import sys
 import re
+import subprocess
+import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import deque
@@ -34,6 +36,8 @@ from PySide6.QtWidgets import (
 _WORKSHOP_LIMITER: deque = deque()
 WORKSHOP_RATE_LIMIT: int = 5
 WORKSHOP_RATE_WINDOW: int = 1200
+WORKSHOP_RETRY_COOLDOWN: int = 1200
+_failed_workshop_ids: dict[str, float] = {}
 
 
 def _init_workshop_limiter() -> None:
@@ -59,6 +63,13 @@ def _workshop_limiter_state() -> tuple[int, Optional[float]]:
     return count, next_available
 
 
+def _prune_failures() -> None:
+    cutoff = time.time() - WORKSHOP_RETRY_COOLDOWN
+    for ws_id in list(_failed_workshop_ids):
+        if _failed_workshop_ids[ws_id] < cutoff:
+            del _failed_workshop_ids[ws_id]
+
+
 def _check_workshop_rate_limit() -> bool:
     now = time.time()
     while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
@@ -69,31 +80,35 @@ def _check_workshop_rate_limit() -> bool:
     return True
 
 
+def _fetch_workshop_preview_url(ws_id: str) -> str:
+    data = {"itemcount": 1, "publishedfileids[0]": ws_id}
+    payload = urllib.parse.urlencode(data).encode()
+    try:
+        req = urllib.request.Request(
+            "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/",
+            data=payload,
+            headers={"User-Agent": "IsaacMM/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+    except (urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"workshop {ws_id}: API request failed: {exc}")
+
+    details = result.get("response", {}).get("publishedfiledetails", [])
+    if not details or details[0].get("result") != 1:
+        raise RuntimeError(f"workshop {ws_id}: no preview_url in API response")
+    return details[0]["preview_url"]
+
+
 def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
     if not _check_workshop_rate_limit():
         raise RuntimeError("rate_limited")
 
     try:
-        workshop_url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={ws_id}"
-        req = urllib.request.Request(
-            workshop_url, headers={"User-Agent": "IsaacMM/1.0"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            html_content = resp.read().decode("utf-8", errors="replace")
-
-        m = re.search(
-            r"onclick=\"ShowEnlargedImagePreview\(\s*'([^']+)'",
-            html_content,
-        )
-        if not m:
-            raise RuntimeError("no_preview")
-
-        img_url = m.group(1).replace("&amp;", "&")
-        img_url = re.sub(r"imw=\d+", "imw=512", img_url)
-        img_url = re.sub(r"imh=\d+", "imh=512", img_url)
+        preview_url = _fetch_workshop_preview_url(ws_id)
 
         req_img = urllib.request.Request(
-            img_url, headers={"User-Agent": "IsaacMM/1.0"}
+            preview_url, headers={"User-Agent": "IsaacMM/1.0"}
         )
         with urllib.request.urlopen(req_img, timeout=10) as resp_img:
             img_data = resp_img.read()
@@ -109,7 +124,9 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
             for _ in range(WORKSHOP_RATE_LIMIT):
                 _WORKSHOP_LIMITER.append(now)
             raise RuntimeError("rate_limited")
-        raise
+        raise RuntimeError(f"workshop {ws_id}: image download failed: {exc}")
+    except Exception as exc:
+        raise RuntimeError(f"workshop {ws_id}: {exc}")
 
 
 def open_path(path: str) -> bool:
@@ -418,6 +435,11 @@ class ModInfoPanel(QWidget):
                 )
                 return True
 
+        _prune_failures()
+        last_fail = _failed_workshop_ids.get(ws_id)
+        if last_fail is not None:
+            return False
+
         from .worker import WorkerThread
 
         if self._icon_thread is not None:
@@ -434,7 +456,9 @@ class ModInfoPanel(QWidget):
                     loaded.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 )
 
-        def on_error(_msg: str):
+        def on_error(msg: str):
+            _failed_workshop_ids[ws_id] = time.time()
+            self.log_message.emit(msg, "warning")
             self._show_placeholder()
 
         def _clear_thread():
