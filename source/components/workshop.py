@@ -6,7 +6,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import deque
-from typing import Optional
+from typing import Optional, Tuple
 
 from .. import config, logger, paths
 
@@ -14,11 +14,42 @@ _ssl_context = ssl.create_default_context()
 
 _WORKSHOP_LIMITER: deque = deque()
 WORKSHOP_RATE_LIMIT: int = 5
-WORKSHOP_RATE_WINDOW: int = 1200
-WORKSHOP_RETRY_COOLDOWN: int = 1200
+WORKSHOP_RATE_WINDOW: int = 600
+WORKSHOP_RETRY_COOLDOWN: int = 600
 _failed_workshop_ids: dict[str, float] = {}
 _permanent_failures: set[str] = set()
 _pending_workshop_ids: set[str] = set()
+_workshop_queue: deque[tuple[str, str]] = deque()
+
+
+
+def _workshop_queue_length() -> int:
+    return len(_workshop_queue)
+
+
+def _enqueue_workshop(ws_id: str, normalized_name: str) -> bool:
+    for wid, _ in _workshop_queue:
+        if wid == ws_id:
+            return False
+    if ws_id in _pending_workshop_ids:
+        return False
+    _workshop_queue.append((ws_id, normalized_name))
+    return True
+
+
+def _dequeue_workshop() -> Optional[tuple[str, str]]:
+    return _workshop_queue.popleft() if _workshop_queue else None
+
+
+def _discard_from_queue(ws_id: str) -> None:
+    for i, (wid, _) in enumerate(_workshop_queue):
+        if wid == ws_id:
+            del _workshop_queue[i]
+            break
+
+
+def _requeue_workshop(ws_id: str, normalized_name: str) -> None:
+    _workshop_queue.appendleft((ws_id, normalized_name))
 
 
 def _init_workshop_limiter() -> None:

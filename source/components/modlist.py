@@ -25,6 +25,7 @@ from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
 from .dialogs import (
     CONFLICT_ROLE,
+    NORMALIZED_NAME_ROLE,
     OVERWRITTEN_ROLE,
     PREV_CHECK_ROLE,
     SEPARATOR_ROLE,
@@ -35,6 +36,10 @@ from .file_utils import open_path
 
 SEPARATOR_SUFFIX = "_separator"
 sorted_pattern = re.compile(r"[0-9]{3}\s.*")
+
+
+def normalize_mod_name(name: str) -> str:
+    return re.sub(r"^[^a-zA-Z]+", "", name)
 
 
 class ModListPanel(QWidget):
@@ -196,6 +201,7 @@ class ModListPanel(QWidget):
             list_item = self._make_list_item()
             list_item.setText(entry_name)
             list_item.setData(entry_folder, Qt.UserRole)
+            list_item.setData(normalize_mod_name(entry_name), NORMALIZED_NAME_ROLE)
             if entry_folder in separator_map:
                 separator_color = separator_map[entry_folder]
                 list_item.setData(
@@ -585,6 +591,7 @@ class ModListPanel(QWidget):
             list_item = self._make_list_item()
             list_item.setText(entry_name)
             list_item.setData(entry_folder, Qt.UserRole)
+            list_item.setData(normalize_mod_name(entry_name), NORMALIZED_NAME_ROLE)
             if entry_folder in separator_lookup:
                 separator_entry = separator_lookup[entry_folder]
                 list_item.setData(
