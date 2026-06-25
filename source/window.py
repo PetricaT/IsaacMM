@@ -29,6 +29,7 @@ class DragApp(QWidget):
             self.resize(1161, 550)
 
         _init_workshop_limiter()
+        paths.setup_symlinks()
         self.initUi()
 
     def closeEvent(self, close_event) -> None:

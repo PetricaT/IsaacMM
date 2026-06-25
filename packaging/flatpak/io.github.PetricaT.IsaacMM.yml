@@ -29,7 +29,14 @@ modules:
   - name: python-deps
     buildsystem: simple
     build-commands:
-      - pip3 install --no-build-isolation --prefix=/app toml pyyaml
+      - pip3 install --no-build-isolation --no-index --find-links=. --prefix=/app toml pyyaml
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/44/6f/7120676b6d73228c96e17f1f794d8ab046fc910d781c8d151120c3f1569e/toml-0.10.2-py2.py3-none-any.whl
+        sha256: 806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b
+      - type: file
+        url: https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz
+        sha256: d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f
 
   - name: isaacmm
     buildsystem: simple
@@ -39,11 +46,11 @@ modules:
       - cp -r assets /app/share/IsaacMM/assets
       - install -Dm755 packaging/flatpak/isaacmm.sh /app/bin/isaacmm
       - install -Dm644 packaging/shared/IsaacMM-flatpak.desktop
-          /app/share/applications/io.github.PetricaT.IsaacMM.desktop
+        /app/share/applications/io.github.PetricaT.IsaacMM.desktop
       - install -Dm644 assets/icon.png
-          /app/share/icons/hicolor/256x256/apps/io.github.PetricaT.IsaacMM.png
+        /app/share/icons/hicolor/256x256/apps/io.github.PetricaT.IsaacMM.png
       - install -Dm644 packaging/flatpak/io.github.PetricaT.IsaacMM.metainfo.xml
-          /app/share/metainfo/io.github.PetricaT.IsaacMM.metainfo.xml
+        /app/share/metainfo/io.github.PetricaT.IsaacMM.metainfo.xml
     sources:
       - type: dir
         path: ../..

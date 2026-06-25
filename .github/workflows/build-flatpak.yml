@@ -2,6 +2,7 @@ name: Build Flatpak
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     tags:
       - "v*.*.*"
@@ -9,14 +10,19 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.9
+      options: --privileged
     steps:
       - uses: actions/checkout@v4
-      - uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v6
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6.7
         with:
           bundle: IsaacMM.flatpak
           manifest-path: packaging/flatpak/io.github.PetricaT.IsaacMM.yml
           cache-key: flatpak-builder-${{ github.sha }}
-          restore-cache: true
+          run-tests: false
+
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak

@@ -2,12 +2,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-if [ ! -d .venv ]; then
-    uv venv
-fi
-source .venv/bin/activate
-uv pip install -r requirements.txt
-uv pip install pyinstaller
+# if [ ! -d .venv ]; then
+#     uv venv
+# fi
+# source .venv/bin/activate
+# uv pip install -r requirements.txt pyinstaller
+pip install -r requirements.txt pyinstaller
 
 VERSION=$(python3 -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
 APPNAME="IsaacMM-${VERSION}"
@@ -39,7 +39,7 @@ fi
 APPIMAGETOOL=$(command -v appimagetool || echo "./appimagetool")
 
 export ARCH=x86_64
-"${APPIMAGETOOL}" "${APPDIR}" "${APPNAME}-x86_64.AppImage"
+APPIMAGE_EXTRACT_AND_RUN=1 "${APPIMAGETOOL}" "${APPDIR}" "${APPNAME}-x86_64.AppImage"
 
 rm -rf "${APPDIR}"
 echo "Created ${APPNAME}-x86_64.AppImage"

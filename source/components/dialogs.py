@@ -30,6 +30,9 @@ from .file_utils import open_path
 
 CONFLICT_ROLE = Qt.ItemDataRole.UserRole + 1
 SEPARATOR_ROLE = Qt.ItemDataRole.UserRole + 2
+PREV_CHECK_ROLE = Qt.ItemDataRole.UserRole + 3
+OVERWRITTEN_ROLE = Qt.ItemDataRole.UserRole + 4
+NORMALIZED_NAME_ROLE = Qt.ItemDataRole.UserRole + 5
 
 
 class ConflictDelegate(QStyledItemDelegate):
@@ -192,6 +195,19 @@ class SettingsDialog(QDialog):
         self.download_icons_check.toggled.connect(self._save_settings)
         display_layout.addRow(self.download_icons_check)
         behavior_layout.addWidget(display_group)
+
+        paths_group = QGroupBox("Paths")
+        paths_layout = QHBoxLayout(paths_group)
+        self.open_config_btn = QPushButton("Open Config")
+        self.open_config_btn.clicked.connect(lambda: open_path(paths.config_dir))
+        self.open_data_btn = QPushButton("Open Data")
+        self.open_data_btn.clicked.connect(lambda: open_path(paths.appdata))
+        self.open_cache_btn = QPushButton("Open Cache")
+        self.open_cache_btn.clicked.connect(lambda: open_path(paths.cache_dir))
+        paths_layout.addWidget(self.open_config_btn)
+        paths_layout.addWidget(self.open_data_btn)
+        paths_layout.addWidget(self.open_cache_btn)
+        behavior_layout.addWidget(paths_group)
 
         logging_group = QGroupBox("Logging")
         logging_layout = QFormLayout(logging_group)

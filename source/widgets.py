@@ -10,13 +10,19 @@ from .worker import WorkerThread
 from .components.workshop import (
     _prune_failures, _permanent_failures, _pending_workshop_ids,
     _failed_workshop_ids, _download_workshop_icon,
+    _workshop_queue_length, _enqueue_workshop, _dequeue_workshop,
+    _discard_from_queue, _requeue_workshop, _check_workshop_rate_limit,
+    WORKSHOP_RATE_LIMIT,
 )
 from .components.file_utils import open_path, open_url
 from .components.preview import PreviewWidget
 from .components.text_utils import bbcode_to_html
+from .components.modlist import normalize_mod_name
 
-from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QUrl, Signal
-from PySide6.QtGui import QColor, QIcon, QMovie, QPalette, QPixmap
+from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QColor, QIcon, QMovie, QPalette, QPixmap,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -56,6 +62,9 @@ class ModInfoPanel(QWidget):
         self._mod_path: Optional[str] = None
         self._icon_thread = None
         self._icon_threads: set = set()
+        self._icon_queue_timer = QTimer(self)
+        self._icon_queue_timer.setSingleShot(True)
+        self._icon_queue_timer.timeout.connect(self._process_icon_queue)
         self.destroyed.connect(self._cleanup_threads, Qt.DirectConnection)
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
@@ -223,7 +232,7 @@ class ModInfoPanel(QWidget):
                 else:
                     self._show_placeholder()
         else:
-            if not config.download_icons or not self._try_download_icon(mod_folder):
+            if not config.download_icons or not self._try_download_icon(mod_folder, mod_name):
                 self._show_placeholder()
 
         self.conflicts_tree.clear()
@@ -290,11 +299,12 @@ class ModInfoPanel(QWidget):
     def _stop_movie(self) -> None:
         self._movie.stop()
 
-    def _try_download_icon(self, mod_folder: str) -> bool:
+    def _try_download_icon(self, mod_folder: str, mod_name: str = "") -> bool:
         ws_match = paths.WORKSHOP_ID_RE.search(mod_folder)
         if not ws_match:
             return False
         ws_id = ws_match.group(1)
+        normalized_name = normalize_mod_name(mod_name or mod_folder)
         cache_dir = os.path.join(paths.cache_dir, "icons")
         cached_path = os.path.join(cache_dir, f"{ws_id}.png")
 
@@ -309,11 +319,20 @@ class ModInfoPanel(QWidget):
         _prune_failures()
         if ws_id in _permanent_failures:
             return False
-        if ws_id in _pending_workshop_ids:
-            return False
         last_fail = _failed_workshop_ids.get(ws_id)
         if last_fail is not None:
             return False
+
+        if _enqueue_workshop(ws_id, normalized_name):
+            if not self._icon_queue_timer.isActive():
+                self._process_icon_queue()
+        return False
+
+    def _process_icon_queue(self) -> None:
+        item = _dequeue_workshop()
+        if item is None:
+            return
+        ws_id, normalized_name = item
 
         if self._icon_thread is not None:
             try:
@@ -323,6 +342,18 @@ class ModInfoPanel(QWidget):
                 pass
             self._icon_thread.quit()
 
+        if not _check_workshop_rate_limit():
+            _requeue_workshop(ws_id, normalized_name)
+            self._icon_queue_timer.start(5000)
+            return
+
+        self.log_message.emit(
+            f"Downloading thumbnail for: {normalized_name} {ws_id}", "info"
+        )
+
+        cache_dir = os.path.join(paths.cache_dir, "icons")
+        cached_path = os.path.join(cache_dir, f"{ws_id}.png")
+
         def on_done(_result):
             _pending_workshop_ids.discard(ws_id)
             loaded = QPixmap(cached_path)
@@ -330,12 +361,14 @@ class ModInfoPanel(QWidget):
                 self.icon_label.setPixmap(
                     loaded.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 )
+            self._process_icon_queue()
 
         def on_error(msg: str):
             _pending_workshop_ids.discard(ws_id)
             _failed_workshop_ids[ws_id] = time.time()
             self.log_message.emit(msg, "warning")
             self._show_placeholder()
+            self._process_icon_queue()
 
         thread = WorkerThread(_download_workshop_icon, ws_id, cached_path)
         _pending_workshop_ids.add(ws_id)
@@ -346,7 +379,6 @@ class ModInfoPanel(QWidget):
         thread.start()
         self._icon_threads.add(thread)
         self._icon_thread = thread
-        return False
 
     def _on_thread_done(self, thread) -> None:
         self._icon_threads.discard(thread)
@@ -408,6 +440,8 @@ class ModInfoPanel(QWidget):
         except OSError:
             return
         for entry in entries:
+            if entry in config.ignored_items:
+                continue
             full_entry = os.path.join(current_path, entry)
             rel_path = f"{relative_prefix}/{entry}" if relative_prefix else entry
             if os.path.isdir(full_entry):

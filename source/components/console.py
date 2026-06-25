@@ -7,7 +7,7 @@ from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout, QWidget
 
 from .. import logger
-from .workshop import _workshop_limiter_state, WORKSHOP_RATE_LIMIT
+from .workshop import _workshop_limiter_state, _workshop_queue_length, WORKSHOP_RATE_LIMIT
 
 
 class ConsoleWidget(QWidget):
@@ -36,9 +36,12 @@ class ConsoleWidget(QWidget):
         rate_layout.setSpacing(0)
         self.rate_label = QLabel("Workshop: 0/5")
         self.rate_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+        self.queue_label = QLabel("Queued: 0")
+        self.queue_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
         self.rate_timer_label = QLabel("—")
         self.rate_timer_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
         rate_layout.addWidget(self.rate_label)
+        rate_layout.addWidget(self.queue_label)
         rate_layout.addStretch()
         rate_layout.addWidget(self.rate_timer_label)
 
@@ -55,13 +58,15 @@ class ConsoleWidget(QWidget):
 
     def _write_console(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
+        level_prefixes = {"debug": "[DBG]", "info": "[INF]", "warning": "[WRN]", "error": "[ERR]"}
+        prefix = level_prefixes.get(level, "[INF]")
         level_colors = {"info": "#d4d4d4", "warning": "#ffa500", "error": "#ff4444"}
         log_color = level_colors.get(level, "#d4d4d4")
         text_cursor = self.console.textCursor()
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
         char_format = QTextCharFormat()
         char_format.setForeground(QColor(log_color))
-        text_cursor.insertText(f"[{timestamp}] {message}\n", char_format)
+        text_cursor.insertText(f"{prefix} [{timestamp}] {message}\n", char_format)
         self.console.setTextCursor(text_cursor)
         self.console.ensureCursorVisible()
 
@@ -71,7 +76,7 @@ class ConsoleWidget(QWidget):
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
         char_format = QTextCharFormat()
         char_format.setForeground(QColor("#d4d4d4"))
-        text_cursor.insertText(f"[{timestamp}] ", char_format)
+        text_cursor.insertText(f"[INF] [{timestamp}] ", char_format)
         for text, color in segments:
             if color:
                 char_format.setForeground(QColor(color))
@@ -85,6 +90,7 @@ class ConsoleWidget(QWidget):
     def _update_rate_bar(self) -> None:
         count, next_available = _workshop_limiter_state()
         self.rate_label.setText(f"Workshop: {count}/{WORKSHOP_RATE_LIMIT}")
+        self.queue_label.setText(f"Queued: {_workshop_queue_length()}")
         if next_available is not None:
             remaining = int(next_available - time.time())
             if remaining > 0:
