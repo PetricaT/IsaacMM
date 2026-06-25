@@ -238,6 +238,9 @@ class ModListPanel(QWidget):
         self._update_conflict_indicators()
 
     def _update_conflict_indicators(self) -> None:
+        if self._updating_conflicts:
+            return
+        self._updating_conflicts = True
         t0 = time.perf_counter()
 
         for row_index in range(self.model.rowCount()):
@@ -297,6 +300,7 @@ class ModListPanel(QWidget):
             self.log_message.emit(
                 f"Conflict scan: {total_ms:.0f}ms ({self.model.rowCount()} mods)", "debug"
             )
+        self._updating_conflicts = False
 
     def _on_mod_selected(self, selected, deselected) -> None:
         if self._populating:
@@ -423,7 +427,6 @@ class ModListPanel(QWidget):
         if current_state == list_item.data(PREV_CHECK_ROLE):
             return
 
-        self._updating_conflicts = True
         list_item.setData(current_state, PREV_CHECK_ROLE)
         self.pending_toggles[mod_folder] = current_state
         if current_state != Qt.CheckState.Checked:
@@ -453,7 +456,6 @@ class ModListPanel(QWidget):
                             item.setData(None, Qt.ItemDataRole.ForegroundRole)
 
                 self._refresh_selection_conflicts(selected_item)
-        self._updating_conflicts = False
 
     def apply_mod_order(self) -> None:
         self.log_message.emit("Applying sort order...", "info")

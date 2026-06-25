@@ -30,6 +30,22 @@ else:
         config_dir = appdata
         cache_dir = os.path.join(appdata, "cache")
 
+def setup_symlinks() -> None:
+    os.makedirs(appdata, exist_ok=True)
+    if config_dir != appdata and os.path.isdir(config_dir):
+        old_link = os.path.join(appdata, "config")
+        if os.path.islink(old_link):
+            os.unlink(old_link)
+        for entry in os.listdir(config_dir):
+            src = os.path.join(config_dir, entry)
+            dst = os.path.join(appdata, entry)
+            if not os.path.exists(dst) and not os.path.islink(dst):
+                os.symlink(src, dst)
+    if cache_dir != appdata:
+        link = os.path.join(appdata, "cache")
+        if not os.path.islink(link):
+            os.symlink(cache_dir, link)
+
 if getattr(sys, "frozen", False):
     BASE_DIR: str = sys._MEIPASS
 elif os.environ.get("FLATPAK_ID"):
