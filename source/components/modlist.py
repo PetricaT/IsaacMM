@@ -485,6 +485,8 @@ class ModListPanel(QWidget):
         for row_index in range(self.model.rowCount()):
             list_item = self.model.item(row_index)
             mod_folder = list_item.data(Qt.ItemDataRole.UserRole)
+            if mod_folder and sorter.should_preserve_name(mod_folder):
+                continue
             ordered_folders.append(mod_folder)
             if list_item.data(SEPARATOR_ROLE):
                 continue
@@ -542,6 +544,8 @@ class ModListPanel(QWidget):
         for mod_folder in folder_order:
             if mod_folder.endswith(SEPARATOR_SUFFIX):
                 continue
+            if sorter.should_preserve_name(mod_folder):
+                continue
             xml_path = os.path.join(config.mods_path, mod_folder, "metadata.xml")
             if not os.path.exists(xml_path):
                 self.log_message.emit(
@@ -594,6 +598,9 @@ class ModListPanel(QWidget):
         self._mod_files_cache.clear()
 
         ordered_list = list(auto_sorted_mods)
+        blacklisted = [(n, f) for n, f in ordered_list if sorter.should_preserve_name(f)]
+        ordered_list = [(n, f) for n, f in ordered_list if not sorter.should_preserve_name(f)]
+        ordered_list.extend(blacklisted)
         for separator_entry in separators:
             insert_position = min(separator_entry["index"], len(ordered_list))
             ordered_list.insert(

@@ -267,6 +267,16 @@ def _topological_sort(
     return sorted_items
 
 
+def should_preserve_name(folder_name: str) -> bool:
+    ws_id = _extract_workshop_id(folder_name)
+    if ws_id is None:
+        return False
+    masterlist = get_masterlist()
+    mod_lookup, _, _ = _build_mod_lookup(masterlist)
+    entry = mod_lookup.get(ws_id)
+    return bool(entry and entry.get("preserve_name", False))
+
+
 def auto_sort(mod_entries: list, mods_path: str) -> list:
     masterlist = get_masterlist()
     group_priorities = _build_group_index(masterlist)
