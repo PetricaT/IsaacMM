@@ -10,7 +10,7 @@ On the first launch, the mod manager will try and query steam's VDF files to fin
 If the mod manager cannot find it, and your mod list appears empty, please check in settings and select the mod path of your game.
 Once the path is set, you should be able to see the list get populated.
 
-.. TODO: Image here
+::image: https://raw.githubusercontent.com/PetricaT/IsaacMM/refs/heads/main/docs/images/empty_mod_manager_settings_arrow.png
 
 The Mod List
 ------------
@@ -37,7 +37,7 @@ The conflicts tab can show you the exact files which the mod conflicts with.
 
 The files tab will show you the entire folder structure of the actively selected mod.
 
-.. TODO: Image
+::image: https://raw.githubusercontent.com/PetricaT/IsaacMM/refs/heads/main/docs/images/modinfo_conflict_showcase.png
 
 Sorting Mods
 ------------
@@ -57,9 +57,9 @@ If a mod does not ship with its own thumbnail on the workshop, you can enable a 
 these thumbnails from the workshop, and caches them locally. The Steam api is used for this, but I found it to be
 rather fragile, so a Queue & Cooldown mechanism is implemented, which limits how often we try to fetch these elements.
 
-This feature is turned off by default, to prevent accidental abuse and network traffic. You may turn this on in settings
+This feature is turned *off* by default, to prevent accidental abuse and network traffic. You may turn this on in settings
 
-.. TODO: IMAGE HERE
+::image: https://raw.githubusercontent.com/PetricaT/IsaacMM/refs/heads/main/docs/images/settings_download_workshop.png
 
 Conflict Resolution
 -------------------
@@ -79,4 +79,4 @@ a small preview will be shown next to your cursor.
 
 This preview can be turned off from the settings.
 
-.. TODO: IMAGE HERE
+::image: https://raw.githubusercontent.com/PetricaT/IsaacMM/refs/heads/main/docs/images/modinfo_conflict_hover.png

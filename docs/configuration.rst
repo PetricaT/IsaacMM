@@ -37,8 +37,36 @@ Settings Dialog
 Configuration File
 ------------------
 
-.. TODO: Describe config.toml location and format
+The configuration file location differs for each opearting system, but the simplest way to go about this would be to open Settings
+and press the Open Config. Here is an example of the default configuration.
 
 .. code-block:: toml
+    [paths]
+    mods = "~/.local/share/Steam/steamapps/common/The Binding of Isaac Rebirth/mods/"
 
-   # config.toml — IsaacMM configuration
+    [settings]
+    backup_enabled = false
+    theme = "fusion"
+    animate_icons = true
+    animate_anm2_preview = true
+    preview_images = false
+    download_icons = false
+    log_level = "info"
+    dead_workshop_ids = [ ]
+    ignored_items = [ ".git", "__pycache__", "metadata.xml", "disable.it", ".DS_Store", "Thumbs.db", "desktop.ini", ".Trashes", ".Spotlight-V100", "$RECYCLE.BIN", ".directory", "~",]
+
+    [theme]
+    accent = "#3daee9"
+    disabled_mod = "#808080"
+
+    [workshop]
+    timestamps = [ ]
+
+Another interesting configuration file is the user defined auto-sort rules ``user_rules.yaml``.
+
+.. code-block:: yaml
+    rules:
+    #   - id: 1234567890
+    #   after: [9876543210]
+
+Here you can define a mod by it's workshop id, and a before/after which mods you want to place it at when auto-sorting.
