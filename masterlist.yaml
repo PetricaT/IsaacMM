@@ -256,7 +256,6 @@ mods:
   - id: 3406985235
     name: "Dynamic Bomb HUD [REP(+)]"
     group: graphics
-    after: [1978904635]
 
   - id: 3381237554
     name: "Chaos Card QOL [REP(+)]"
