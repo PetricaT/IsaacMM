@@ -410,6 +410,8 @@ class ModInfoPanel(QWidget):
         except OSError:
             return
         for entry in entries:
+            if entry in config.ignored_items:
+                continue
             full_entry = os.path.join(current_path, entry)
             rel_path = f"{relative_prefix}/{entry}" if relative_prefix else entry
             if os.path.isdir(full_entry):

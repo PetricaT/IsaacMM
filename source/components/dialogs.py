@@ -30,6 +30,8 @@ from .file_utils import open_path
 
 CONFLICT_ROLE = Qt.ItemDataRole.UserRole + 1
 SEPARATOR_ROLE = Qt.ItemDataRole.UserRole + 2
+PREV_CHECK_ROLE = Qt.ItemDataRole.UserRole + 3
+OVERWRITTEN_ROLE = Qt.ItemDataRole.UserRole + 4
 
 
 class ConflictDelegate(QStyledItemDelegate):
