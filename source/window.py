@@ -1,3 +1,5 @@
+"""Main application window and entry point."""
+
 from typing import Optional
 
 from PySide6.QtCore import Qt

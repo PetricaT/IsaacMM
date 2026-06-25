@@ -1,3 +1,5 @@
+"""Mod list import/export to CSV."""
+
 import csv
 import re
 from typing import Dict, List, Optional, Tuple

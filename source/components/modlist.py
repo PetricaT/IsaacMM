@@ -1,3 +1,4 @@
+"""Main mod list panel with sorting, toggling, and conflict display."""
 import os
 import re
 import time

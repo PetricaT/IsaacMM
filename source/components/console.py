@@ -1,3 +1,4 @@
+"""Console widget for log output display."""
 import time
 from datetime import datetime
 from typing import Optional

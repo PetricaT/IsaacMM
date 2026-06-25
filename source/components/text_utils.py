@@ -1,3 +1,4 @@
+"""Text processing utilities: BBCode to HTML conversion."""
 import html
 import re
 

@@ -1,3 +1,4 @@
+"""Mod backup and restore functionality."""
 import os
 import shutil
 import sys

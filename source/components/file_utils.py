@@ -1,3 +1,4 @@
+"""File system utilities: opening paths and URLs."""
 import os
 import subprocess
 import sys

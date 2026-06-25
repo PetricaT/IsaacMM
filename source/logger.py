@@ -1,3 +1,4 @@
+"""Logging utilities for the application."""
 import sys
 
 from . import config

@@ -1,3 +1,4 @@
+"""Steam Workshop integration: download icons, rate limiting, queue."""
 import json
 import os
 import ssl

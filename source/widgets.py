@@ -1,3 +1,4 @@
+"""Mod info panel and preview widgets."""
 import os
 import subprocess
 import sys

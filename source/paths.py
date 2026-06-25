@@ -1,3 +1,4 @@
+"""Filesystem path resolution and symlink setup."""
 import os
 import re
 import sys

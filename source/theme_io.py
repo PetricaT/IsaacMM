@@ -1,3 +1,4 @@
+"""Theme loading and saving."""
 import os
 from typing import Dict, List
 

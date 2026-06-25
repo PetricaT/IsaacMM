@@ -1,3 +1,4 @@
+"""Image and .anm2 preview popup widgets."""
 import os
 import xml.etree.ElementTree as ET
 

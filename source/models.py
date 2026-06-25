@@ -1,3 +1,5 @@
+"""Qt data models used by the mod list."""
+
 from PySide6.QtCore import QModelIndex, QPersistentModelIndex, Qt
 from PySide6.QtGui import QStandardItemModel
 

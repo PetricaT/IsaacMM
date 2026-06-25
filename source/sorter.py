@@ -1,3 +1,4 @@
+"""Mod sorting logic: masterlist, auto-sort, topological sort."""
 import os
 import re
 import ssl

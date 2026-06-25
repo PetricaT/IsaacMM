@@ -1,3 +1,5 @@
+"""Generic QThread worker for background tasks."""
+
 from PySide6.QtCore import QThread, Signal
 
 

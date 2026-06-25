@@ -1,3 +1,4 @@
+"""Dialog windows: settings, separator editing, etc."""
 import os
 from typing import Optional
 
@@ -28,11 +29,11 @@ from ..backup import backup_all, get_backup_root
 from ..worker import WorkerThread
 from .file_utils import open_path
 
-CONFLICT_ROLE = Qt.ItemDataRole.UserRole + 1
-SEPARATOR_ROLE = Qt.ItemDataRole.UserRole + 2
-PREV_CHECK_ROLE = Qt.ItemDataRole.UserRole + 3
-OVERWRITTEN_ROLE = Qt.ItemDataRole.UserRole + 4
-NORMALIZED_NAME_ROLE = Qt.ItemDataRole.UserRole + 5
+CONFLICT_ROLE = Qt.ItemDataRole.UserRole + 1  # 257
+SEPARATOR_ROLE = Qt.ItemDataRole.UserRole + 2  # 258
+PREV_CHECK_ROLE = Qt.ItemDataRole.UserRole + 3  # 259
+OVERWRITTEN_ROLE = Qt.ItemDataRole.UserRole + 4  # 260
+NORMALIZED_NAME_ROLE = Qt.ItemDataRole.UserRole + 5  # 261
 
 
 class ConflictDelegate(QStyledItemDelegate):

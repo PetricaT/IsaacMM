@@ -1,3 +1,4 @@
+"""Configuration management: load, save, and provide defaults."""
 import os
 from typing import Optional
 
