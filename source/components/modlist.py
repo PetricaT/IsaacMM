@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
@@ -24,6 +25,7 @@ from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
 from .dialogs import (
     CONFLICT_ROLE,
+    OVERWRITTEN_ROLE,
     PREV_CHECK_ROLE,
     SEPARATOR_ROLE,
     ConflictDelegate,
@@ -236,43 +238,65 @@ class ModListPanel(QWidget):
         self._update_conflict_indicators()
 
     def _update_conflict_indicators(self) -> None:
+        t0 = time.perf_counter()
+
         for row_index in range(self.model.rowCount()):
             list_item = self.model.item(row_index)
             if list_item is None:
                 continue
             list_item.setData(None, CONFLICT_ROLE)
+            list_item.setData(None, OVERWRITTEN_ROLE)
             separator_data = list_item.data(SEPARATOR_ROLE)
             if separator_data:
                 list_item.setBackground(QColor(separator_data["color"]))
                 list_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            elif list_item.checkState() != Qt.CheckState.Checked:
+
+        file_to_mods: dict[str, set[int]] = {}
+        for row_index in range(self.model.rowCount()):
+            list_item = self.model.item(row_index)
+            if list_item is None or list_item.data(SEPARATOR_ROLE) or list_item.checkState() != Qt.CheckState.Checked:
+                continue
+            for f in self._scan_mod_files(list_item.data(Qt.UserRole)):
+                file_to_mods.setdefault(f, set()).add(row_index)
+
+        for row_index in range(self.model.rowCount()):
+            list_item = self.model.item(row_index)
+            if list_item is None or list_item.data(SEPARATOR_ROLE) or list_item.checkState() != Qt.CheckState.Checked:
+                continue
+            for f in self._scan_mod_files(list_item.data(Qt.UserRole)):
+                if len(file_to_mods.get(f, ())) > 1:
+                    list_item.setData(True, CONFLICT_ROLE)
+                    break
+
+        running_files: set[str] = set()
+        for row_index in range(self.model.rowCount()):
+            list_item = self.model.item(row_index)
+            if list_item is None or list_item.data(SEPARATOR_ROLE) or list_item.checkState() != Qt.CheckState.Checked:
+                continue
+            mod_files = self._scan_mod_files(list_item.data(Qt.UserRole))
+            if mod_files and mod_files.issubset(running_files):
+                list_item.setData(True, OVERWRITTEN_ROLE)
+            running_files |= mod_files
+
+        for row_index in range(self.model.rowCount()):
+            list_item = self.model.item(row_index)
+            if list_item is None or list_item.data(SEPARATOR_ROLE):
+                continue
+            if list_item.checkState() != Qt.CheckState.Checked:
                 list_item.setForeground(QColor(config.disabled_mod_color))
+            elif list_item.data(OVERWRITTEN_ROLE):
+                list_item.setForeground(QColor(config.disabled_mod_color))
+                font = list_item.font()
+                font.setItalic(True)
+                list_item.setFont(font)
             else:
                 list_item.setData(None, Qt.ItemDataRole.ForegroundRole)
 
-        for first_index in range(self.model.rowCount()):
-            first_item = self.model.item(first_index)
-            if (
-                first_item is None
-                or first_item.data(SEPARATOR_ROLE)
-                or first_item.checkState() != Qt.CheckState.Checked
-            ):
-                continue
-            for second_index in range(first_index + 1, self.model.rowCount()):
-                second_item = self.model.item(second_index)
-                if (
-                    second_item is None
-                    or second_item.data(SEPARATOR_ROLE)
-                    or second_item.checkState() != Qt.CheckState.Checked
-                ):
-                    continue
-                common_files = self._scan_mod_files(
-                    first_item.data(Qt.UserRole)
-                ) & self._scan_mod_files(second_item.data(Qt.UserRole))
-                if not common_files:
-                    continue
-                first_item.setData(True, CONFLICT_ROLE)
-                second_item.setData(True, CONFLICT_ROLE)
+        total_ms = (time.perf_counter() - t0) * 1000
+        if total_ms > 5 and config.log_level == "debug":
+            self.log_message.emit(
+                f"Conflict scan: {total_ms:.0f}ms ({self.model.rowCount()} mods)", "debug"
+            )
 
     def _on_mod_selected(self, selected, deselected) -> None:
         if self._populating:
@@ -289,6 +313,11 @@ class ModListPanel(QWidget):
                 list_item.setBackground(QBrush())
                 if list_item.checkState() != Qt.CheckState.Checked:
                     list_item.setForeground(QColor(config.disabled_mod_color))
+                elif list_item.data(OVERWRITTEN_ROLE):
+                    list_item.setForeground(QColor(config.disabled_mod_color))
+                    font = list_item.font()
+                    font.setItalic(True)
+                    list_item.setFont(font)
                 else:
                     list_item.setData(None, Qt.ItemDataRole.ForegroundRole)
 
@@ -415,6 +444,11 @@ class ModListPanel(QWidget):
                         item.setBackground(QBrush())
                         if item.checkState() != Qt.CheckState.Checked:
                             item.setForeground(QColor(config.disabled_mod_color))
+                        elif item.data(OVERWRITTEN_ROLE):
+                            item.setForeground(QColor(config.disabled_mod_color))
+                            font = item.font()
+                            font.setItalic(True)
+                            item.setFont(font)
                         else:
                             item.setData(None, Qt.ItemDataRole.ForegroundRole)
 
