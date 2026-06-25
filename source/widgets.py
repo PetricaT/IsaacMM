@@ -5,7 +5,7 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QByteArray, QEvent, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QIcon,

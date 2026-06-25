@@ -12,15 +12,20 @@ def open_path(path: str) -> bool:
         env.pop("LD_LIBRARY_PATH", None)
         env.pop("APPDIR", None)
         env.pop("APPIMAGE", None)
-        proc = subprocess.Popen(["xdg-open", path], env=env,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(
+            ["xdg-open", path],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         proc.communicate(timeout=5)
         if proc.returncode != 0:
             return False
         return True
     elif sys.platform == "darwin":
-        proc = subprocess.Popen(["open", path],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(
+            ["open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         proc.communicate(timeout=5)
         return proc.returncode == 0
     else:
@@ -33,15 +38,20 @@ def open_url(url: str) -> bool:
         env.pop("LD_LIBRARY_PATH", None)
         env.pop("APPDIR", None)
         env.pop("APPIMAGE", None)
-        proc = subprocess.Popen(["xdg-open", url], env=env,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(
+            ["xdg-open", url],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         proc.communicate(timeout=5)
         if proc.returncode != 0:
             return False
         return True
     elif sys.platform == "darwin":
-        proc = subprocess.Popen(["open", url],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(
+            ["open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         proc.communicate(timeout=5)
         return proc.returncode == 0
     else:

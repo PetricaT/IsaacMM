@@ -10,7 +10,9 @@ from .. import config
 
 class PreviewWidget(QLabel):
     def __init__(self, parent=None):
-        super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        super().__init__(
+            parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
+        )
         self.setStyleSheet("border: 1px solid #888; background: #fff; padding: 2px;")
         self.hide()
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -75,10 +77,14 @@ class PreviewWidget(QLabel):
             try:
                 tree = ET.parse(file_path)
                 ss = tree.getroot().find(".//Spritesheet")
-                sprite_path = ss.get("Path", "").replace("\\", "/") if ss is not None else None
+                sprite_path = (
+                    ss.get("Path", "").replace("\\", "/") if ss is not None else None
+                )
                 if not sprite_path:
                     return False
-                resolved = self._resolve_spritesheet(os.path.dirname(file_path), sprite_path)
+                resolved = self._resolve_spritesheet(
+                    os.path.dirname(file_path), sprite_path
+                )
                 if not resolved:
                     return False
                 file_path = resolved
@@ -89,7 +95,12 @@ class PreviewWidget(QLabel):
             pix = QPixmap(file_path)
             if pix.isNull():
                 return False
-            scaled = pix.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation)
+            scaled = pix.scaled(
+                200,
+                200,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.FastTransformation,
+            )
             self.setPixmap(scaled)
             self.adjustSize()
             self._path = file_path
@@ -118,7 +129,9 @@ class PreviewWidget(QLabel):
 
             layer_sprite: dict[int, str] = {}
             for layer in root.findall(".//Content/Layers/Layer"):
-                layer_sprite[int(layer.get("Id", "0"))] = layer.get("SpritesheetId", "0")
+                layer_sprite[int(layer.get("Id", "0"))] = layer.get(
+                    "SpritesheetId", "0"
+                )
 
             anims = root.findall(".//Animations/Animation")
             if not anims:
@@ -151,7 +164,11 @@ class PreviewWidget(QLabel):
                 )
 
                 for i in range(max_frames):
-                    rf = root_frames[min(i, len(root_frames) - 1)] if root_frames else None
+                    rf = (
+                        root_frames[min(i, len(root_frames) - 1)]
+                        if root_frames
+                        else None
+                    )
                     if rf is not None and rf.get("Visible", "true").lower() == "false":
                         continue
                     root_x = int(rf.get("XPosition", "0")) if rf is not None else 0
@@ -233,7 +250,10 @@ class PreviewWidget(QLabel):
 
             self._anm2_index = 0
             scaled = self._anm2_frames[0].scaled(
-                200, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation
+                200,
+                200,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.FastTransformation,
             )
             self.setPixmap(scaled)
             self.adjustSize()
@@ -250,7 +270,10 @@ class PreviewWidget(QLabel):
             return
         self._anm2_index = (self._anm2_index + 1) % len(self._anm2_frames)
         scaled = self._anm2_frames[self._anm2_index].scaled(
-            200, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation
+            200,
+            200,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.FastTransformation,
         )
         self.setPixmap(scaled)
         self.adjustSize()

@@ -12,8 +12,12 @@ def _read_version(mod_folder: str, mods_path: str) -> str:
         tree = ET.parse(xml_path)
         root = tree.getroot()
         version_el = root.find("version")
-        return version_el.text.strip() if version_el is not None and version_el.text else "?"
-    except (ET.ParseError, FileNotFoundError, AttributeError):
+        return (
+            version_el.text.strip()
+            if version_el is not None and version_el.text
+            else "?"
+        )
+    except ET.ParseError, FileNotFoundError, AttributeError:
         return "?"
 
 
@@ -38,7 +42,7 @@ def backup_mod(mod_folder: str, mods_path: str, backup_root: str) -> None:
         full_mod_path,
         backup_mod_path,
         dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns('.git', '__pycache__', '.DS_Store', 'Thumbs.db'),
+        ignore=shutil.ignore_patterns(".git", "__pycache__", ".DS_Store", "Thumbs.db"),
     )
 
 
@@ -56,8 +60,6 @@ def backup_all(
             new_version = _read_version(mod_folder, mods_path)
             results.append((mod_name, old_version, new_version))
     return results
-
-
 
 
 def get_backup_root(mods_path: str) -> str:

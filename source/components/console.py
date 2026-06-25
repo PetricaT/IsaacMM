@@ -4,10 +4,21 @@ from typing import Optional
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .. import logger
-from .workshop import _workshop_limiter_state, _workshop_queue_length, WORKSHOP_RATE_LIMIT
+from .workshop import (
+    _workshop_limiter_state,
+    _workshop_queue_length,
+    WORKSHOP_RATE_LIMIT,
+)
 
 
 class ConsoleWidget(QWidget):
@@ -58,7 +69,12 @@ class ConsoleWidget(QWidget):
 
     def _write_console(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
-        level_prefixes = {"debug": "[DBG]", "info": "[INF]", "warning": "[WRN]", "error": "[ERR]"}
+        level_prefixes = {
+            "debug": "[DBG]",
+            "info": "[INF]",
+            "warning": "[WRN]",
+            "error": "[ERR]",
+        }
         prefix = level_prefixes.get(level, "[INF]")
         level_colors = {"info": "#d4d4d4", "warning": "#ffa500", "error": "#ff4444"}
         log_color = level_colors.get(level, "#d4d4d4")

@@ -46,7 +46,8 @@ class ConflictDelegate(QStyledItemDelegate):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            if not warning_pixmap.isNull() else None
+            if not warning_pixmap.isNull()
+            else None
         )
 
     def paint(self, painter, option, index) -> None:
@@ -63,7 +64,11 @@ class ConflictDelegate(QStyledItemDelegate):
 
 class SeparatorDialog(QDialog):
     def __init__(
-        self, title: str, name: str = "", color: str = "#888888", parent: Optional[QWidget] = None
+        self,
+        title: str,
+        name: str = "",
+        color: str = "#888888",
+        parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -123,7 +128,9 @@ class SettingsDialog(QDialog):
         mods_path_layout = QHBoxLayout()
         self.mods_path_edit = QLineEdit()
         detected_mods = paths.find_isaac_mods_folder() or ""
-        self.mods_path_edit.setPlaceholderText(detected_mods if detected_mods else "(not set)")
+        self.mods_path_edit.setPlaceholderText(
+            detected_mods if detected_mods else "(not set)"
+        )
         if config.mods_path == detected_mods or not config.mods_path:
             self.mods_path_edit.setText("")
         else:
@@ -266,7 +273,11 @@ class SettingsDialog(QDialog):
                     update_style(color.name())
 
     def _pick_mods_path(self) -> None:
-        starting = config.mods_path if config.mods_path and os.path.isdir(config.mods_path) else ""
+        starting = (
+            config.mods_path
+            if config.mods_path and os.path.isdir(config.mods_path)
+            else ""
+        )
         folder = QFileDialog.getExistingDirectory(self, "Select Mods Folder", starting)
         if folder:
             self.mods_path_edit.setText(folder)
@@ -289,8 +300,12 @@ class SettingsDialog(QDialog):
 
         backup_folder = self.backup_path_edit.text().strip()
         if not backup_folder:
-            backup_folder = get_backup_root(config.mods_path) if config.mods_path else ""
-        self.open_backup_btn.setEnabled(bool(backup_folder) and os.path.isdir(backup_folder))
+            backup_folder = (
+                get_backup_root(config.mods_path) if config.mods_path else ""
+            )
+        self.open_backup_btn.setEnabled(
+            bool(backup_folder) and os.path.isdir(backup_folder)
+        )
 
     def _open_mods_folder(self) -> None:
         folder = self.mods_path_edit.text().strip()
@@ -333,7 +348,11 @@ class SettingsDialog(QDialog):
             config.theme = new_theme
             app = QApplication.instance()
             if app:
-                style_name = getattr(config, "_native_style", None) if new_theme == "native" else new_theme
+                style_name = (
+                    getattr(config, "_native_style", None)
+                    if new_theme == "native"
+                    else new_theme
+                )
                 if style_name:
                     app.setStyle(style_name)
         if config.mods_path != prev_mods:
@@ -352,9 +371,9 @@ class SettingsDialog(QDialog):
         if not config.mods_path:
             return
         owner_window = self.parent()
-        if getattr(owner_window, '_backup_thread', None):
+        if getattr(owner_window, "_backup_thread", None):
             return
-        log = getattr(owner_window, 'log', None)
+        log = getattr(owner_window, "log", None)
         if callable(log):
             log("Running manual backup...")
 
@@ -377,7 +396,7 @@ class SettingsDialog(QDialog):
         def _on_finished(results: list[tuple[str, str, str]]) -> None:
             for mod_name, old_ver, new_ver in results:
                 if old_ver == "?":
-                    log_colored = getattr(owner_window, 'log_colored', None)
+                    log_colored = getattr(owner_window, "log_colored", None)
                     if log_colored:
                         log_colored([("Added: ", None), (mod_name, "#65A665")])
                     continue
@@ -385,15 +404,15 @@ class SettingsDialog(QDialog):
                     continue
                 segments = [(f"{mod_name}: ", None)]
                 segments.extend(_colorize(old_ver, new_ver))
-                log_colored = getattr(owner_window, 'log_colored', None)
+                log_colored = getattr(owner_window, "log_colored", None)
                 if log_colored:
                     log_colored(segments)
-            log = getattr(owner_window, 'log', None)
+            log = getattr(owner_window, "log", None)
             if callable(log):
                 log("Manual backup complete")
 
         def _on_error(error_msg: str) -> None:
-            log = getattr(owner_window, 'log', None)
+            log = getattr(owner_window, "log", None)
             if callable(log):
                 log(f"Backup failed: {error_msg}", "error")
 
@@ -407,6 +426,8 @@ class SettingsDialog(QDialog):
         thread.error.connect(_on_error)
         thread.finished.connect(thread.deleteLater)
         if owner_window is not None:
-            thread.finished.connect(lambda: setattr(owner_window, '_backup_thread', None))
-            setattr(owner_window, '_backup_thread', thread)
+            thread.finished.connect(
+                lambda: setattr(owner_window, "_backup_thread", None)
+            )
+            setattr(owner_window, "_backup_thread", thread)
         thread.start()

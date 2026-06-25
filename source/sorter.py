@@ -14,7 +14,9 @@ from . import logger, paths
 
 _ssl_context = ssl.create_default_context()
 
-MASTERLIST_URL: str = "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
+MASTERLIST_URL: str = (
+    "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
+)
 CACHE_FILE: str = os.path.join(paths.appdata, "masterlist.yaml")
 USER_RULES_FILE: str = os.path.join(paths.config_dir, "user_rules.yaml")
 LAST_ORDER_FILE: str = os.path.join(paths.appdata, "last_order.yaml")
@@ -95,7 +97,7 @@ def _try_cache() -> Optional[dict]:
     try:
         with open(CACHE_FILE) as cache_file:
             return yaml.safe_load(cache_file)
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return None
 
 
@@ -104,7 +106,7 @@ def _try_bundled() -> Optional[dict]:
     try:
         with open(bundled_path) as bundled_file:
             return yaml.safe_load(bundled_file)
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return None
 
 
@@ -112,7 +114,9 @@ def save_last_order(folder_order: list) -> None:
     try:
         os.makedirs(paths.appdata, exist_ok=True)
         with open(LAST_ORDER_FILE, "w") as order_file:
-            yaml.dump({"ordered_folders": folder_order}, order_file, default_flow_style=False)
+            yaml.dump(
+                {"ordered_folders": folder_order}, order_file, default_flow_style=False
+            )
     except OSError as exc:
         logger.log("error", f"Failed to save last order: {exc}")
 
@@ -122,7 +126,7 @@ def load_last_order() -> Optional[list]:
         with open(LAST_ORDER_FILE) as order_file:
             yaml_data = yaml.safe_load(order_file)
             return yaml_data.get("ordered_folders") if yaml_data else None
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return None
 
 
@@ -131,7 +135,7 @@ def _load_user_rules() -> list:
         with open(USER_RULES_FILE) as rules_file:
             yaml_data = yaml.safe_load(rules_file)
             return yaml_data.get("rules", []) if yaml_data else []
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return []
 
 
@@ -187,7 +191,9 @@ def _build_mod_lookup(masterlist: dict) -> tuple[dict, list, list]:
             if mod_entry["id"] not in mod_lookup:
                 mod_lookup[mod_entry["id"]] = mod_entry
         if "pattern" in mod_entry:
-            pattern_entries.append((re.compile(mod_entry["pattern"], re.IGNORECASE), mod_entry))
+            pattern_entries.append(
+                (re.compile(mod_entry["pattern"], re.IGNORECASE), mod_entry)
+            )
         if "tag" in mod_entry:
             tag_entries.append((mod_entry["tag"], mod_entry))
     return mod_lookup, pattern_entries, tag_entries
@@ -273,7 +279,14 @@ def auto_sort(mod_entries: list, mods_path: str) -> list:
     classified_mods = []
     for mod_name, mod_folder in mod_entries:
         full_mod_path = os.path.join(mods_path, mod_folder)
-        matched_entry = _match_mod(mod_folder, full_mod_path, mod_name, mod_lookup, pattern_entries, tag_entries)
+        matched_entry = _match_mod(
+            mod_folder,
+            full_mod_path,
+            mod_name,
+            mod_lookup,
+            pattern_entries,
+            tag_entries,
+        )
         group_name = matched_entry["group"] if matched_entry else "unknown"
         classified_mods.append((mod_name, mod_folder, group_name, matched_entry))
 
@@ -281,7 +294,9 @@ def auto_sort(mod_entries: list, mods_path: str) -> list:
     for mod_name, mod_folder, group_name, matched_entry in classified_mods:
         groups[group_name].append((mod_name, mod_folder, matched_entry))
 
-    sorted_groups = sorted(groups.items(), key=lambda group_item: group_priorities.get(group_item[0], 99))
+    sorted_groups = sorted(
+        groups.items(), key=lambda group_item: group_priorities.get(group_item[0], 99)
+    )
 
     result: list = []
     for group_name, group_mods in sorted_groups:
@@ -304,7 +319,9 @@ def auto_sort(mod_entries: list, mods_path: str) -> list:
                 return [("id", dependency) for dependency in matched_entry["before"]]
             return []
 
-        sorted_items = _topological_sort(group_mods, key_function, before_function, after_function)
+        sorted_items = _topological_sort(
+            group_mods, key_function, before_function, after_function
+        )
         result.extend([(item[0], item[1]) for item in sorted_items])
 
     return result

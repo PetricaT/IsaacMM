@@ -3,7 +3,7 @@ import sys
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from source import config, paths
+from source import config
 from source.window import DragApp
 
 if __name__ == "__main__":

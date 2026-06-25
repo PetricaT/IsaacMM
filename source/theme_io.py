@@ -22,11 +22,13 @@ def discover_themes() -> List[Dict[str, str]]:
             name = info.get("name", entry[:-5])
             accent = theme.get("accent", "")
             if accent:
-                themes.append({
-                    "name": name,
-                    "accent": accent,
-                    "file": entry,
-                })
+                themes.append(
+                    {
+                        "name": name,
+                        "accent": accent,
+                        "file": entry,
+                    }
+                )
         except Exception:
             pass
     return themes

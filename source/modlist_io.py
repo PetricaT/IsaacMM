@@ -18,7 +18,8 @@ def export_modlist_csv(file_path: str, items: List[Tuple[str, str]]) -> int:
             workshop_id = _extract_workshop_id(folder_name) or ""
             workshop_link = (
                 f"https://steamcommunity.com/sharedfiles/filedetails/?id={workshop_id}"
-                if workshop_id else "DEV_NON_STEAM"
+                if workshop_id
+                else "DEV_NON_STEAM"
             )
             writer.writerow([sort_index, workshop_id, display_name, workshop_link])
     return len(items)

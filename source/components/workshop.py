@@ -22,7 +22,6 @@ _pending_workshop_ids: set[str] = set()
 _workshop_queue: deque[tuple[str, str]] = deque()
 
 
-
 def _workshop_queue_length() -> int:
     return len(_workshop_queue)
 
@@ -116,12 +115,16 @@ def _fetch_workshop_preview_url(ws_id: str) -> str:
         case 1:
             preview_url = details[0]["preview_url"]
             if not preview_url:
-                raise RuntimeError(f"workshop {ws_id}: empty preview_url in API response")
+                raise RuntimeError(
+                    f"workshop {ws_id}: empty preview_url in API response"
+                )
             return preview_url
         case 9:
             raise FileNotFoundError(f"workshop {ws_id}: file not found (result=9)")
         case other:
-            raise RuntimeError(f"workshop {ws_id}: API returned result={other} (expected 1)")
+            raise RuntimeError(
+                f"workshop {ws_id}: API returned result={other} (expected 1)"
+            )
 
 
 def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
@@ -134,7 +137,9 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
         req_img = urllib.request.Request(
             preview_url, headers={"User-Agent": "IsaacMM/1.0"}
         )
-        with urllib.request.urlopen(req_img, timeout=10, context=_ssl_context) as resp_img:
+        with urllib.request.urlopen(
+            req_img, timeout=10, context=_ssl_context
+        ) as resp_img:
             img_data = resp_img.read()
             content_type = resp_img.headers.get("Content-Type", "")
 

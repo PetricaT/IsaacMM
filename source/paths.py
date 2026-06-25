@@ -22,13 +22,18 @@ else:
     xdg_config = os.environ.get("XDG_CONFIG_HOME")
     xdg_cache = os.environ.get("XDG_CACHE_HOME")
     if xdg_data or xdg_config or xdg_cache:
-        appdata = os.path.join(xdg_data or os.path.expanduser("~/.local/share"), "IsaacMM")
-        config_dir = os.path.join(xdg_config or os.path.expanduser("~/.config"), "IsaacMM")
+        appdata = os.path.join(
+            xdg_data or os.path.expanduser("~/.local/share"), "IsaacMM"
+        )
+        config_dir = os.path.join(
+            xdg_config or os.path.expanduser("~/.config"), "IsaacMM"
+        )
         cache_dir = os.path.join(xdg_cache or os.path.expanduser("~/.cache"), "IsaacMM")
     else:
         appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
         config_dir = appdata
         cache_dir = os.path.join(appdata, "cache")
+
 
 def setup_symlinks() -> None:
     os.makedirs(appdata, exist_ok=True)
@@ -45,6 +50,7 @@ def setup_symlinks() -> None:
         link = os.path.join(appdata, "cache")
         if not os.path.islink(link):
             os.symlink(cache_dir, link)
+
 
 if getattr(sys, "frozen", False):
     BASE_DIR: str = sys._MEIPASS
@@ -91,7 +97,7 @@ def _parse_vdf_path(steam_path: str) -> Optional[str]:
                     )
                     if os.path.exists(candidate_path):
                         return game_root_path
-    except (FileNotFoundError, IndexError):
+    except FileNotFoundError, IndexError:
         pass
     return None
 
@@ -100,9 +106,13 @@ def _resolve_windows_path() -> Optional[str]:
     try:
         import winreg
 
-        registry_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")    # pyright: ignore[reportAttributeAccessIssue]
-        steam_path, _ = winreg.QueryValueEx(registry_key, "SteamPath")                      # pyright: ignore[reportAttributeAccessIssue]
-        winreg.CloseKey(registry_key)                                                       # pyright: ignore[reportAttributeAccessIssue]
+        registry_key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"
+        )  # pyright: ignore[reportAttributeAccessIssue]
+        steam_path, _ = winreg.QueryValueEx(
+            registry_key, "SteamPath"
+        )  # pyright: ignore[reportAttributeAccessIssue]
+        winreg.CloseKey(registry_key)  # pyright: ignore[reportAttributeAccessIssue]
         steam_root = _parse_vdf_path(steam_path)
         if steam_root:
             return f"{steam_root}/steamapps/common/The Binding of Isaac Rebirth/mods/"

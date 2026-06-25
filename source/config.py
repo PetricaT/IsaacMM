@@ -21,11 +21,18 @@ workshop_timestamps: list[float] = []
 dead_workshop_ids: list[str] = []
 log_level: str = "info"
 ignored_items: list[str] = [
-    '.git', '__pycache__',
-    'metadata.xml', 'disable.it',
-    '.DS_Store', 'Thumbs.db', 'desktop.ini',
-    '.Trashes', '.Spotlight-V100', '$RECYCLE.BIN',
-    '.directory', '~',
+    ".git",
+    "__pycache__",
+    "metadata.xml",
+    "disable.it",
+    ".DS_Store",
+    "Thumbs.db",
+    "desktop.ini",
+    ".Trashes",
+    ".Spotlight-V100",
+    "$RECYCLE.BIN",
+    ".directory",
+    "~",
 ]
 
 
@@ -41,6 +48,7 @@ def load() -> None:
         mods_path = config_data["paths"]["mods"]
         if mods_path == "":
             from . import logger
+
             logger.log("warning", "Mods path malformed, check if path is correct")
         settings_section = config_data.get("settings", {})
         backup_enabled = settings_section.get("backup_enabled", False)
@@ -51,13 +59,23 @@ def load() -> None:
         preview_images = settings_section.get("preview_images", True)
         download_icons = settings_section.get("download_icons", False)
         log_level = settings_section.get("log_level", "info")
-        ignored_items = settings_section.get("ignored_items", [
-            '.git', '__pycache__',
-            'metadata.xml', 'disable.it',
-            '.DS_Store', 'Thumbs.db', 'desktop.ini',
-            '.Trashes', '.Spotlight-V100', '$RECYCLE.BIN',
-            '.directory', '~',
-        ])
+        ignored_items = settings_section.get(
+            "ignored_items",
+            [
+                ".git",
+                "__pycache__",
+                "metadata.xml",
+                "disable.it",
+                ".DS_Store",
+                "Thumbs.db",
+                "desktop.ini",
+                ".Trashes",
+                ".Spotlight-V100",
+                "$RECYCLE.BIN",
+                ".directory",
+                "~",
+            ],
+        )
         theme_section = config_data.get("theme", {})
         accent_color = theme_section.get("accent", "#3daee9")
         disabled_mod_color = theme_section.get("disabled_mod", "#808080")
