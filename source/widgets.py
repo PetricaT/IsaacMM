@@ -5,23 +5,14 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from . import config, logger, paths
-from .worker import WorkerThread
-from .components.workshop import (
-    _prune_failures, _permanent_failures, _pending_workshop_ids,
-    _failed_workshop_ids, _download_workshop_icon,
-    _workshop_queue_length, _enqueue_workshop, _dequeue_workshop,
-    _discard_from_queue, _requeue_workshop, _check_workshop_rate_limit,
-    WORKSHOP_RATE_LIMIT,
-)
-from .components.file_utils import open_path, open_url
-from .components.preview import PreviewWidget
-from .components.text_utils import bbcode_to_html
-from .components.modlist import normalize_mod_name
-
-from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QTimer, QUrl, Signal
+from PySide6.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
-    QColor, QIcon, QImageReader, QMovie, QPalette, QPixmap,
+    QColor,
+    QIcon,
+    QImageReader,
+    QMovie,
+    QPalette,
+    QPixmap,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -39,6 +30,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import config, logger, paths
+from .components.file_utils import open_path, open_url
+from .components.modlist import normalize_mod_name
+from .components.preview import PreviewWidget
+from .components.text_utils import bbcode_to_html
+from .components.workshop import (
+    _check_workshop_rate_limit,
+    _dequeue_workshop,
+    _download_workshop_icon,
+    _enqueue_workshop,
+    _failed_workshop_ids,
+    _pending_workshop_ids,
+    _permanent_failures,
+    _prune_failures,
+    _requeue_workshop,
+)
+from .worker import WorkerThread
+
 
 class ConflictTreeWidget(QTreeWidget):
     pass
@@ -48,7 +57,13 @@ class ModInfoPanel(QWidget):
     log_message = Signal(str, str)  # message, level
 
     PRIORITY_ICON_NAMES: list[str] = [
-        "title", "thumbnail", "Thumbnail", "icon", "images", "modicon", "logo",
+        "title",
+        "thumbnail",
+        "Thumbnail",
+        "icon",
+        "images",
+        "modicon",
+        "logo",
         "spider thumbnail",
     ]
     IMAGE_EXTENSIONS: set[str] = {".png", ".jpg", ".jpeg", ".gif"}
@@ -64,7 +79,9 @@ class ModInfoPanel(QWidget):
         self._icon_queue_timer = QTimer(self)
         self._icon_queue_timer.setSingleShot(True)
         self._icon_queue_timer.timeout.connect(self._process_icon_queue)
-        self.destroyed.connect(self._cleanup_threads, Qt.ConnectionType.DirectConnection)
+        self.destroyed.connect(
+            self._cleanup_threads, Qt.ConnectionType.DirectConnection
+        )
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
         )
@@ -72,7 +89,9 @@ class ModInfoPanel(QWidget):
             os.path.join(paths.BASE_DIR, "assets", "folder-yellow.png")
         )
         modinfo_label = QLabel("<b>Mod Info</b>")
-        modinfo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        modinfo_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
         layout.addWidget(modinfo_label)
 
         self.icon_label = QLabel()
@@ -87,7 +106,9 @@ class ModInfoPanel(QWidget):
         self.tags_box.setFlow(QListWidget.LeftToRight)
         self.tags_box.setWrapping(True)
         self.tags_box.setSpacing(4)
-        self.tags_box.setStyleSheet("QListWidget { border: none; background: transparent; }")
+        self.tags_box.setStyleSheet(
+            "QListWidget { border: none; background: transparent; }"
+        )
 
         self.workshop_button = QPushButton("Steam Workshop")
         self.workshop_button.clicked.connect(self._open_workshop)
@@ -109,9 +130,7 @@ class ModInfoPanel(QWidget):
         self.tabs = QTabWidget()
 
         self.description_text = QTextBrowser()
-        self.description_text.setPlaceholderText(
-            "Select a mod to view its description"
-        )
+        self.description_text.setPlaceholderText("Select a mod to view its description")
         self.description_text.setOpenExternalLinks(False)
         self.description_text.anchorClicked.connect(self._open_link)
         self.tabs.addTab(self.description_text, "Description")
@@ -123,19 +142,24 @@ class ModInfoPanel(QWidget):
         current_palette = self.conflicts_tree.palette()
         base_color = current_palette.color(QPalette.Base)
         alternate_color = (
-            base_color.lighter(120) if base_color.lightness() < 128
+            base_color.lighter(120)
+            if base_color.lightness() < 128
             else base_color.darker(108)
         )
         current_palette.setColor(QPalette.AlternateBase, alternate_color)
         self.conflicts_tree.setPalette(current_palette)
         self.conflicts_tree.header().setStretchLastSection(False)
         self.conflicts_tree.header().resizeSection(1, 350)
-        self.conflicts_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.conflicts_tree.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
         self.conflicts_tree.itemDoubleClicked.connect(self._open_conflict_file)
         self.conflicts_tree.viewport().installEventFilter(self)
         self.conflicts_tree.viewport().setMouseTracking(True)
         self._preview = PreviewWidget(self)
-        self.conflicts_tree.verticalScrollBar().valueChanged.connect(self._on_preview_tree_scroll)
+        self.conflicts_tree.verticalScrollBar().valueChanged.connect(
+            self._on_preview_tree_scroll
+        )
         self.tabs.addTab(self.conflicts_tree, "Conflicts")
 
         self.files_tree = QTreeWidget()
@@ -145,16 +169,21 @@ class ModInfoPanel(QWidget):
         current_palette = self.files_tree.palette()
         base_color = current_palette.color(QPalette.Base)
         alternate_color = (
-            base_color.lighter(120) if base_color.lightness() < 128
+            base_color.lighter(120)
+            if base_color.lightness() < 128
             else base_color.darker(108)
         )
         current_palette.setColor(QPalette.AlternateBase, alternate_color)
         self.files_tree.setPalette(current_palette)
-        self.files_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.files_tree.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
         self.files_tree.itemDoubleClicked.connect(self._open_file)
         self.files_tree.viewport().installEventFilter(self)
         self.files_tree.viewport().setMouseTracking(True)
-        self.files_tree.verticalScrollBar().valueChanged.connect(self._on_preview_tree_scroll)
+        self.files_tree.verticalScrollBar().valueChanged.connect(
+            self._on_preview_tree_scroll
+        )
         self.tabs.addTab(self.files_tree, "Files")
 
         self.folder_label = QPushButton()
@@ -225,23 +254,32 @@ class ModInfoPanel(QWidget):
                 if not loaded_pixmap.isNull():
                     self.icon_label.setPixmap(
                         loaded_pixmap.scaled(
-                            128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                            128,
+                            128,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
                         )
                     )
                 else:
                     self._show_placeholder()
         else:
-            if not config.download_icons or not self._try_download_icon(mod_folder, mod_name):
+            if not config.download_icons or not self._try_download_icon(
+                mod_folder, mod_name
+            ):
                 self._show_placeholder()
 
         self.conflicts_tree.clear()
         if conflicts:
             for conflict_mod_name, conflict_data in sorted(conflicts.items()):
                 conflict_folder = conflict_data["folder"]
-                overwrite_color = "#65A665" if conflict_data["overwrites"] else "#9E4D4D"
+                overwrite_color = (
+                    "#65A665" if conflict_data["overwrites"] else "#9E4D4D"
+                )
                 mod_tree_item = QTreeWidgetItem([conflict_mod_name, ""])
                 mod_tree_item.setForeground(0, QColor(overwrite_color))
-                self._populate_file_tree(mod_tree_item, conflict_data["files"], conflict_folder)
+                self._populate_file_tree(
+                    mod_tree_item, conflict_data["files"], conflict_folder
+                )
                 self.conflicts_tree.addTopLevelItem(mod_tree_item)
             self.conflicts_tree.expandAll()
 
@@ -258,7 +296,9 @@ class ModInfoPanel(QWidget):
             xml_root = metadata_tree.getroot()
             description_element = xml_root.find("description")
             if description_element is not None and description_element.text:
-                self.description_text.setHtml(bbcode_to_html(description_element.text.strip()))
+                self.description_text.setHtml(
+                    bbcode_to_html(description_element.text.strip())
+                )
             else:
                 self.description_text.setHtml("(no description)")
 
@@ -291,7 +331,10 @@ class ModInfoPanel(QWidget):
         self._stop_movie()
         self.icon_label.setPixmap(
             self._placeholder.scaled(
-                128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                128,
+                128,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
         )
 
@@ -311,7 +354,12 @@ class ModInfoPanel(QWidget):
             loaded = QPixmap(cached_path)
             if not loaded.isNull():
                 self.icon_label.setPixmap(
-                    loaded.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    loaded.scaled(
+                        128,
+                        128,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
                 )
                 return True
 
@@ -363,7 +411,12 @@ class ModInfoPanel(QWidget):
             loaded = QPixmap(cached_path)
             if not loaded.isNull():
                 self.icon_label.setPixmap(
-                    loaded.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    loaded.scaled(
+                        128,
+                        128,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
                 )
                 img_loaded = True
             if not img_loaded:
@@ -409,7 +462,9 @@ class ModInfoPanel(QWidget):
             if not open_path(self._mod_path):
                 logger.log("error", f"Failed to open folder: {self._mod_path}")
 
-    def _populate_file_tree(self, parent_item, file_paths: list, conflict_folder: str) -> None:
+    def _populate_file_tree(
+        self, parent_item, file_paths: list, conflict_folder: str
+    ) -> None:
         path_tree = {}
         for relative_path in file_paths:
             normalized = relative_path.replace("\\", "/")
@@ -419,9 +474,13 @@ class ModInfoPanel(QWidget):
                 current_level = current_level.setdefault(segment, {})
 
         def add_branches(subtree, parent, accumulated_path=""):
-            for name in sorted(subtree.keys(), key=lambda k: (not subtree[k], k.lower())):
+            for name in sorted(
+                subtree.keys(), key=lambda k: (not subtree[k], k.lower())
+            ):
                 child_subtree = subtree[name]
-                segment_path = f"{accumulated_path}/{name}" if accumulated_path else name
+                segment_path = (
+                    f"{accumulated_path}/{name}" if accumulated_path else name
+                )
                 if child_subtree:
                     folder_item = QTreeWidgetItem([name, ""])
                     folder_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
@@ -430,12 +489,16 @@ class ModInfoPanel(QWidget):
                     add_branches(child_subtree, folder_item, segment_path)
                 else:
                     file_item = QTreeWidgetItem(["", name])
-                    file_item.setData(0, Qt.ItemDataRole.UserRole, (conflict_folder, segment_path))
+                    file_item.setData(
+                        0, Qt.ItemDataRole.UserRole, (conflict_folder, segment_path)
+                    )
                     parent.addChild(file_item)
 
         add_branches(path_tree, parent_item)
 
-    def _populate_mod_files(self, parent_item, current_path: str, relative_prefix: str, mod_folder: str) -> None:
+    def _populate_mod_files(
+        self, parent_item, current_path: str, relative_prefix: str, mod_folder: str
+    ) -> None:
         try:
             entries = sorted(os.listdir(current_path))
         except OSError:
@@ -467,12 +530,20 @@ class ModInfoPanel(QWidget):
             return
         ext = os.path.splitext(full_path.lower())[1]
         if sys.platform == "darwin" and ext in {".png", ".jpg", ".jpeg", ".gif"}:
-            subprocess.Popen(["qlmanage", "-p", full_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(
+                ["qlmanage", "-p", full_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             return
-        ctrl_pressed = QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
+        ctrl_pressed = (
+            QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
+        )
         if ctrl_pressed:
             if not open_path(os.path.dirname(full_path)):
-                logger.log("error", f"Failed to open folder: {os.path.dirname(full_path)}")
+                logger.log(
+                    "error", f"Failed to open folder: {os.path.dirname(full_path)}"
+                )
         else:
             if not open_path(full_path):
                 logger.log("error", f"Failed to open file: {full_path}")
@@ -493,10 +564,14 @@ class ModInfoPanel(QWidget):
         if not os.path.exists(full_path):
             logger.log("warning", f"Path does not exist: {full_path}")
             return
-        ctrl_pressed = QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
+        ctrl_pressed = (
+            QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
+        )
         if ctrl_pressed:
             if not open_path(os.path.dirname(full_path)):
-                logger.log("error", f"Failed to open folder: {os.path.dirname(full_path)}")
+                logger.log(
+                    "error", f"Failed to open folder: {os.path.dirname(full_path)}"
+                )
         else:
             if not open_path(full_path):
                 logger.log("error", f"Failed to open file: {full_path}")
@@ -515,9 +590,13 @@ class ModInfoPanel(QWidget):
                         data = item.data(0, Qt.ItemDataRole.UserRole)
                         if data:
                             mod_folder, relative_path = data
-                            full_path = os.path.join(config.mods_path, mod_folder, relative_path)
+                            full_path = os.path.join(
+                                config.mods_path, mod_folder, relative_path
+                            )
                             if relative_path.lower().endswith((".png", ".anm2")):
-                                if self._preview.show_preview(full_path, event.globalPos()):
+                                if self._preview.show_preview(
+                                    full_path, event.globalPos()
+                                ):
                                     return False
                 self._preview.stop()
                 return False
@@ -538,9 +617,13 @@ class ModInfoPanel(QWidget):
                     data = item.data(0, Qt.ItemDataRole.UserRole)
                     if data:
                         mod_folder, relative_path = data
-                        full_path = os.path.join(config.mods_path, mod_folder, relative_path)
+                        full_path = os.path.join(
+                            config.mods_path, mod_folder, relative_path
+                        )
                         if relative_path.lower().endswith((".png", ".anm2")):
-                            if self._preview.show_preview(full_path, self.cursor().pos()):
+                            if self._preview.show_preview(
+                                full_path, self.cursor().pos()
+                            ):
                                 return
                 self._preview.stop()
                 return

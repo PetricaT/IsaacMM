@@ -5,12 +5,12 @@ from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from . import config, paths
 from .backup import backup_all, get_backup_root
-from .widgets import ModInfoPanel
-from .worker import WorkerThread
 from .components.console import ConsoleWidget
 from .components.dialogs import SettingsDialog
-from .components.modlist import ModListPanel, SEPARATOR_SUFFIX
+from .components.modlist import SEPARATOR_SUFFIX, ModListPanel
 from .components.workshop import _init_workshop_limiter, _sync_workshop_limiter
+from .widgets import ModInfoPanel
+from .worker import WorkerThread
 
 
 class DragApp(QWidget):
@@ -36,7 +36,9 @@ class DragApp(QWidget):
         s = config.get_settings()
         s.setValue("ui/window_geometry", self.saveGeometry())
         s.setValue("ui/splitter_state", self._splitter.saveState())
-        s.setValue("ui/column_state", self.modInfoPanel.conflicts_tree.header().saveState())
+        s.setValue(
+            "ui/column_state", self.modInfoPanel.conflicts_tree.header().saveState()
+        )
         _sync_workshop_limiter()
         config.save()
         super().closeEvent(close_event)
@@ -103,7 +105,7 @@ class DragApp(QWidget):
         )
         thread.finished.connect(lambda: self.log("Backup complete"))
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: setattr(self, '_backup_thread', None))
+        thread.finished.connect(lambda: setattr(self, "_backup_thread", None))
         self._backup_thread = thread
         thread.start()
 

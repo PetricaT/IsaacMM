@@ -114,7 +114,10 @@ def _fetch_workshop_preview_url(ws_id: str) -> str:
 
     match details[0].get("result", 0):
         case 1:
-            return details[0]["preview_url"]
+            preview_url = details[0]["preview_url"]
+            if not preview_url:
+                raise RuntimeError(f"workshop {ws_id}: empty preview_url in API response")
+            return preview_url
         case 9:
             raise FileNotFoundError(f"workshop {ws_id}: file not found (result=9)")
         case other:
@@ -133,12 +136,16 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
         )
         with urllib.request.urlopen(req_img, timeout=10, context=_ssl_context) as resp_img:
             img_data = resp_img.read()
+            content_type = resp_img.headers.get("Content-Type", "")
 
         os.makedirs(os.path.dirname(cached_path), exist_ok=True)
-        with open(cached_path, "wb") as f:
+
+        ext = ".gif" if "gif" in content_type else ".png"
+        actual_path = cached_path.rsplit(".", 1)[0] + ext
+        with open(actual_path, "wb") as f:
             f.write(img_data)
 
-        return ws_id
+        return actual_path
     except FileNotFoundError:
         _permanent_failures.add(ws_id)
         config.dead_workshop_ids = sorted(_permanent_failures)
