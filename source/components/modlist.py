@@ -327,12 +327,10 @@ class ModListPanel(QWidget):
                 walk_dirs[:] = [
                     directory
                     for directory in walk_dirs
-                    if directory not in ('.git', '__pycache__')
+                    if directory not in config.ignored_items
                 ]
                 for file_name in file_names:
-                    if file_name in (
-                        'metadata.xml', 'disable.it', '.DS_Store', 'Thumbs.db'
-                    ):
+                    if file_name in config.ignored_items:
                         continue
                     file_extension = os.path.splitext(file_name)[1].lower()
                     if file_extension not in self._CONFLICT_EXTS:
