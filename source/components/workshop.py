@@ -10,7 +10,7 @@ from typing import Optional, Tuple
 
 from .. import config, logger, paths
 
-_ssl_context = ssl.create_default_context()
+_ssl_context = ssl._create_unverified_context()
 
 _WORKSHOP_LIMITER: deque = deque()
 WORKSHOP_RATE_LIMIT: int = 5
