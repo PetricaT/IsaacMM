@@ -60,7 +60,7 @@ class DragApp(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(self.mod_list_panel)
 
-        horizontal_splitter = QSplitter(Qt.Horizontal)
+        horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
         horizontal_splitter.addWidget(left_panel)
         horizontal_splitter.addWidget(self.modInfoPanel)
         horizontal_splitter.setStretchFactor(0, 1)

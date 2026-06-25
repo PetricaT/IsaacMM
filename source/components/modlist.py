@@ -62,7 +62,7 @@ class ModListPanel(QWidget):
 
         modlist_header_layout = QHBoxLayout()
         modlist_label = QLabel("<b>Mod List</b>")
-        modlist_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        modlist_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         menu_button = QPushButton("\u2630")
         menu_button.setFixedWidth(30)
         overflow_menu = QMenu(menu_button)
@@ -83,7 +83,7 @@ class ModListPanel(QWidget):
         self.listView.setAcceptDrops(True)
         self.listView.setDropIndicatorShown(True)
         self.listView.setDragDropMode(QAbstractItemView.InternalMove)
-        self.listView.setDefaultDropAction(Qt.MoveAction)
+        self.listView.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.listView.setAlternatingRowColors(True)
         current_palette = self.listView.palette()
         base_color = current_palette.color(QPalette.Base)
@@ -108,7 +108,7 @@ class ModListPanel(QWidget):
         self.settingsBtn = QPushButton("Settings")
         self.settingsBtn.clicked.connect(self.open_settings.emit)
         self.listView.doubleClicked.connect(self._on_item_double_clicked)
-        self.listView.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.listView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.listView.customContextMenuRequested.connect(self._on_context_menu)
 
         layout.addWidget(self.listView, 1)
@@ -200,7 +200,7 @@ class ModListPanel(QWidget):
         for entry_name, entry_folder in all_entries:
             list_item = self._make_list_item()
             list_item.setText(entry_name)
-            list_item.setData(entry_folder, Qt.UserRole)
+            list_item.setData(entry_folder, Qt.ItemDataRole.UserRole)
             list_item.setData(normalize_mod_name(entry_name), NORMALIZED_NAME_ROLE)
             if entry_folder in separator_map:
                 separator_color = separator_map[entry_folder]
@@ -208,7 +208,7 @@ class ModListPanel(QWidget):
                     {"name": entry_name, "color": separator_color}, SEPARATOR_ROLE
                 )
                 list_item.setBackground(QColor(separator_color))
-                list_item.setTextAlignment(Qt.AlignCenter)
+                list_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             else:
                 list_item.setCheckable(True)
                 disable_file_path = os.path.join(
@@ -265,14 +265,14 @@ class ModListPanel(QWidget):
             list_item = self.model.item(row_index)
             if list_item is None or list_item.data(SEPARATOR_ROLE) or list_item.checkState() != Qt.CheckState.Checked:
                 continue
-            for f in self._scan_mod_files(list_item.data(Qt.UserRole)):
+            for f in self._scan_mod_files(list_item.data(Qt.ItemDataRole.UserRole)):
                 file_to_mods.setdefault(f, set()).add(row_index)
 
         for row_index in range(self.model.rowCount()):
             list_item = self.model.item(row_index)
             if list_item is None or list_item.data(SEPARATOR_ROLE) or list_item.checkState() != Qt.CheckState.Checked:
                 continue
-            for f in self._scan_mod_files(list_item.data(Qt.UserRole)):
+            for f in self._scan_mod_files(list_item.data(Qt.ItemDataRole.UserRole)):
                 if len(file_to_mods.get(f, ())) > 1:
                     list_item.setData(True, CONFLICT_ROLE)
                     break
@@ -282,7 +282,7 @@ class ModListPanel(QWidget):
             list_item = self.model.item(row_index)
             if list_item is None or list_item.data(SEPARATOR_ROLE) or list_item.checkState() != Qt.CheckState.Checked:
                 continue
-            mod_files = self._scan_mod_files(list_item.data(Qt.UserRole))
+            mod_files = self._scan_mod_files(list_item.data(Qt.ItemDataRole.UserRole))
             if mod_files and mod_files.issubset(running_files):
                 list_item.setData(True, OVERWRITTEN_ROLE)
             running_files |= mod_files
@@ -341,7 +341,7 @@ class ModListPanel(QWidget):
         if separator_data:
             self.mod_selected.emit(
                 separator_data["name"],
-                selected_item.data(Qt.UserRole),
+                selected_item.data(Qt.ItemDataRole.UserRole),
                 None,
             )
             return
@@ -349,7 +349,7 @@ class ModListPanel(QWidget):
         self._refresh_selection_conflicts(selected_item)
 
     def _refresh_selection_conflicts(self, selected_item) -> None:
-        mod_folder = selected_item.data(Qt.UserRole)
+        mod_folder = selected_item.data(Qt.ItemDataRole.UserRole)
 
         if selected_item.checkState() != Qt.CheckState.Checked:
             self.mod_selected.emit(selected_item.text(), mod_folder, {})
@@ -359,13 +359,13 @@ class ModListPanel(QWidget):
         current_mod_index = next(
             index
             for index in range(self.model.rowCount())
-            if self.model.item(index).data(Qt.UserRole) == mod_folder
+            if self.model.item(index).data(Qt.ItemDataRole.UserRole) == mod_folder
         )
 
         conflict_mods = {}
         for row_index in range(self.model.rowCount()):
             other_item = self.model.item(row_index)
-            other_mod_folder = other_item.data(Qt.UserRole)
+            other_mod_folder = other_item.data(Qt.ItemDataRole.UserRole)
             if other_mod_folder == mod_folder:
                 continue
             if other_item.checkState() != Qt.CheckState.Checked:
@@ -425,7 +425,7 @@ class ModListPanel(QWidget):
     def _on_item_changed(self, list_item) -> None:
         if self._populating or self._updating_conflicts:
             return
-        mod_folder = list_item.data(Qt.UserRole)
+        mod_folder = list_item.data(Qt.ItemDataRole.UserRole)
         if not mod_folder or list_item.data(SEPARATOR_ROLE):
             return
 
@@ -469,7 +469,7 @@ class ModListPanel(QWidget):
         ordered_folders = []
         for row_index in range(self.model.rowCount()):
             list_item = self.model.item(row_index)
-            mod_folder = list_item.data(Qt.UserRole)
+            mod_folder = list_item.data(Qt.ItemDataRole.UserRole)
             ordered_folders.append(mod_folder)
             if list_item.data(SEPARATOR_ROLE):
                 continue
@@ -555,7 +555,7 @@ class ModListPanel(QWidget):
                 separators.append(
                     {
                         "name": list_item.text(),
-                        "folder": list_item.data(Qt.UserRole),
+                        "folder": list_item.data(Qt.ItemDataRole.UserRole),
                         "color": separator_data["color"],
                         "index": len(mod_data_list),
                     }
@@ -564,7 +564,7 @@ class ModListPanel(QWidget):
                 mod_data_list.append(
                     {
                         "name": list_item.text(),
-                        "folder": list_item.data(Qt.UserRole),
+                        "folder": list_item.data(Qt.ItemDataRole.UserRole),
                         "checked": list_item.checkState(),
                     }
                 )
@@ -590,7 +590,7 @@ class ModListPanel(QWidget):
         for entry_name, entry_folder in ordered_list:
             list_item = self._make_list_item()
             list_item.setText(entry_name)
-            list_item.setData(entry_folder, Qt.UserRole)
+            list_item.setData(entry_folder, Qt.ItemDataRole.UserRole)
             list_item.setData(normalize_mod_name(entry_name), NORMALIZED_NAME_ROLE)
             if entry_folder in separator_lookup:
                 separator_entry = separator_lookup[entry_folder]
@@ -599,11 +599,11 @@ class ModListPanel(QWidget):
                     SEPARATOR_ROLE,
                 )
                 list_item.setBackground(QColor(separator_entry["color"]))
-                list_item.setTextAlignment(Qt.AlignCenter)
+                list_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             else:
                 mod_info = mod_data_lookup.get(entry_folder, {})
                 list_item.setCheckable(True)
-                list_item.setCheckState(mod_info.get("checked", Qt.Checked))
+                list_item.setCheckState(mod_info.get("checked", Qt.CheckState.Checked))
             self.model.appendRow(list_item)
 
         config.loaded_mods = [
@@ -623,9 +623,9 @@ class ModListPanel(QWidget):
         if list_item.data(SEPARATOR_ROLE):
             self._edit_separator(list_item)
             return
-        ctrl_held = QApplication.keyboardModifiers() & Qt.ControlModifier
+        ctrl_held = QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
         if ctrl_held:
-            mod_folder = list_item.data(Qt.UserRole)
+            mod_folder = list_item.data(Qt.ItemDataRole.UserRole)
             if not mod_folder:
                 return
             folder_path = os.path.join(config.mods_path, mod_folder)
@@ -639,7 +639,7 @@ class ModListPanel(QWidget):
 
     def _edit_separator(self, list_item) -> None:
         separator_data = list_item.data(SEPARATOR_ROLE)
-        old_separator_folder = list_item.data(Qt.UserRole)
+        old_separator_folder = list_item.data(Qt.ItemDataRole.UserRole)
         dialog = SeparatorDialog(
             "Edit Separator",
             name=separator_data["name"],
@@ -694,7 +694,7 @@ class ModListPanel(QWidget):
     def _delete_separator(self, list_item) -> None:
         import shutil
 
-        separator_folder = list_item.data(Qt.UserRole)
+        separator_folder = list_item.data(Qt.ItemDataRole.UserRole)
         folder_path = os.path.join(config.mods_path, separator_folder)
         try:
             shutil.rmtree(folder_path)
@@ -744,7 +744,7 @@ class ModListPanel(QWidget):
             list_item = self.model.item(row_index)
             if list_item.data(SEPARATOR_ROLE):
                 continue
-            items.append((list_item.data(Qt.UserRole), list_item.text()))
+            items.append((list_item.data(Qt.ItemDataRole.UserRole), list_item.text()))
         try:
             count = export_modlist_csv(file_path, items)
             self.log_message.emit(f"Exported {count} mods to {file_path}", "info")
@@ -765,7 +765,7 @@ class ModListPanel(QWidget):
                 list_item = self.model.item(row_index)
                 if list_item.data(SEPARATOR_ROLE):
                     continue
-                folder = list_item.data(Qt.UserRole)
+                folder = list_item.data(Qt.ItemDataRole.UserRole)
                 known_mods[folder] = (list_item.text(), folder)
 
             ordered_folders = import_modlist_csv(file_path, known_mods)
@@ -779,7 +779,7 @@ class ModListPanel(QWidget):
     def _save_current_order(self) -> None:
         ordered_folders = []
         for row_index in range(self.model.rowCount()):
-            ordered_folders.append(self.model.item(row_index).data(Qt.UserRole))
+            ordered_folders.append(self.model.item(row_index).data(Qt.ItemDataRole.UserRole))
         sorter.save_last_order(ordered_folders)
 
     def update_accent_color(self, color: str) -> None:

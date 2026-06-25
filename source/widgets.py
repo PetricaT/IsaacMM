@@ -21,7 +21,7 @@ from .components.modlist import normalize_mod_name
 
 from PySide6.QtCore import QByteArray, QEvent, QPoint, Qt, QSize, QTimer, QUrl, Signal
 from PySide6.QtGui import (
-    QColor, QIcon, QMovie, QPalette, QPixmap,
+    QColor, QIcon, QImageReader, QMovie, QPalette, QPixmap,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -61,11 +61,10 @@ class ModInfoPanel(QWidget):
         self._movie.setScaledSize(QSize(128, 128))
         self._mod_path: Optional[str] = None
         self._icon_thread = None
-        self._icon_threads: set = set()
         self._icon_queue_timer = QTimer(self)
         self._icon_queue_timer.setSingleShot(True)
         self._icon_queue_timer.timeout.connect(self._process_icon_queue)
-        self.destroyed.connect(self._cleanup_threads, Qt.DirectConnection)
+        self.destroyed.connect(self._cleanup_threads, Qt.ConnectionType.DirectConnection)
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
         )
@@ -73,18 +72,18 @@ class ModInfoPanel(QWidget):
             os.path.join(paths.BASE_DIR, "assets", "folder-yellow.png")
         )
         modinfo_label = QLabel("<b>Mod Info</b>")
-        modinfo_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        modinfo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(modinfo_label)
 
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(128, 128)
-        self.icon_label.setAlignment(Qt.AlignCenter)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_label.setStyleSheet("border: 1px solid gray;")
 
         self.tags_box = QListWidget()
         self.tags_box.setMaximumHeight(128)
         self.tags_box.setSelectionMode(QAbstractItemView.NoSelection)
-        self.tags_box.setFocusPolicy(Qt.NoFocus)
+        self.tags_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tags_box.setFlow(QListWidget.LeftToRight)
         self.tags_box.setWrapping(True)
         self.tags_box.setSpacing(4)
@@ -131,7 +130,7 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.setPalette(current_palette)
         self.conflicts_tree.header().setStretchLastSection(False)
         self.conflicts_tree.header().resizeSection(1, 350)
-        self.conflicts_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.conflicts_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.conflicts_tree.itemDoubleClicked.connect(self._open_conflict_file)
         self.conflicts_tree.viewport().installEventFilter(self)
         self.conflicts_tree.viewport().setMouseTracking(True)
@@ -151,7 +150,7 @@ class ModInfoPanel(QWidget):
         )
         current_palette.setColor(QPalette.AlternateBase, alternate_color)
         self.files_tree.setPalette(current_palette)
-        self.files_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.files_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.files_tree.itemDoubleClicked.connect(self._open_file)
         self.files_tree.viewport().installEventFilter(self)
         self.files_tree.viewport().setMouseTracking(True)
@@ -163,7 +162,7 @@ class ModInfoPanel(QWidget):
         self.folder_label.setStyleSheet(
             "QPushButton { color: gray; font-size: 10px; text-align: left; border: none; }"
         )
-        self.folder_label.setCursor(Qt.PointingHandCursor)
+        self.folder_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.folder_label.clicked.connect(self._open_folder)
 
         layout.addLayout(top_layout)
@@ -226,7 +225,7 @@ class ModInfoPanel(QWidget):
                 if not loaded_pixmap.isNull():
                     self.icon_label.setPixmap(
                         loaded_pixmap.scaled(
-                            128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                            128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
                         )
                     )
                 else:
@@ -292,7 +291,7 @@ class ModInfoPanel(QWidget):
         self._stop_movie()
         self.icon_label.setPixmap(
             self._placeholder.scaled(
-                128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
         )
 
@@ -312,7 +311,7 @@ class ModInfoPanel(QWidget):
             loaded = QPixmap(cached_path)
             if not loaded.isNull():
                 self.icon_label.setPixmap(
-                    loaded.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    loaded.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 )
                 return True
 
@@ -329,22 +328,17 @@ class ModInfoPanel(QWidget):
         return False
 
     def _process_icon_queue(self) -> None:
+        if self._icon_thread is not None:
+            return
+
         item = _dequeue_workshop()
         if item is None:
             return
         ws_id, normalized_name = item
 
-        if self._icon_thread is not None:
-            try:
-                self._icon_thread.finished.disconnect()
-                self._icon_thread.error.disconnect()
-            except RuntimeError:
-                pass
-            self._icon_thread.quit()
-
         if not _check_workshop_rate_limit():
             _requeue_workshop(ws_id, normalized_name)
-            self._icon_queue_timer.start(5000)
+            self._icon_queue_timer.start(2000)
             return
 
         self.log_message.emit(
@@ -354,44 +348,51 @@ class ModInfoPanel(QWidget):
         cache_dir = os.path.join(paths.cache_dir, "icons")
         cached_path = os.path.join(cache_dir, f"{ws_id}.png")
 
-        def on_done(_result):
+        def on_done(actual_path: str):
             _pending_workshop_ids.discard(ws_id)
+            img_loaded = False
+            if actual_path and actual_path != cached_path:
+                reader = QImageReader(actual_path)
+                img = reader.read()
+                if not img.isNull():
+                    img.save(cached_path, "PNG")
+                    try:
+                        os.remove(actual_path)
+                    except OSError:
+                        pass
             loaded = QPixmap(cached_path)
             if not loaded.isNull():
                 self.icon_label.setPixmap(
-                    loaded.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    loaded.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 )
-            self._process_icon_queue()
+                img_loaded = True
+            if not img_loaded:
+                self._show_placeholder()
+            self._icon_thread = None
+            self._icon_queue_timer.start(2000)
 
         def on_error(msg: str):
             _pending_workshop_ids.discard(ws_id)
             _failed_workshop_ids[ws_id] = time.time()
             self.log_message.emit(msg, "warning")
             self._show_placeholder()
-            self._process_icon_queue()
+            self._icon_thread = None
+            self._icon_queue_timer.start(2000)
 
         thread = WorkerThread(_download_workshop_icon, ws_id, cached_path)
         _pending_workshop_ids.add(ws_id)
         thread.finished.connect(on_done)
         thread.error.connect(on_error)
-        thread.finished.connect(lambda: self._on_thread_done(thread))
         thread.finished.connect(thread.deleteLater)
         thread.start()
-        self._icon_threads.add(thread)
         self._icon_thread = thread
 
-    def _on_thread_done(self, thread) -> None:
-        self._icon_threads.discard(thread)
-        if self._icon_thread is thread:
-            self._icon_thread = None
-
     def _cleanup_threads(self) -> None:
-        for thread in self._icon_threads:
-            thread.quit()
-            thread.wait(5000)
-            thread.deleteLater()
-        self._icon_threads.clear()
-        self._icon_thread = None
+        if self._icon_thread is not None:
+            self._icon_thread.quit()
+            self._icon_thread.wait(5000)
+            self._icon_thread.deleteLater()
+            self._icon_thread = None
 
     def _open_link(self, url: QUrl) -> None:
         if not open_url(url.toString()):
@@ -429,7 +430,7 @@ class ModInfoPanel(QWidget):
                     add_branches(child_subtree, folder_item, segment_path)
                 else:
                     file_item = QTreeWidgetItem(["", name])
-                    file_item.setData(0, Qt.UserRole, (conflict_folder, segment_path))
+                    file_item.setData(0, Qt.ItemDataRole.UserRole, (conflict_folder, segment_path))
                     parent.addChild(file_item)
 
         add_branches(path_tree, parent_item)
@@ -452,11 +453,11 @@ class ModInfoPanel(QWidget):
                 self._populate_mod_files(dir_item, full_entry, rel_path, mod_folder)
             else:
                 file_item = QTreeWidgetItem([entry])
-                file_item.setData(0, Qt.UserRole, (mod_folder, rel_path))
+                file_item.setData(0, Qt.ItemDataRole.UserRole, (mod_folder, rel_path))
                 parent_item.addChild(file_item)
 
     def _open_file(self, item, column) -> None:
-        data = item.data(0, Qt.UserRole)
+        data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data or not isinstance(data, tuple):
             return
         mod_folder, relative_path = data
@@ -468,7 +469,7 @@ class ModInfoPanel(QWidget):
         if sys.platform == "darwin" and ext in {".png", ".jpg", ".jpeg", ".gif"}:
             subprocess.Popen(["qlmanage", "-p", full_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
-        ctrl_pressed = QApplication.keyboardModifiers() & Qt.ControlModifier
+        ctrl_pressed = QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
         if ctrl_pressed:
             if not open_path(os.path.dirname(full_path)):
                 logger.log("error", f"Failed to open folder: {os.path.dirname(full_path)}")
@@ -484,7 +485,7 @@ class ModInfoPanel(QWidget):
             self.conflicts_tree.header().restoreState(state_data)
 
     def _open_conflict_file(self, item, tree_column: int) -> None:
-        conflict_data = item.data(0, Qt.UserRole)
+        conflict_data = item.data(0, Qt.ItemDataRole.UserRole)
         if conflict_data is None:
             return
         conflict_folder, relative_file_path = conflict_data
@@ -492,7 +493,7 @@ class ModInfoPanel(QWidget):
         if not os.path.exists(full_path):
             logger.log("warning", f"Path does not exist: {full_path}")
             return
-        ctrl_pressed = QApplication.keyboardModifiers() & Qt.ControlModifier
+        ctrl_pressed = QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
         if ctrl_pressed:
             if not open_path(os.path.dirname(full_path)):
                 logger.log("error", f"Failed to open folder: {os.path.dirname(full_path)}")
@@ -511,7 +512,7 @@ class ModInfoPanel(QWidget):
                 if config.preview_images:
                     item = tree.itemAt(event.pos())
                     if item and not item.childCount():
-                        data = item.data(0, Qt.UserRole)
+                        data = item.data(0, Qt.ItemDataRole.UserRole)
                         if data:
                             mod_folder, relative_path = data
                             full_path = os.path.join(config.mods_path, mod_folder, relative_path)
@@ -534,7 +535,7 @@ class ModInfoPanel(QWidget):
                 pos = tree.viewport().mapFrom(self, cursor)
                 item = tree.itemAt(pos)
                 if item and not item.childCount():
-                    data = item.data(0, Qt.UserRole)
+                    data = item.data(0, Qt.ItemDataRole.UserRole)
                     if data:
                         mod_folder, relative_path = data
                         full_path = os.path.join(config.mods_path, mod_folder, relative_path)
