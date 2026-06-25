@@ -55,13 +55,15 @@ class ConsoleWidget(QWidget):
 
     def _write_console(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
+        level_prefixes = {"debug": "[DBG]", "info": "[INF]", "warning": "[WRN]", "error": "[ERR]"}
+        prefix = level_prefixes.get(level, "[INF]")
         level_colors = {"info": "#d4d4d4", "warning": "#ffa500", "error": "#ff4444"}
         log_color = level_colors.get(level, "#d4d4d4")
         text_cursor = self.console.textCursor()
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
         char_format = QTextCharFormat()
         char_format.setForeground(QColor(log_color))
-        text_cursor.insertText(f"[{timestamp}] {message}\n", char_format)
+        text_cursor.insertText(f"{prefix} [{timestamp}] {message}\n", char_format)
         self.console.setTextCursor(text_cursor)
         self.console.ensureCursorVisible()
 
@@ -71,7 +73,7 @@ class ConsoleWidget(QWidget):
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
         char_format = QTextCharFormat()
         char_format.setForeground(QColor("#d4d4d4"))
-        text_cursor.insertText(f"[{timestamp}] ", char_format)
+        text_cursor.insertText(f"[INF] [{timestamp}] ", char_format)
         for text, color in segments:
             if color:
                 char_format.setForeground(QColor(color))
