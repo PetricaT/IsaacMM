@@ -5,7 +5,7 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListView,
     QMenu,
     QPushButton,
@@ -122,37 +121,6 @@ def _scan_mod_files_for_cache(
     return conflict_files
 
 
-class ModFilterProxy(QSortFilterProxyModel):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._filter_text = ""
-
-    def set_filter_text(self, text: str) -> None:
-        self._filter_text = text
-        self.invalidateFilter()
-
-    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
-        if not self._filter_text:
-            return True
-        source_model = self.sourceModel()
-        if source_model is None:
-            return True
-        name = (
-            source_model.data(
-                source_model.index(source_row, 0, source_parent), Qt.DisplayRole
-            )
-            or ""
-        )
-        folder = (
-            source_model.data(
-                source_model.index(source_row, 0, source_parent), Qt.UserRole
-            )
-            or ""
-        )
-        text = self._filter_text
-        return text.lower() in name.lower() or text.lower() in folder.lower()
-
-
 class ModListPanel(QWidget):
     mod_selected = Signal(str, str, object)
     log_message = Signal(str, str)
@@ -190,11 +158,6 @@ class ModListPanel(QWidget):
         modlist_header_layout.addWidget(menu_button)
         layout.addLayout(modlist_header_layout)
 
-        self._search_bar = QLineEdit()
-        self._search_bar.setPlaceholderText("Search mods...")
-        self._search_bar.setClearButtonEnabled(True)
-        layout.addWidget(self._search_bar)
-
         self.listView = QListView(self)
         self.listView.setStyleSheet(
             f"QListView::item:selected {{ background-color: {self._accent_color}; }}"
@@ -217,13 +180,10 @@ class ModListPanel(QWidget):
         self.listView.setPalette(current_palette)
 
         self.model = FlatDropModel()
-        self.proxy_model = ModFilterProxy(self)
-        self.proxy_model.setSourceModel(self.model)
-        self.listView.setModel(self.proxy_model)
+        self.listView.setModel(self.model)
         self.listView.setItemDelegate(ConflictDelegate(self.listView))
         self.model.itemChanged.connect(self._on_item_changed)
         self.model.rowsInserted.connect(self._on_rows_inserted)
-        self._search_bar.textChanged.connect(self.proxy_model.set_filter_text)
 
         self.applyOrder = QPushButton("Apply Sort Order")
         self.autoSort = QPushButton("Auto Sort")
@@ -484,9 +444,7 @@ class ModListPanel(QWidget):
             self.mod_selected.emit("", None, None)
             return
 
-        proxy_index = selected_indexes[0]
-        source_index = self.proxy_model.mapToSource(proxy_index)
-        selected_item = self.model.itemFromIndex(source_index)
+        selected_item = self.model.itemFromIndex(selected_indexes[0])
 
         separator_data = selected_item.data(SEPARATOR_ROLE)
         if separator_data:
@@ -768,8 +726,7 @@ class ModListPanel(QWidget):
         self.mods_loaded.emit()
 
     def _on_item_double_clicked(self, index) -> None:
-        source_index = self.proxy_model.mapToSource(index)
-        list_item = self.model.itemFromIndex(source_index)
+        list_item = self.model.itemFromIndex(index)
         if list_item.data(SEPARATOR_ROLE):
             self._edit_separator(list_item)
             return
@@ -834,8 +791,7 @@ class ModListPanel(QWidget):
         index = self.listView.indexAt(position)
         if not index or not index.isValid():
             return
-        source_index = self.proxy_model.mapToSource(index)
-        list_item = self.model.itemFromIndex(source_index)
+        list_item = self.model.itemFromIndex(index)
         if not list_item.data(SEPARATOR_ROLE):
             return
         context_menu = QMenu(self)
