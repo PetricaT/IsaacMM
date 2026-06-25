@@ -11,8 +11,6 @@ backup_enabled: bool = False
 backup_path: Optional[str] = None
 theme: str = "fusion"
 accent_color: str = "#3daee9"
-disabled_mod_color: str = "#777777"
-overwritten_mod_color: str = "#555555"
 download_icons: bool = False
 animate_icons: bool = True
 preview_images: bool = True
@@ -20,9 +18,6 @@ loaded_mods: list = []
 workshop_timestamps: list[float] = []
 dead_workshop_ids: list[str] = []
 log_level: str = "info"
-
-IGNORED_FILES: set[str] = {".DS_Store", "Thumbs.db", "metadata.xml", "disable.it"}
-IGNORED_DIRS: set[str] = {".git", "__pycache__"}
 
 
 def get_settings() -> QSettings:
@@ -32,7 +27,6 @@ def get_settings() -> QSettings:
 def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, animate_icons, preview_images
     global download_icons, workshop_timestamps, dead_workshop_ids, log_level
-    global disabled_mod_color, overwritten_mod_color
     try:
         config_data = toml.load(f"{paths.config_dir}/config.toml")
         mods_path = config_data["paths"]["mods"]
@@ -52,9 +46,6 @@ def load() -> None:
         workshop_section = config_data.get("workshop", {})
         workshop_timestamps = workshop_section.get("timestamps", [])
         dead_workshop_ids = settings_section.get("dead_workshop_ids", [])
-        colors_section = config_data.get("colors", {})
-        disabled_mod_color = colors_section.get("disabled_mod", "#777777")
-        overwritten_mod_color = colors_section.get("overwritten_mod", "#7E7E7E")
     except FileNotFoundError:
         _create_default()
 
@@ -91,10 +82,6 @@ def save() -> None:
         },
         "workshop": {
             "timestamps": workshop_timestamps,
-        },
-        "colors": {
-            "disabled_mod": disabled_mod_color,
-            "overwritten_mod": overwritten_mod_color,
         },
     }
     os.makedirs(paths.config_dir, exist_ok=True)
