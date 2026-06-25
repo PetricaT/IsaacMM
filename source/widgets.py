@@ -127,6 +127,7 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.viewport().installEventFilter(self)
         self.conflicts_tree.viewport().setMouseTracking(True)
         self._preview = PreviewWidget(self)
+        self.conflicts_tree.verticalScrollBar().valueChanged.connect(self._on_preview_tree_scroll)
         self.tabs.addTab(self.conflicts_tree, "Conflicts")
 
         self.files_tree = QTreeWidget()
@@ -145,6 +146,7 @@ class ModInfoPanel(QWidget):
         self.files_tree.itemDoubleClicked.connect(self._open_file)
         self.files_tree.viewport().installEventFilter(self)
         self.files_tree.viewport().setMouseTracking(True)
+        self.files_tree.verticalScrollBar().valueChanged.connect(self._on_preview_tree_scroll)
         self.tabs.addTab(self.files_tree, "Files")
 
         self.folder_label = QPushButton()
@@ -488,6 +490,25 @@ class ModInfoPanel(QWidget):
                 self._preview.stop()
                 return False
         return super().eventFilter(obj, event)
+
+    def _on_preview_tree_scroll(self) -> None:
+        if not config.preview_images:
+            return
+        cursor = self.mapFromGlobal(self.cursor().pos())
+        for tree in (self.conflicts_tree, self.files_tree):
+            if tree.viewport().geometry().contains(cursor):
+                pos = tree.viewport().mapFrom(self, cursor)
+                item = tree.itemAt(pos)
+                if item and not item.childCount():
+                    data = item.data(0, Qt.UserRole)
+                    if data:
+                        mod_folder, relative_path = data
+                        full_path = os.path.join(config.mods_path, mod_folder, relative_path)
+                        if relative_path.lower().endswith((".png", ".anm2")):
+                            if self._preview.show_preview(full_path, self.cursor().pos()):
+                                return
+                self._preview.stop()
+                return
 
     def show_separator(self, separator_name: str, folder: str) -> None:
         self._stop_movie()

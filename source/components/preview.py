@@ -23,6 +23,35 @@ class PreviewWidget(QLabel):
         self._anm2_delays: list[int] = []
         self._anm2_index: int = 0
 
+    def _resolve_spritesheet(self, anm2_dir: str, ss_path: str) -> str | None:
+        resource_root = anm2_dir
+        parts = anm2_dir.split(os.sep)
+        for i in range(len(parts), 0, -1):
+            candidate = os.sep.join(parts[:i])
+            gfx_dir = os.path.join(candidate, "gfx")
+            if os.path.isdir(gfx_dir):
+                resource_root = candidate
+                break
+
+        candidates = [
+            os.path.join(resource_root, "gfx", ss_path),
+            os.path.join(anm2_dir, ss_path),
+        ]
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+        if os.name != "nt":
+            for path in candidates:
+                lower = path.lower()
+                if os.path.exists(lower):
+                    return lower
+            name_lower = os.path.basename(ss_path).lower()
+            for dirpath, _dirnames, filenames in os.walk(resource_root):
+                for f in filenames:
+                    if f.lower() == name_lower:
+                        return os.path.join(dirpath, f)
+        return None
+
     def stop(self) -> None:
         self._anm2_timer.stop()
         self._anm2_frames.clear()
@@ -49,7 +78,10 @@ class PreviewWidget(QLabel):
                 sprite_path = ss.get("Path", "").replace("\\", "/") if ss is not None else None
                 if not sprite_path:
                     return False
-                file_path = os.path.join(os.path.dirname(file_path), sprite_path)
+                resolved = self._resolve_spritesheet(os.path.dirname(file_path), sprite_path)
+                if not resolved:
+                    return False
+                file_path = resolved
             except Exception:
                 return False
 
@@ -76,8 +108,8 @@ class PreviewWidget(QLabel):
             for ss in root.findall(".//Spritesheet"):
                 ss_id = ss.get("Id", "0")
                 ss_path = ss.get("Path", "").replace("\\", "/")
-                full_ss = os.path.join(anm2_dir, ss_path)
-                if os.path.exists(full_ss):
+                full_ss = self._resolve_spritesheet(anm2_dir, ss_path)
+                if full_ss:
                     pix = QPixmap(full_ss)
                     if not pix.isNull():
                         spritesheets[ss_id] = pix
