@@ -1,4 +1,5 @@
 """Dialog windows: settings, separator editing, etc."""
+
 import os
 from typing import Optional
 
@@ -116,7 +117,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(500)
-        self.setMinimumHeight(395)
+        self.setMinimumHeight(595)
 
         main_layout = QVBoxLayout(self)
         tabs = QTabWidget()
