@@ -22,7 +22,13 @@ from PySide6.QtWidgets import (
 from .. import config, logger, paths, sorter
 from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
-from .dialogs import CONFLICT_ROLE, SEPARATOR_ROLE, ConflictDelegate, SeparatorDialog
+from .dialogs import (
+    CONFLICT_ROLE,
+    PREV_CHECK_ROLE,
+    SEPARATOR_ROLE,
+    ConflictDelegate,
+    SeparatorDialog,
+)
 from .file_utils import open_path
 
 SEPARATOR_SUFFIX = "_separator"
@@ -40,6 +46,7 @@ class ModListPanel(QWidget):
         self.pending_toggles: dict = {}
         self._mod_files_cache: dict = {}
         self._populating: bool = False
+        self._updating_conflicts: bool = False
         self._first_load: bool = True
         self._accent_color = config.accent_color
 
@@ -74,7 +81,8 @@ class ModListPanel(QWidget):
         current_palette = self.listView.palette()
         base_color = current_palette.color(QPalette.Base)
         alternate_color = (
-            base_color.lighter(120) if base_color.lightness() < 128
+            base_color.lighter(120)
+            if base_color.lightness() < 128
             else base_color.darker(108)
         )
         current_palette.setColor(QPalette.AlternateBase, alternate_color)
@@ -116,7 +124,9 @@ class ModListPanel(QWidget):
 
     def load_mod_list(self) -> None:
         if config.mods_path == "":
-            self.log_message.emit("No mods folder set \u2014 open Settings to configure one", "warning")
+            self.log_message.emit(
+                "No mods folder set \u2014 open Settings to configure one", "warning"
+            )
             return
 
         self._populating = True
@@ -160,9 +170,7 @@ class ModListPanel(QWidget):
                 continue
 
             try:
-                metadata_tree = ET.parse(
-                    os.path.join(full_path, "metadata.xml")
-                )
+                metadata_tree = ET.parse(os.path.join(full_path, "metadata.xml"))
                 xml_root = metadata_tree.getroot()
                 mod_name = xml_root.find("name").text
                 config.loaded_mods.append([mod_name, directory_entry])
@@ -198,22 +206,28 @@ class ModListPanel(QWidget):
                 disable_file_path = os.path.join(
                     config.mods_path, entry_folder, "disable.it"
                 )
-                list_item.setCheckState(
-                    Qt.Unchecked if os.path.exists(disable_file_path) else Qt.Checked
+                initial_state = (
+                    Qt.CheckState.Unchecked
+                    if os.path.exists(disable_file_path)
+                    else Qt.CheckState.Checked
                 )
+                list_item.setCheckState(initial_state)
+                list_item.setData(initial_state, PREV_CHECK_ROLE)
             self.model.appendRow(list_item)
 
         self._populating = False
         if self._first_load:
             self._first_load = False
             self.log_message.emit(
-                f"Loaded {len(config.loaded_mods)} mods, {len(separator_map)} separators", "info"
+                f"Loaded {len(config.loaded_mods)} mods, {len(separator_map)} separators",
+                "info",
             )
         self._update_conflict_indicators()
         self.mods_loaded.emit()
 
     def _make_list_item(self):
         from PySide6.QtGui import QStandardItem
+
         return QStandardItem()
 
     def _on_rows_inserted(self, parent, first_row: int, last_row: int) -> None:
@@ -230,20 +244,31 @@ class ModListPanel(QWidget):
             separator_data = list_item.data(SEPARATOR_ROLE)
             if separator_data:
                 list_item.setBackground(QColor(separator_data["color"]))
-                list_item.setTextAlignment(Qt.AlignCenter)
+                list_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            elif list_item.checkState() != Qt.CheckState.Checked:
+                list_item.setForeground(QColor(config.disabled_mod_color))
+            else:
+                list_item.setData(None, Qt.ItemDataRole.ForegroundRole)
 
         for first_index in range(self.model.rowCount()):
             first_item = self.model.item(first_index)
-            if first_item is None or first_item.data(SEPARATOR_ROLE):
+            if (
+                first_item is None
+                or first_item.data(SEPARATOR_ROLE)
+                or first_item.checkState() != Qt.CheckState.Checked
+            ):
                 continue
             for second_index in range(first_index + 1, self.model.rowCount()):
                 second_item = self.model.item(second_index)
-                if second_item is None or second_item.data(SEPARATOR_ROLE):
+                if (
+                    second_item is None
+                    or second_item.data(SEPARATOR_ROLE)
+                    or second_item.checkState() != Qt.CheckState.Checked
+                ):
                     continue
-                common_files = (
-                    self._scan_mod_files(first_item.data(Qt.UserRole))
-                    & self._scan_mod_files(second_item.data(Qt.UserRole))
-                )
+                common_files = self._scan_mod_files(
+                    first_item.data(Qt.UserRole)
+                ) & self._scan_mod_files(second_item.data(Qt.UserRole))
                 if not common_files:
                     continue
                 first_item.setData(True, CONFLICT_ROLE)
@@ -262,6 +287,10 @@ class ModListPanel(QWidget):
                 list_item.setBackground(QColor(separator_data["color"]))
             else:
                 list_item.setBackground(QBrush())
+                if list_item.checkState() != Qt.CheckState.Checked:
+                    list_item.setForeground(QColor(config.disabled_mod_color))
+                else:
+                    list_item.setData(None, Qt.ItemDataRole.ForegroundRole)
 
         if not selected_indexes:
             self.mod_selected.emit("", None, None)
@@ -278,15 +307,20 @@ class ModListPanel(QWidget):
             )
             return
 
+        self._refresh_selection_conflicts(selected_item)
+
+    def _refresh_selection_conflicts(self, selected_item) -> None:
         mod_folder = selected_item.data(Qt.UserRole)
+
+        if selected_item.checkState() != Qt.CheckState.Checked:
+            self.mod_selected.emit(selected_item.text(), mod_folder, {})
+            return
+
         current_mod_files = self._scan_mod_files(mod_folder)
         current_mod_index = next(
-            (
-                index
-                for index in range(self.model.rowCount())
-                if self.model.item(index).data(Qt.UserRole) == mod_folder
-            ),
-            -1,
+            index
+            for index in range(self.model.rowCount())
+            if self.model.item(index).data(Qt.UserRole) == mod_folder
         )
 
         conflict_mods = {}
@@ -294,6 +328,8 @@ class ModListPanel(QWidget):
             other_item = self.model.item(row_index)
             other_mod_folder = other_item.data(Qt.UserRole)
             if other_mod_folder == mod_folder:
+                continue
+            if other_item.checkState() != Qt.CheckState.Checked:
                 continue
             common_files = current_mod_files & self._scan_mod_files(other_mod_folder)
             if not common_files:
@@ -310,11 +346,11 @@ class ModListPanel(QWidget):
 
         self.mod_selected.emit(
             selected_item.text(),
-            selected_item.data(Qt.UserRole),
+            mod_folder,
             conflict_mods,
         )
 
-    _CONFLICT_EXTS = {'.png', '.anm2', '.wav', '.lua'}
+    _CONFLICT_EXTS = {".png", ".anm2", ".wav", ".lua"}
 
     def _scan_mod_files(self, mod_folder_name: str) -> set:
         cached_files = self._mod_files_cache.get(mod_folder_name)
@@ -338,19 +374,52 @@ class ModListPanel(QWidget):
                     relative_path = os.path.relpath(
                         os.path.join(walk_root, file_name), full_mod_path
                     )
-                    if '/' in relative_path or '\\' in relative_path:
+                    if "/" in relative_path or "\\" in relative_path:
                         conflict_files.add(relative_path)
         except OSError as exc:
-            self.log_message.emit(f"Failed to scan mod files for {mod_folder_name}: {exc}", "warning")
+            self.log_message.emit(
+                f"Failed to scan mod files for {mod_folder_name}: {exc}", "warning"
+            )
         self._mod_files_cache[mod_folder_name] = conflict_files
         return conflict_files
 
     def _on_item_changed(self, list_item) -> None:
-        if self._populating:
+        if self._populating or self._updating_conflicts:
             return
         mod_folder = list_item.data(Qt.UserRole)
-        if mod_folder:
-            self.pending_toggles[mod_folder] = list_item.checkState()
+        if not mod_folder or list_item.data(SEPARATOR_ROLE):
+            return
+
+        current_state = list_item.checkState()
+        if current_state == list_item.data(PREV_CHECK_ROLE):
+            return
+
+        self._updating_conflicts = True
+        list_item.setData(current_state, PREV_CHECK_ROLE)
+        self.pending_toggles[mod_folder] = current_state
+        if current_state != Qt.CheckState.Checked:
+            list_item.setForeground(QColor(config.disabled_mod_color))
+        else:
+            list_item.setData(None, Qt.ItemDataRole.ForegroundRole)
+        self._update_conflict_indicators()
+
+        selected_indexes = self.listView.selectedIndexes()
+        if selected_indexes:
+            selected_item = self.model.itemFromIndex(selected_indexes[0])
+            if not selected_item.data(SEPARATOR_ROLE):
+                for row_index in range(self.model.rowCount()):
+                    item = self.model.item(row_index)
+                    if item.data(SEPARATOR_ROLE):
+                        item.setBackground(QColor(item.data(SEPARATOR_ROLE)["color"]))
+                    else:
+                        item.setBackground(QBrush())
+                        if item.checkState() != Qt.CheckState.Checked:
+                            item.setForeground(QColor(config.disabled_mod_color))
+                        else:
+                            item.setData(None, Qt.ItemDataRole.ForegroundRole)
+
+                self._refresh_selection_conflicts(selected_item)
+        self._updating_conflicts = False
 
     def apply_mod_order(self) -> None:
         self.log_message.emit("Applying sort order...", "info")
@@ -385,18 +454,22 @@ class ModListPanel(QWidget):
             disable_file_path = os.path.join(
                 config.mods_path, folder_name, "disable.it"
             )
-            if toggle_state == Qt.Unchecked:
+            if toggle_state == Qt.CheckState.Unchecked:
                 try:
                     open(disable_file_path, "a").close()
                 except OSError as exception:
-                    self.log_message.emit(f"Disabling {folder_name}: {exception}", "error")
+                    self.log_message.emit(
+                        f"Disabling {folder_name}: {exception}", "error"
+                    )
             else:
                 try:
                     os.remove(disable_file_path)
                 except FileNotFoundError:
                     pass
                 except OSError as exception:
-                    self.log_message.emit(f"Enabling {folder_name}: {exception}", "error")
+                    self.log_message.emit(
+                        f"Enabling {folder_name}: {exception}", "error"
+                    )
         self.pending_toggles.clear()
         sorter.save_last_order(ordered_folders)
         self.log_message.emit(f"Applied order for {sort_index - 1} mods", "info")
@@ -414,7 +487,9 @@ class ModListPanel(QWidget):
                 continue
             xml_path = os.path.join(config.mods_path, mod_folder, "metadata.xml")
             if not os.path.exists(xml_path):
-                self.log_message.emit(f"{mod_folder} no longer exists, skipping", "warning")
+                self.log_message.emit(
+                    f"{mod_folder} no longer exists, skipping", "warning"
+                )
                 continue
             metadata_tree = ET.parse(xml_path)
             xml_root = metadata_tree.getroot()
@@ -494,7 +569,9 @@ class ModListPanel(QWidget):
             if entry_folder not in separator_lookup
         ]
         self._populating = False
-        self.log_message.emit(f"Auto-sort complete ({len(config.loaded_mods)} mods)", "info")
+        self.log_message.emit(
+            f"Auto-sort complete ({len(config.loaded_mods)} mods)", "info"
+        )
         self._update_conflict_indicators()
         self.mods_loaded.emit()
 
@@ -510,7 +587,9 @@ class ModListPanel(QWidget):
                 return
             folder_path = os.path.join(config.mods_path, mod_folder)
             if not os.path.isdir(folder_path):
-                self.log_message.emit(f"Folder does not exist: {folder_path}", "warning")
+                self.log_message.emit(
+                    f"Folder does not exist: {folder_path}", "warning"
+                )
                 return
             if not open_path(folder_path):
                 self.log_message.emit(f"Failed to open folder: {folder_path}", "error")
@@ -538,7 +617,9 @@ class ModListPanel(QWidget):
                     os.path.join(config.mods_path, new_separator_folder),
                 )
             except OSError as exc:
-                self.log_message.emit(f"Failed to rename separator folder: {exc}", "error")
+                self.log_message.emit(
+                    f"Failed to rename separator folder: {exc}", "error"
+                )
                 return
         separator_xml_path = os.path.join(
             config.mods_path, new_separator_folder, "separator.xml"
@@ -655,9 +736,7 @@ class ModListPanel(QWidget):
     def _save_current_order(self) -> None:
         ordered_folders = []
         for row_index in range(self.model.rowCount()):
-            ordered_folders.append(
-                self.model.item(row_index).data(Qt.UserRole)
-            )
+            ordered_folders.append(self.model.item(row_index).data(Qt.UserRole))
         sorter.save_last_order(ordered_folders)
 
     def update_accent_color(self, color: str) -> None:
