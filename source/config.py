@@ -15,6 +15,7 @@ disabled_mod_color: str = "#808080"
 download_icons: bool = False
 animate_icons: bool = True
 preview_images: bool = True
+animate_anm2_preview: bool = True
 loaded_mods: list = []
 workshop_timestamps: list[float] = []
 dead_workshop_ids: list[str] = []
@@ -34,7 +35,7 @@ def get_settings() -> QSettings:
 
 def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, disabled_mod_color, animate_icons, preview_images
-    global download_icons, workshop_timestamps, dead_workshop_ids, log_level, ignored_items
+    global download_icons, workshop_timestamps, dead_workshop_ids, log_level, ignored_items, animate_anm2_preview
     try:
         config_data = toml.load(f"{paths.config_dir}/config.toml")
         mods_path = config_data["paths"]["mods"]
@@ -46,6 +47,7 @@ def load() -> None:
         backup_path = settings_section.get("backup_path") or None
         theme = settings_section.get("theme", "fusion")
         animate_icons = settings_section.get("animate_icons", True)
+        animate_anm2_preview = settings_section.get("animate_anm2_preview", True)
         preview_images = settings_section.get("preview_images", True)
         download_icons = settings_section.get("download_icons", False)
         log_level = settings_section.get("log_level", "info")
@@ -78,6 +80,7 @@ def save() -> None:
             "backup_path": backup_path,
             "theme": theme,
             "animate_icons": animate_icons,
+            "animate_anm2_preview": animate_anm2_preview,
             "preview_images": preview_images,
             "download_icons": download_icons,
             "log_level": log_level,
