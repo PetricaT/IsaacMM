@@ -2,10 +2,10 @@
 
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
-from . import config, paths
+from . import config, paths, sorter
 from .backup import backup_all, get_backup_root
 from .components.console import ConsoleWidget
 from .components.dialogs import SettingsDialog
@@ -21,6 +21,7 @@ class DragApp(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._backup_thread = None
+        self._masterlist_thread = None
 
         self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
         s = config.get_settings()
@@ -33,6 +34,7 @@ class DragApp(QWidget):
         _init_workshop_limiter()
         paths.setup_symlinks()
         self.initUi()
+        self._refresh_masterlist_background()
 
     def closeEvent(self, close_event) -> None:
         s = config.get_settings()
@@ -103,12 +105,38 @@ class DragApp(QWidget):
             backup_all,
             config.mods_path,
             get_backup_root(config.mods_path),
-            config.loaded_mods,
+            list(config.loaded_mods),
         )
         thread.finished.connect(lambda: self.log("Backup complete"))
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda: setattr(self, "_backup_thread", None))
+        thread.error.connect(lambda msg: self.log(f"Backup failed: {msg}", "error"))
+        thread.error.connect(thread.deleteLater)
+        thread.error.connect(lambda: setattr(self, "_backup_thread", None))
         self._backup_thread = thread
+        thread.start()
+
+    def _refresh_masterlist_background(self) -> None:
+        self._fetch_masterlist()
+        self._masterlist_timer = QTimer(self)
+        self._masterlist_timer.timeout.connect(self._fetch_masterlist)
+        self._masterlist_timer.start(3600000)
+
+    def _fetch_masterlist(self) -> None:
+        thread = WorkerThread(sorter.fetch_background)
+        thread.finished.connect(
+            lambda result: self.log("Masterlist updated to latest version")
+            if result is True
+            else None
+        )
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(self, "_masterlist_thread", None))
+        thread.error.connect(
+            lambda msg: self.log(f"Masterlist fetch failed: {msg}", "warning")
+        )
+        thread.error.connect(thread.deleteLater)
+        thread.error.connect(lambda: setattr(self, "_masterlist_thread", None))
+        self._masterlist_thread = thread
         thread.start()
 
     def getModList(self) -> None:

@@ -422,13 +422,17 @@ class SettingsDialog(QDialog):
             backup_all,
             config.mods_path,
             get_backup_root(config.mods_path),
-            config.loaded_mods,
+            list(config.loaded_mods),
         )
         thread.finished.connect(_on_finished)
         thread.error.connect(_on_error)
         thread.finished.connect(thread.deleteLater)
+        thread.error.connect(thread.deleteLater)
         if owner_window is not None:
             thread.finished.connect(
+                lambda: setattr(owner_window, "_backup_thread", None)
+            )
+            thread.error.connect(
                 lambda: setattr(owner_window, "_backup_thread", None)
             )
             setattr(owner_window, "_backup_thread", thread)

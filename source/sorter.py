@@ -2,6 +2,7 @@
 import os
 import re
 import ssl
+import threading
 import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ import yaml
 from . import logger, paths
 
 _ssl_context = ssl.create_default_context()
+_masterlist_lock = threading.Lock()
 
 MASTERLIST_URL: str = (
     "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
@@ -26,26 +28,39 @@ CACHE_TTL: timedelta = timedelta(hours=24)
 _masterlist: Optional[dict] = None
 
 
+def fetch_background() -> Optional[bool]:
+    global _masterlist
+    with _masterlist_lock:
+        if _is_cache_fresh():
+            return None
+        yaml_data = _try_fetch()
+        if yaml_data is not None:
+            _masterlist = yaml_data
+            return True
+        return False
+
+
 def get_masterlist() -> dict:
     global _masterlist
-    if _masterlist is not None:
+    with _masterlist_lock:
+        if _masterlist is not None:
+            return _masterlist
+
+        yaml_data = None
+        if _is_cache_fresh():
+            yaml_data = _try_cache()
+
+        if yaml_data is None:
+            yaml_data = _try_fetch()
+
+        if yaml_data is None:
+            yaml_data = _try_cache()
+
+        if yaml_data is None:
+            yaml_data = _try_bundled()
+
+        _masterlist = yaml_data if yaml_data else {"groups": [], "mods": []}
         return _masterlist
-
-    yaml_data = None
-    if _is_cache_fresh():
-        yaml_data = _try_cache()
-
-    if yaml_data is None:
-        yaml_data = _try_fetch()
-
-    if yaml_data is None:
-        yaml_data = _try_cache()
-
-    if yaml_data is None:
-        yaml_data = _try_bundled()
-
-    _masterlist = yaml_data if yaml_data else {"groups": [], "mods": []}
-    return _masterlist
 
 
 def fetch_initial() -> None:

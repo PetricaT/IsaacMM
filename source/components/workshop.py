@@ -2,6 +2,7 @@
 import json
 import os
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -12,6 +13,7 @@ from typing import Optional, Tuple
 from .. import config, logger, paths
 
 _ssl_context = ssl._create_unverified_context()
+_workshop_lock = threading.Lock()
 
 _WORKSHOP_LIMITER: deque = deque()
 WORKSHOP_RATE_LIMIT: int = 5
@@ -24,74 +26,109 @@ _workshop_queue: deque[tuple[str, str]] = deque()
 
 
 def _workshop_queue_length() -> int:
-    return len(_workshop_queue)
+    with _workshop_lock:
+        return len(_workshop_queue)
 
 
 def _enqueue_workshop(ws_id: str, normalized_name: str) -> bool:
-    for wid, _ in _workshop_queue:
-        if wid == ws_id:
+    with _workshop_lock:
+        for wid, _ in _workshop_queue:
+            if wid == ws_id:
+                return False
+        if ws_id in _pending_workshop_ids:
             return False
-    if ws_id in _pending_workshop_ids:
-        return False
-    _workshop_queue.append((ws_id, normalized_name))
-    return True
+        _workshop_queue.append((ws_id, normalized_name))
+        return True
 
 
 def _dequeue_workshop() -> Optional[tuple[str, str]]:
-    return _workshop_queue.popleft() if _workshop_queue else None
+    with _workshop_lock:
+        return _workshop_queue.popleft() if _workshop_queue else None
 
 
 def _discard_from_queue(ws_id: str) -> None:
-    for i, (wid, _) in enumerate(_workshop_queue):
-        if wid == ws_id:
-            del _workshop_queue[i]
-            break
+    with _workshop_lock:
+        for i, (wid, _) in enumerate(_workshop_queue):
+            if wid == ws_id:
+                del _workshop_queue[i]
+                break
 
 
 def _requeue_workshop(ws_id: str, normalized_name: str) -> None:
-    _workshop_queue.appendleft((ws_id, normalized_name))
+    with _workshop_lock:
+        _workshop_queue.appendleft((ws_id, normalized_name))
 
 
 def _init_workshop_limiter() -> None:
     now = time.time()
-    _WORKSHOP_LIMITER.clear()
-    for ts in config.workshop_timestamps:
-        if ts >= now - WORKSHOP_RATE_WINDOW:
-            _WORKSHOP_LIMITER.append(ts)
-    _permanent_failures.clear()
-    _permanent_failures.update(config.dead_workshop_ids)
+    with _workshop_lock:
+        _WORKSHOP_LIMITER.clear()
+        for ts in config.workshop_timestamps:
+            if ts >= now - WORKSHOP_RATE_WINDOW:
+                _WORKSHOP_LIMITER.append(ts)
+        _permanent_failures.clear()
+        _permanent_failures.update(config.dead_workshop_ids)
 
 
 def _sync_workshop_limiter() -> None:
-    config.workshop_timestamps = list(_WORKSHOP_LIMITER)
+    with _workshop_lock:
+        config.workshop_timestamps = list(_WORKSHOP_LIMITER)
 
 
 def _workshop_limiter_state() -> tuple[int, Optional[float]]:
-    now = time.time()
-    while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
-        _WORKSHOP_LIMITER.popleft()
-    count = len(_WORKSHOP_LIMITER)
-    next_available = None
-    if count >= WORKSHOP_RATE_LIMIT:
-        next_available = _WORKSHOP_LIMITER[0] + WORKSHOP_RATE_WINDOW
-    return count, next_available
+    with _workshop_lock:
+        now = time.time()
+        while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
+            _WORKSHOP_LIMITER.popleft()
+        count = len(_WORKSHOP_LIMITER)
+        next_available = None
+        if count >= WORKSHOP_RATE_LIMIT:
+            next_available = _WORKSHOP_LIMITER[0] + WORKSHOP_RATE_WINDOW
+        return count, next_available
 
 
 def _prune_failures() -> None:
-    cutoff = time.time() - WORKSHOP_RETRY_COOLDOWN
-    for ws_id in list(_failed_workshop_ids):
-        if _failed_workshop_ids[ws_id] < cutoff:
-            del _failed_workshop_ids[ws_id]
+    with _workshop_lock:
+        cutoff = time.time() - WORKSHOP_RETRY_COOLDOWN
+        for ws_id in list(_failed_workshop_ids):
+            if _failed_workshop_ids[ws_id] < cutoff:
+                del _failed_workshop_ids[ws_id]
+
+
+def _mark_pending(ws_id: str) -> None:
+    with _workshop_lock:
+        _pending_workshop_ids.add(ws_id)
+
+
+def _unmark_pending(ws_id: str) -> None:
+    with _workshop_lock:
+        _pending_workshop_ids.discard(ws_id)
+
+
+def _record_failure(ws_id: str, timestamp: float) -> None:
+    with _workshop_lock:
+        _failed_workshop_ids[ws_id] = timestamp
+
+
+def _is_permanent_failure(ws_id: str) -> bool:
+    with _workshop_lock:
+        return ws_id in _permanent_failures
+
+
+def _is_recent_failure(ws_id: str) -> bool:
+    with _workshop_lock:
+        return ws_id in _failed_workshop_ids
 
 
 def _check_workshop_rate_limit() -> bool:
-    now = time.time()
-    while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
-        _WORKSHOP_LIMITER.popleft()
-    if len(_WORKSHOP_LIMITER) >= WORKSHOP_RATE_LIMIT:
-        return False
-    _WORKSHOP_LIMITER.append(now)
-    return True
+    with _workshop_lock:
+        now = time.time()
+        while _WORKSHOP_LIMITER and _WORKSHOP_LIMITER[0] < now - WORKSHOP_RATE_WINDOW:
+            _WORKSHOP_LIMITER.popleft()
+        if len(_WORKSHOP_LIMITER) >= WORKSHOP_RATE_LIMIT:
+            return False
+        _WORKSHOP_LIMITER.append(now)
+        return True
 
 
 def _fetch_workshop_preview_url(ws_id: str) -> str:
@@ -153,15 +190,17 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
 
         return actual_path
     except FileNotFoundError:
-        _permanent_failures.add(ws_id)
-        config.dead_workshop_ids = sorted(_permanent_failures)
+        with _workshop_lock:
+            _permanent_failures.add(ws_id)
+            config.dead_workshop_ids = sorted(_permanent_failures)
         config.save()
         raise RuntimeError(f"workshop {ws_id}: file not found (permanent)")
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
-            now = time.time()
-            for _ in range(WORKSHOP_RATE_LIMIT):
-                _WORKSHOP_LIMITER.append(now)
+            with _workshop_lock:
+                now = time.time()
+                for _ in range(WORKSHOP_RATE_LIMIT):
+                    _WORKSHOP_LIMITER.append(now)
             raise RuntimeError("rate_limited")
         raise RuntimeError(f"workshop {ws_id}: image download failed: {exc}")
     except Exception as exc:

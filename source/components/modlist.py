@@ -5,7 +5,7 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListView,
     QMenu,
     QPushButton,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
 from .. import config, logger, paths, sorter
 from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
+from ..worker import WorkerThread
 from .dialogs import (
     CONFLICT_ROLE,
     NORMALIZED_NAME_ROLE,
@@ -43,6 +45,114 @@ def normalize_mod_name(name: str) -> str:
     return re.sub(r"^[^a-zA-Z]+", "", name)
 
 
+_CONFLICT_EXTS = {".png", ".anm2", ".wav", ".lua"}
+
+
+def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
+    """Worker thread: scan mods directory and parse metadata XML."""
+    entries = []
+    separator_map = {}
+    loaded_mods = []
+    try:
+        directory_entries = os.listdir(mods_path)
+    except OSError as exc:
+        return {"error": str(exc)}
+
+    for directory_entry in directory_entries:
+        if directory_entry in ignored_items:
+            continue
+        full_path = os.path.join(mods_path, directory_entry)
+        if not os.path.isdir(full_path):
+            continue
+
+        if directory_entry.endswith(SEPARATOR_SUFFIX):
+            separator_xml_path = os.path.join(full_path, "separator.xml")
+            try:
+                metadata_tree = ET.parse(separator_xml_path)
+                xml_root = metadata_tree.getroot()
+                separator_name = xml_root.find("name").text
+                color_element = xml_root.find("color")
+                separator_color = (
+                    color_element.text if color_element is not None else "#888888"
+                )
+            except Exception:
+                separator_name = directory_entry[: -len(SEPARATOR_SUFFIX)]
+                separator_color = "#888888"
+            entries.append((separator_name, directory_entry))
+            separator_map[directory_entry] = separator_color
+            continue
+
+        try:
+            metadata_tree = ET.parse(os.path.join(full_path, "metadata.xml"))
+            xml_root = metadata_tree.getroot()
+            mod_name = xml_root.find("name").text
+            loaded_mods.append([mod_name, directory_entry])
+            entries.append((mod_name, directory_entry))
+        except FileNotFoundError:
+            continue
+
+    return {
+        "entries": entries,
+        "separator_map": separator_map,
+        "loaded_mods": loaded_mods,
+    }
+
+
+def _scan_mod_files_for_cache(
+    mod_folder_name: str, mods_path: str, ignored_items: list
+) -> set:
+    full_mod_path = os.path.join(mods_path, mod_folder_name)
+    conflict_files = set()
+    try:
+        for walk_root, walk_dirs, file_names in os.walk(full_mod_path):
+            walk_dirs[:] = [d for d in walk_dirs if d not in ignored_items]
+            for file_name in file_names:
+                if file_name in ignored_items:
+                    continue
+                file_extension = os.path.splitext(file_name)[1].lower()
+                if file_extension not in _CONFLICT_EXTS:
+                    continue
+                relative_path = os.path.relpath(
+                    os.path.join(walk_root, file_name), full_mod_path
+                )
+                if "/" in relative_path or "\\" in relative_path:
+                    conflict_files.add(relative_path)
+    except OSError:
+        pass
+    return conflict_files
+
+
+class ModFilterProxy(QSortFilterProxyModel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._filter_text = ""
+
+    def set_filter_text(self, text: str) -> None:
+        self._filter_text = text
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
+        if not self._filter_text:
+            return True
+        source_model = self.sourceModel()
+        if source_model is None:
+            return True
+        name = (
+            source_model.data(
+                source_model.index(source_row, 0, source_parent), Qt.DisplayRole
+            )
+            or ""
+        )
+        folder = (
+            source_model.data(
+                source_model.index(source_row, 0, source_parent), Qt.UserRole
+            )
+            or ""
+        )
+        text = self._filter_text
+        return text.lower() in name.lower() or text.lower() in folder.lower()
+
+
 class ModListPanel(QWidget):
     mod_selected = Signal(str, str, object)
     log_message = Signal(str, str)
@@ -57,6 +167,9 @@ class ModListPanel(QWidget):
         self._updating_conflicts: bool = False
         self._first_load: bool = True
         self._accent_color = config.accent_color
+        self._load_thread = None
+        self._sort_thread = None
+        self._scan_thread = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -76,6 +189,11 @@ class ModListPanel(QWidget):
         modlist_header_layout.addWidget(modlist_label, 1)
         modlist_header_layout.addWidget(menu_button)
         layout.addLayout(modlist_header_layout)
+
+        self._search_bar = QLineEdit()
+        self._search_bar.setPlaceholderText("Search mods...")
+        self._search_bar.setClearButtonEnabled(True)
+        layout.addWidget(self._search_bar)
 
         self.listView = QListView(self)
         self.listView.setStyleSheet(
@@ -99,10 +217,13 @@ class ModListPanel(QWidget):
         self.listView.setPalette(current_palette)
 
         self.model = FlatDropModel()
-        self.listView.setModel(self.model)
+        self.proxy_model = ModFilterProxy(self)
+        self.proxy_model.setSourceModel(self.model)
+        self.listView.setModel(self.proxy_model)
         self.listView.setItemDelegate(ConflictDelegate(self.listView))
         self.model.itemChanged.connect(self._on_item_changed)
         self.model.rowsInserted.connect(self._on_rows_inserted)
+        self._search_bar.textChanged.connect(self.proxy_model.set_filter_text)
 
         self.applyOrder = QPushButton("Apply Sort Order")
         self.autoSort = QPushButton("Auto Sort")
@@ -145,48 +266,31 @@ class ModListPanel(QWidget):
         self._mod_files_cache.clear()
         config.loaded_mods.clear()
 
-        all_entries = []
-        separator_map = {}
+        thread = WorkerThread(
+            _scan_mods_directory, config.mods_path, config.ignored_items
+        )
+        thread.finished.connect(self._on_mods_scanned)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(self, "_load_thread", None))
+        thread.error.connect(
+            lambda msg: self.log_message.emit(f"Failed to load mods: {msg}", "error")
+        )
+        thread.error.connect(thread.deleteLater)
+        thread.error.connect(lambda: setattr(self, "_load_thread", None))
+        self._load_thread = thread
+        thread.start()
 
-        try:
-            directory_entries = os.listdir(config.mods_path)
-        except OSError as exc:
-            self.log_message.emit(f"Failed to list mods folder: {exc}", "error")
+    def _on_mods_scanned(self, scan_result: dict) -> None:
+        if "error" in scan_result:
+            self.log_message.emit(
+                f"Failed to list mods folder: {scan_result['error']}", "error"
+            )
             self._populating = False
             return
 
-        for directory_entry in directory_entries:
-            if directory_entry in (".DS_Store", "Thumbs.db"):
-                continue
-            full_path = os.path.join(config.mods_path, directory_entry)
-            if not os.path.isdir(full_path):
-                continue
-
-            if directory_entry.endswith(SEPARATOR_SUFFIX):
-                separator_xml_path = os.path.join(full_path, "separator.xml")
-                try:
-                    metadata_tree = ET.parse(separator_xml_path)
-                    xml_root = metadata_tree.getroot()
-                    separator_name = xml_root.find("name").text
-                    color_element = xml_root.find("color")
-                    separator_color = (
-                        color_element.text if color_element is not None else "#888888"
-                    )
-                except Exception:
-                    separator_name = directory_entry[: -len(SEPARATOR_SUFFIX)]
-                    separator_color = "#888888"
-                all_entries.append((separator_name, directory_entry))
-                separator_map[directory_entry] = separator_color
-                continue
-
-            try:
-                metadata_tree = ET.parse(os.path.join(full_path, "metadata.xml"))
-                xml_root = metadata_tree.getroot()
-                mod_name = xml_root.find("name").text
-                config.loaded_mods.append([mod_name, directory_entry])
-                all_entries.append((mod_name, directory_entry))
-            except FileNotFoundError:
-                continue
+        all_entries = scan_result["entries"]
+        separator_map = scan_result["separator_map"]
+        loaded_mods = scan_result["loaded_mods"]
 
         saved_folder_order = sorter.load_last_order()
         if saved_folder_order:
@@ -200,6 +304,7 @@ class ModListPanel(QWidget):
         else:
             all_entries.sort(key=lambda entry: entry[0].lower())
 
+        config.loaded_mods.clear()
         for entry_name, entry_folder in all_entries:
             list_item = self._make_list_item()
             list_item.setText(entry_name)
@@ -213,6 +318,7 @@ class ModListPanel(QWidget):
                 list_item.setBackground(QColor(separator_color))
                 list_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             else:
+                config.loaded_mods.append([entry_name, entry_folder])
                 list_item.setCheckable(True)
                 disable_file_path = os.path.join(
                     config.mods_path, entry_folder, "disable.it"
@@ -233,7 +339,7 @@ class ModListPanel(QWidget):
                 f"Loaded {len(config.loaded_mods)} mods, {len(separator_map)} separators",
                 "info",
             )
-        self._update_conflict_indicators()
+        self._prepopulate_cache()
         self.mods_loaded.emit()
 
     def _make_list_item(self):
@@ -324,6 +430,33 @@ class ModListPanel(QWidget):
             )
         self._updating_conflicts = False
 
+    def _prepopulate_cache(self) -> None:
+        mod_folders = []
+        for row_index in range(self.model.rowCount()):
+            list_item = self.model.item(row_index)
+            if list_item is None or list_item.data(SEPARATOR_ROLE):
+                continue
+            mod_folders.append(list_item.data(Qt.ItemDataRole.UserRole))
+
+        def _run_cache_warmup() -> dict:
+            cache = {}
+            for folder in mod_folders:
+                cache[folder] = _scan_mod_files_for_cache(
+                    folder, config.mods_path, config.ignored_items
+                )
+            return cache
+
+        thread = WorkerThread(_run_cache_warmup)
+        thread.finished.connect(self._on_cache_warmed)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(self, "_scan_thread", None))
+        self._scan_thread = thread
+        thread.start()
+
+    def _on_cache_warmed(self, cache: dict) -> None:
+        self._mod_files_cache.update(cache)
+        self._update_conflict_indicators()
+
     def _on_mod_selected(self, selected, deselected) -> None:
         if self._populating:
             return
@@ -351,7 +484,9 @@ class ModListPanel(QWidget):
             self.mod_selected.emit("", None, None)
             return
 
-        selected_item = self.model.itemFromIndex(selected_indexes[0])
+        proxy_index = selected_indexes[0]
+        source_index = self.proxy_model.mapToSource(proxy_index)
+        selected_item = self.model.itemFromIndex(source_index)
 
         separator_data = selected_item.data(SEPARATOR_ROLE)
         if separator_data:
@@ -405,36 +540,13 @@ class ModListPanel(QWidget):
             conflict_mods,
         )
 
-    _CONFLICT_EXTS = {".png", ".anm2", ".wav", ".lua"}
-
     def _scan_mod_files(self, mod_folder_name: str) -> set:
         cached_files = self._mod_files_cache.get(mod_folder_name)
         if cached_files is not None:
             return cached_files
-        conflict_files = set()
-        full_mod_path = os.path.join(config.mods_path, mod_folder_name)
-        try:
-            for walk_root, walk_dirs, file_names in os.walk(full_mod_path):
-                walk_dirs[:] = [
-                    directory
-                    for directory in walk_dirs
-                    if directory not in config.ignored_items
-                ]
-                for file_name in file_names:
-                    if file_name in config.ignored_items:
-                        continue
-                    file_extension = os.path.splitext(file_name)[1].lower()
-                    if file_extension not in self._CONFLICT_EXTS:
-                        continue
-                    relative_path = os.path.relpath(
-                        os.path.join(walk_root, file_name), full_mod_path
-                    )
-                    if "/" in relative_path or "\\" in relative_path:
-                        conflict_files.add(relative_path)
-        except OSError as exc:
-            self.log_message.emit(
-                f"Failed to scan mod files for {mod_folder_name}: {exc}", "warning"
-            )
+        conflict_files = _scan_mod_files_for_cache(
+            mod_folder_name, config.mods_path, config.ignored_items
+        )
         self._mod_files_cache[mod_folder_name] = conflict_files
         return conflict_files
 
@@ -589,11 +701,25 @@ class ModListPanel(QWidget):
                     }
                 )
 
-        auto_sorted_mods = sorter.auto_sort(
-            [[mod["name"], mod["folder"]] for mod in mod_data_list],
-            config.mods_path,
-        )
+        sort_input = [[mod["name"], mod["folder"]] for mod in mod_data_list]
+        mods_path = config.mods_path
 
+        def _run_sort() -> list:
+            return sorter.auto_sort(sort_input, mods_path)
+
+        thread = WorkerThread(_run_sort)
+        self._sort_thread = thread
+        thread.finished.connect(lambda result: self._on_sort_done(result, mod_data_list, separators))
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(self, "_sort_thread", None))
+        thread.error.connect(
+            lambda msg: self.log_message.emit(f"Auto-sort failed: {msg}", "error")
+        )
+        thread.error.connect(thread.deleteLater)
+        thread.error.connect(lambda: setattr(self, "_sort_thread", None))
+        thread.start()
+
+    def _on_sort_done(self, auto_sorted_mods: list, mod_data_list: list, separators: list) -> None:
         self._populating = True
         self.model.clear()
         self._mod_files_cache.clear()
@@ -638,11 +764,12 @@ class ModListPanel(QWidget):
         self.log_message.emit(
             f"Auto-sort complete ({len(config.loaded_mods)} mods)", "info"
         )
-        self._update_conflict_indicators()
+        self._prepopulate_cache()
         self.mods_loaded.emit()
 
     def _on_item_double_clicked(self, index) -> None:
-        list_item = self.model.itemFromIndex(index)
+        source_index = self.proxy_model.mapToSource(index)
+        list_item = self.model.itemFromIndex(source_index)
         if list_item.data(SEPARATOR_ROLE):
             self._edit_separator(list_item)
             return
@@ -707,7 +834,8 @@ class ModListPanel(QWidget):
         index = self.listView.indexAt(position)
         if not index or not index.isValid():
             return
-        list_item = self.model.itemFromIndex(index)
+        source_index = self.proxy_model.mapToSource(index)
+        list_item = self.model.itemFromIndex(source_index)
         if not list_item.data(SEPARATOR_ROLE):
             return
         context_menu = QMenu(self)

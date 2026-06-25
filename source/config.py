@@ -1,11 +1,14 @@
 """Configuration management: load, save, and provide defaults."""
 import os
+import threading
 from typing import Optional
 
 import toml
 from PySide6.QtCore import QSettings
 
 from . import paths, sorter
+
+_save_lock = threading.Lock()
 
 mods_path: str = ""
 backup_enabled: bool = False
@@ -92,28 +95,29 @@ def load() -> None:
 
 
 def save() -> None:
-    config_data = {
-        "paths": {"mods": mods_path},
-        "settings": {
-            "backup_enabled": backup_enabled,
-            "backup_path": backup_path,
-            "theme": theme,
-            "animate_icons": animate_icons,
-            "animate_anm2_preview": animate_anm2_preview,
-            "preview_images": preview_images,
-            "download_icons": download_icons,
-            "log_level": log_level,
-            "dead_workshop_ids": dead_workshop_ids,
-            "ignored_items": ignored_items,
-        },
-        "theme": {
-            "accent": accent_color,
-            "disabled_mod": disabled_mod_color,
-        },
-        "workshop": {
-            "timestamps": workshop_timestamps,
-        },
-    }
-    os.makedirs(paths.config_dir, exist_ok=True)
-    with open(f"{paths.config_dir}/config.toml", "w") as config_file:
-        toml.dump(config_data, config_file)
+    with _save_lock:
+        config_data = {
+            "paths": {"mods": mods_path},
+            "settings": {
+                "backup_enabled": backup_enabled,
+                "backup_path": backup_path,
+                "theme": theme,
+                "animate_icons": animate_icons,
+                "animate_anm2_preview": animate_anm2_preview,
+                "preview_images": preview_images,
+                "download_icons": download_icons,
+                "log_level": log_level,
+                "dead_workshop_ids": dead_workshop_ids,
+                "ignored_items": ignored_items,
+            },
+            "theme": {
+                "accent": accent_color,
+                "disabled_mod": disabled_mod_color,
+            },
+            "workshop": {
+                "timestamps": workshop_timestamps,
+            },
+        }
+        os.makedirs(paths.config_dir, exist_ok=True)
+        with open(f"{paths.config_dir}/config.toml", "w") as config_file:
+            toml.dump(config_data, config_file)

@@ -41,11 +41,13 @@ from .components.workshop import (
     _dequeue_workshop,
     _download_workshop_icon,
     _enqueue_workshop,
-    _failed_workshop_ids,
-    _pending_workshop_ids,
-    _permanent_failures,
+    _is_permanent_failure,
+    _is_recent_failure,
+    _mark_pending,
     _prune_failures,
+    _record_failure,
     _requeue_workshop,
+    _unmark_pending,
 )
 from .worker import WorkerThread
 
@@ -80,9 +82,7 @@ class ModInfoPanel(QWidget):
         self._icon_queue_timer = QTimer(self)
         self._icon_queue_timer.setSingleShot(True)
         self._icon_queue_timer.timeout.connect(self._process_icon_queue)
-        self.destroyed.connect(
-            self._cleanup_threads, Qt.ConnectionType.DirectConnection
-        )
+        self.destroyed.connect(self._cleanup_threads)
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
         )
@@ -365,10 +365,9 @@ class ModInfoPanel(QWidget):
                 return True
 
         _prune_failures()
-        if ws_id in _permanent_failures:
+        if _is_permanent_failure(ws_id):
             return False
-        last_fail = _failed_workshop_ids.get(ws_id)
-        if last_fail is not None:
+        if _is_recent_failure(ws_id):
             return False
 
         if _enqueue_workshop(ws_id, normalized_name):
@@ -398,7 +397,7 @@ class ModInfoPanel(QWidget):
         cached_path = os.path.join(cache_dir, f"{ws_id}.png")
 
         def on_done(actual_path: str):
-            _pending_workshop_ids.discard(ws_id)
+            _unmark_pending(ws_id)
             img_loaded = False
             if actual_path and actual_path != cached_path:
                 reader = QImageReader(actual_path)
@@ -426,26 +425,25 @@ class ModInfoPanel(QWidget):
             self._icon_queue_timer.start(2000)
 
         def on_error(msg: str):
-            _pending_workshop_ids.discard(ws_id)
-            _failed_workshop_ids[ws_id] = time.time()
+            _unmark_pending(ws_id)
+            _record_failure(ws_id, time.time())
             self.log_message.emit(msg, "warning")
             self._show_placeholder()
             self._icon_thread = None
             self._icon_queue_timer.start(2000)
 
         thread = WorkerThread(_download_workshop_icon, ws_id, cached_path)
-        _pending_workshop_ids.add(ws_id)
+        _mark_pending(ws_id)
         thread.finished.connect(on_done)
         thread.error.connect(on_error)
         thread.finished.connect(thread.deleteLater)
+        thread.error.connect(thread.deleteLater)
         thread.start()
         self._icon_thread = thread
 
     def _cleanup_threads(self) -> None:
         if self._icon_thread is not None:
             self._icon_thread.quit()
-            self._icon_thread.wait(5000)
-            self._icon_thread.deleteLater()
             self._icon_thread = None
 
     def _open_link(self, url: QUrl) -> None:
