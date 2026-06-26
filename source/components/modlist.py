@@ -5,7 +5,7 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -182,6 +182,7 @@ class ModListPanel(QWidget):
         self.model = FlatDropModel()
         self.listView.setModel(self.model)
         self.listView.setItemDelegate(ConflictDelegate(self.listView))
+        self.listView.installEventFilter(self)
         self.model.itemChanged.connect(self._on_item_changed)
         self.model.rowsInserted.connect(self._on_rows_inserted)
 
@@ -724,6 +725,39 @@ class ModListPanel(QWidget):
         )
         self._prepopulate_cache()
         self.mods_loaded.emit()
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self.listView and event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Delete:
+                selected = self.listView.selectionModel().selectedIndexes()
+                if not selected:
+                    return True
+                items = [self.model.itemFromIndex(idx) for idx in selected]
+                if all(item.data(SEPARATOR_ROLE) for item in items):
+                    self._delete_separators(items)
+                return True
+        return super().eventFilter(obj, event)
+
+    def _delete_separators(self, items) -> None:
+        import shutil
+
+        deleted = []
+        for item in items:
+            folder = item.data(Qt.ItemDataRole.UserRole)
+            folder_path = os.path.join(config.mods_path, folder)
+            try:
+                shutil.rmtree(folder_path)
+                deleted.append(item.text())
+            except OSError as exc:
+                self.log_message.emit(
+                    f"Deleting separator '{item.text()}': {exc}", "error"
+                )
+        if deleted:
+            self.log_message.emit(
+                f"Deleted separators: {', '.join(deleted)}", "info"
+            )
+            self._save_current_order()
+            self.load_mod_list()
 
     def _on_item_double_clicked(self, index) -> None:
         list_item = self.model.itemFromIndex(index)
