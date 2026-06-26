@@ -5,12 +5,19 @@ from typing import Optional
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
-from . import config, paths, sorter
+from . import config, game_versions, paths, sorter
 from .backup import backup_all, get_backup_root
 from .components.console import ConsoleWidget
-from .components.dialogs import SettingsDialog
+from .components.dialogs import SEPARATOR_ROLE, SettingsDialog
 from .components.modlist import SEPARATOR_SUFFIX, ModListPanel
-from .components.workshop import _init_workshop_limiter, _sync_workshop_limiter
+from .components.workshop import (
+    _enqueue_details,
+    _get_details_from_cache,
+    _init_details_cache,
+    _init_workshop_limiter,
+    _save_details_cache,
+    _sync_workshop_limiter,
+)
 from .widgets import ModInfoPanel
 from .worker import WorkerThread
 
@@ -22,6 +29,7 @@ class DragApp(QWidget):
         super().__init__(parent)
         self._backup_thread = None
         self._masterlist_thread = None
+        self._game_versions_thread = None
 
         self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
         s = config.get_settings()
@@ -32,9 +40,12 @@ class DragApp(QWidget):
             self.resize(1161, 550)
 
         _init_workshop_limiter()
+        _init_details_cache()
+        game_versions.fetch_initial()
         paths.setup_symlinks()
         self.initUi()
         self._refresh_masterlist_background()
+        self._refresh_game_versions_background()
 
     def closeEvent(self, close_event) -> None:
         s = config.get_settings()
@@ -44,7 +55,8 @@ class DragApp(QWidget):
             "ui/column_state", self.modInfoPanel.conflicts_tree.header().saveState()
         )
         _sync_workshop_limiter()
-        config.save()
+        _save_details_cache()
+        config.flush()
         super().closeEvent(close_event)
 
     def initUi(self) -> None:
@@ -57,6 +69,7 @@ class DragApp(QWidget):
         self.mod_list_panel.log_message.connect(self.console_widget.log)
         self.mod_list_panel.open_settings.connect(self._open_settings)
         self.mod_list_panel.mods_loaded.connect(self._maybe_backup)
+        self.mod_list_panel.mods_loaded.connect(self._batch_fetch_details)
 
         self.modInfoPanel = ModInfoPanel()
         self.modInfoPanel.log_message.connect(self.console_widget.log)
@@ -121,6 +134,51 @@ class DragApp(QWidget):
         self._masterlist_timer = QTimer(self)
         self._masterlist_timer.timeout.connect(self._fetch_masterlist)
         self._masterlist_timer.start(3600000)
+
+    def _refresh_game_versions_background(self) -> None:
+        self._fetch_game_versions()
+        self._game_versions_timer = QTimer(self)
+        self._game_versions_timer.timeout.connect(self._fetch_game_versions)
+        self._game_versions_timer.start(3600000)
+
+    def _fetch_game_versions(self) -> None:
+        thread = WorkerThread(game_versions.fetch_background)
+        thread.finished.connect(
+            lambda result: self.log("Game versions updated to latest")
+            if result is True
+            else None
+        )
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(self, "_game_versions_thread", None))
+        thread.error.connect(
+            lambda msg: self.log(f"Game versions fetch failed: {msg}", "warning")
+        )
+        thread.error.connect(thread.deleteLater)
+        thread.error.connect(lambda: setattr(self, "_game_versions_thread", None))
+        self._game_versions_thread = thread
+        thread.start()
+
+    def _batch_fetch_details(self) -> None:
+        enqueued = 0
+        for row_index in range(self.mod_list_panel.model.rowCount()):
+            list_item = self.mod_list_panel.model.item(row_index)
+            if list_item is None or list_item.data(SEPARATOR_ROLE):
+                continue
+            mod_folder = list_item.data(Qt.ItemDataRole.UserRole)
+            if not mod_folder:
+                continue
+            ws_match = paths.WORKSHOP_ID_RE.search(mod_folder)
+            if not ws_match:
+                continue
+            ws_id = ws_match.group(1)
+            if _get_details_from_cache(ws_id) is not None:
+                continue
+            if _enqueue_details(ws_id):
+                enqueued += 1
+
+        if enqueued > 0:
+            self.log(f"Queued {enqueued} workshop detail fetches", "info")
+            self.modInfoPanel._process_details_queue()
 
     def _fetch_masterlist(self) -> None:
         thread = WorkerThread(sorter.fetch_background)

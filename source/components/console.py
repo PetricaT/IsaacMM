@@ -46,7 +46,7 @@ class ConsoleWidget(QWidget):
         rate_layout = QHBoxLayout(self.rate_bar)
         rate_layout.setContentsMargins(8, 0, 8, 0)
         rate_layout.setSpacing(0)
-        self.rate_label = QLabel("Workshop: 0/5")
+        self.rate_label = QLabel(f"Workshop: 0/{WORKSHOP_RATE_LIMIT}")
         self.rate_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
         self.queue_label = QLabel("Queued: 0")
         self.queue_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")

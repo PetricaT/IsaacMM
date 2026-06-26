@@ -1,6 +1,7 @@
-"""Steam Workshop integration: download icons, rate limiting, queue."""
+"""Steam Workshop integration: download icons, rate limiting, queue, details."""
 import json
 import os
+import re
 import ssl
 import threading
 import time
@@ -8,6 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import deque
+from datetime import datetime
 from typing import Optional, Tuple
 
 from .. import config, logger, paths
@@ -16,13 +18,18 @@ _ssl_context = ssl._create_unverified_context()
 _workshop_lock = threading.Lock()
 
 _WORKSHOP_LIMITER: deque = deque()
-WORKSHOP_RATE_LIMIT: int = 5
-WORKSHOP_RATE_WINDOW: int = 600
-WORKSHOP_RETRY_COOLDOWN: int = 600
+WORKSHOP_RATE_LIMIT: int = 180
+WORKSHOP_RATE_WINDOW: int = 300
+WORKSHOP_RETRY_COOLDOWN: int = 300
 _failed_workshop_ids: dict[str, float] = {}
 _permanent_failures: set[str] = set()
 _pending_workshop_ids: set[str] = set()
 _workshop_queue: deque[tuple[str, str]] = deque()
+
+DETAILS_CACHE_FILE: str = os.path.join(paths.cache_dir, "workshop_details.json")
+_workshop_details_cache: dict[str, dict] = {}
+_details_queue: deque[str] = deque()
+_details_pending_ids: set[str] = set()
 
 
 def _workshop_queue_length() -> int:
@@ -120,6 +127,80 @@ def _is_recent_failure(ws_id: str) -> bool:
         return ws_id in _failed_workshop_ids
 
 
+def _init_details_cache() -> None:
+    global _workshop_details_cache
+    with _workshop_lock:
+        _workshop_details_cache.clear()
+        try:
+            if os.path.exists(DETAILS_CACHE_FILE):
+                with open(DETAILS_CACHE_FILE) as f:
+                    _workshop_details_cache.update(json.load(f))
+        except (OSError, json.JSONDecodeError):
+            _workshop_details_cache.clear()
+
+
+def _save_details_cache() -> None:
+    with _workshop_lock:
+        try:
+            os.makedirs(os.path.dirname(DETAILS_CACHE_FILE), exist_ok=True)
+            with open(DETAILS_CACHE_FILE, "w") as f:
+                json.dump(_workshop_details_cache, f)
+        except OSError as exc:
+            logger.log("error", f"Failed to save workshop details cache: {exc}")
+
+
+def _get_details_from_cache(ws_id: str) -> Optional[dict]:
+    with _workshop_lock:
+        return _workshop_details_cache.get(ws_id)
+
+
+def _set_details_in_cache(ws_id: str, data: dict) -> None:
+    with _workshop_lock:
+        _workshop_details_cache[ws_id] = {
+            "time_created": data.get("time_created"),
+            "time_updated": data.get("time_updated"),
+        }
+
+
+def _details_queue_length() -> int:
+    with _workshop_lock:
+        return len(_details_queue)
+
+
+def _enqueue_details(ws_id: str) -> bool:
+    with _workshop_lock:
+        if ws_id in _details_queue or ws_id in _details_pending_ids:
+            return False
+        _details_queue.append(ws_id)
+        return True
+
+
+def _dequeue_details() -> Optional[str]:
+    with _workshop_lock:
+        return _details_queue.popleft() if _details_queue else None
+
+
+def _discard_details_from_queue(ws_id: str) -> None:
+    with _workshop_lock:
+        if ws_id in _details_queue:
+            _details_queue.remove(ws_id)
+
+
+def _requeue_details(ws_id: str) -> None:
+    with _workshop_lock:
+        _details_queue.appendleft(ws_id)
+
+
+def _mark_details_pending(ws_id: str) -> None:
+    with _workshop_lock:
+        _details_pending_ids.add(ws_id)
+
+
+def _unmark_details_pending(ws_id: str) -> None:
+    with _workshop_lock:
+        _details_pending_ids.discard(ws_id)
+
+
 def _check_workshop_rate_limit() -> bool:
     with _workshop_lock:
         now = time.time()
@@ -131,7 +212,7 @@ def _check_workshop_rate_limit() -> bool:
         return True
 
 
-def _fetch_workshop_preview_url(ws_id: str) -> str:
+def _fetch_published_file_details(ws_id: str) -> dict:
     data = {"itemcount": 1, "publishedfileids[0]": ws_id}
     payload = urllib.parse.urlencode(data).encode()
     try:
@@ -151,18 +232,63 @@ def _fetch_workshop_preview_url(ws_id: str) -> str:
 
     match details[0].get("result", 0):
         case 1:
-            preview_url = details[0]["preview_url"]
-            if not preview_url:
-                raise RuntimeError(
-                    f"workshop {ws_id}: empty preview_url in API response"
-                )
-            return preview_url
+            return details[0]
         case 9:
             raise FileNotFoundError(f"workshop {ws_id}: file not found (result=9)")
         case other:
             raise RuntimeError(
                 f"workshop {ws_id}: API returned result={other} (expected 1)"
             )
+
+
+def _fetch_workshop_preview_url(ws_id: str) -> str:
+    details = _fetch_published_file_details(ws_id)
+    preview_url = details.get("preview_url", "")
+    if not preview_url:
+        raise RuntimeError(f"workshop {ws_id}: empty preview_url in API response")
+    return preview_url
+
+
+def _scrape_workshop_dates(ws_id: str) -> dict:
+    url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={ws_id}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "IsaacMM/1.0"})
+        with urllib.request.urlopen(req, timeout=10, context=_ssl_context) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, OSError):
+        return {"time_created": None, "time_updated": None}
+
+    vals = re.findall(
+        r'<div class="detailsStatRight">([^<]+)</div>', html
+    )
+    try:
+        time_created = datetime.strptime(
+            vals[1].strip(), "%d %b, %Y @ %I:%M%p"
+        ).timestamp()
+    except (IndexError, ValueError):
+        time_created = None
+
+    time_updated = None
+    if len(vals) >= 3:
+        try:
+            time_updated = datetime.strptime(
+                vals[2].strip(), "%d %b, %Y @ %I:%M%p"
+            ).timestamp()
+        except (ValueError):
+            pass
+
+    return {"time_created": time_created, "time_updated": time_updated}
+
+
+def _fetch_workshop_details(ws_id: str) -> dict:
+    try:
+        details = _fetch_published_file_details(ws_id)
+    except FileNotFoundError:
+        return _scrape_workshop_dates(ws_id)
+    return {
+        "time_created": details.get("time_created"),
+        "time_updated": details.get("time_updated"),
+    }
 
 
 def _download_workshop_icon(ws_id: str, cached_path: str) -> str:

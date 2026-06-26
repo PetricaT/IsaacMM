@@ -1,9 +1,10 @@
 """Dialog windows: settings, separator editing, etc."""
 
 import os
+from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QDateTime, QLocale, Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QStyledItemDelegate,
@@ -203,6 +205,26 @@ class SettingsDialog(QDialog):
         self.download_icons_check.setChecked(config.download_icons)
         self.download_icons_check.toggled.connect(self._save_settings)
         display_layout.addRow(self.download_icons_check)
+
+        date_format_layout = QHBoxLayout()
+        self.date_format_combo = QComboBox()
+        self.date_format_combo.addItem("System locale (auto)", "")
+        self.date_format_combo.addItem("YYYY-MM-DD", "%Y-%m-%d")
+        self.date_format_combo.addItem("DD/MM/YYYY", "%d/%m/%Y")
+        self.date_format_combo.addItem("MM/DD/YYYY", "%m/%d/%Y")
+        self.date_format_combo.addItem("DD.MM.YYYY", "%d.%m.%Y")
+        self.date_format_combo.addItem("YYYY/MM/DD", "%Y/%m/%d")
+        index = self.date_format_combo.findData(config.date_format)
+        if index >= 0:
+            self.date_format_combo.setCurrentIndex(index)
+        self.date_format_combo.currentIndexChanged.connect(self._save_settings)
+        date_format_layout.addWidget(self.date_format_combo)
+        self.date_preview_label = QLabel()
+        self.date_preview_label.setStyleSheet("color: gray;")
+        date_format_layout.addWidget(self.date_preview_label)
+        date_format_layout.addStretch()
+        display_layout.addRow("Date format:", date_format_layout)
+        self._update_date_preview()
         behavior_layout.addWidget(display_group)
 
         paths_group = QGroupBox("Paths")
@@ -294,6 +316,16 @@ class SettingsDialog(QDialog):
             self.backup_path_edit.setText(folder)
             self._save_settings()
 
+    def _update_date_preview(self) -> None:
+        fmt = self.date_format_combo.currentData()
+        if fmt:
+            preview = datetime.now().strftime(fmt)
+        else:
+            preview = QLocale().toString(
+                QDateTime.currentDateTime(), QLocale.FormatType.ShortFormat
+            )
+        self.date_preview_label.setText(f"Preview: {preview}")
+
     def _update_open_buttons(self) -> None:
         mods_folder = self.mods_path_edit.text().strip()
         if not mods_folder:
@@ -339,6 +371,8 @@ class SettingsDialog(QDialog):
         config.preview_images = self.preview_check.isChecked()
         config.download_icons = self.download_icons_check.isChecked()
         config.log_level = self.log_level_combo.currentData()
+        config.date_format = self.date_format_combo.currentData()
+        self._update_date_preview()
         mods_text = self.mods_path_edit.text().strip()
         if mods_text:
             config.mods_path = mods_text

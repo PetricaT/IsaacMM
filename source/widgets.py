@@ -4,9 +4,10 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from datetime import date, datetime, timedelta
 from typing import Optional
 
-from PySide6.QtCore import QByteArray, QEvent, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QByteArray, QDateTime, QEvent, QLocale, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QIcon,
@@ -31,25 +32,45 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import config, logger, paths
+from . import config, game_versions, logger, paths
 from .components.file_utils import open_path, open_url
 from .components.modlist import normalize_mod_name
 from .components.preview import PreviewWidget
 from .components.text_utils import bbcode_to_html
 from .components.workshop import (
     _check_workshop_rate_limit,
+    _dequeue_details,
     _dequeue_workshop,
     _download_workshop_icon,
+    _enqueue_details,
     _enqueue_workshop,
+    _fetch_workshop_details,
+    _get_details_from_cache,
     _is_permanent_failure,
     _is_recent_failure,
+    _mark_details_pending,
     _mark_pending,
     _prune_failures,
     _record_failure,
+    _requeue_details,
     _requeue_workshop,
+    _set_details_in_cache,
+    _unmark_details_pending,
     _unmark_pending,
 )
 from .worker import WorkerThread
+
+
+def _format_date(ts: Optional[float]) -> str:
+    if not ts:
+        return "?"
+    try:
+        if config.date_format:
+            return datetime.fromtimestamp(ts).strftime(config.date_format)
+        qdt = QDateTime.fromSecsSinceEpoch(int(ts))
+        return QLocale().toString(qdt, QLocale.FormatType.ShortFormat)
+    except (OSError, ValueError):
+        return "?"
 
 
 class ConflictTreeWidget(QTreeWidget):
@@ -78,10 +99,15 @@ class ModInfoPanel(QWidget):
         self._movie = QMovie()
         self._movie.setScaledSize(QSize(128, 128))
         self._mod_path: Optional[str] = None
+        self._workshop_id_str: Optional[str] = None
         self._icon_thread = None
         self._icon_queue_timer = QTimer(self)
         self._icon_queue_timer.setSingleShot(True)
         self._icon_queue_timer.timeout.connect(self._process_icon_queue)
+        self._details_thread = None
+        self._details_queue_timer = QTimer(self)
+        self._details_queue_timer.setSingleShot(True)
+        self._details_queue_timer.timeout.connect(self._process_details_queue)
         self.destroyed.connect(self._cleanup_threads)
         self._placeholder = QPixmap(
             os.path.join(paths.BASE_DIR, "assets", "no_image.png")
@@ -123,10 +149,31 @@ class ModInfoPanel(QWidget):
         button_column.addWidget(self.workshop_button)
         button_column.addWidget(self.folder_button)
 
+        self.created_label = QLabel()
+        self.updated_label = QLabel()
+        self.updated_label.setTextFormat(Qt.RichText)
+
+        self.dates_widget = QWidget()
+        dates_layout = QVBoxLayout(self.dates_widget)
+        dates_layout.setContentsMargins(0, 0, 0, 0)
+        dates_layout.setSpacing(2)
+        dates_layout.addWidget(self.created_label)
+        dates_layout.addWidget(self.updated_label)
+        self.dates_widget.setVisible(False)
+
+        right_column = QVBoxLayout()
+        right_column.addWidget(self.tags_box)
+        right_column.addWidget(self.dates_widget)
+        right_column.addStretch()
+
         top_layout = QHBoxLayout()
         top_layout.addWidget(self.icon_label)
-        top_layout.addWidget(self.tags_box, 1)
+        top_layout.addLayout(right_column, 1)
         top_layout.addLayout(button_column)
+
+        self._top_container = QWidget()
+        self._top_container.setLayout(top_layout)
+        self._top_container.setFixedHeight(148)
 
         self.tabs = QTabWidget()
 
@@ -195,7 +242,7 @@ class ModInfoPanel(QWidget):
         self.folder_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.folder_label.clicked.connect(self._open_folder)
 
-        layout.addLayout(top_layout)
+        layout.addWidget(self._top_container)
         layout.addWidget(self.tabs)
         layout.addWidget(self.folder_label)
 
@@ -325,8 +372,18 @@ class ModInfoPanel(QWidget):
         self.folder_label.setText(f"Folder: {mod_folder}")
 
         workshop_match = paths.WORKSHOP_ID_RE.search(mod_folder)
-        self._workshop_id = int(workshop_match.group(1)) if workshop_match else None
+        self._workshop_id_str = workshop_match.group(1) if workshop_match else None
+        self._workshop_id = int(self._workshop_id_str) if self._workshop_id_str else None
         self.workshop_button.setEnabled(self._workshop_id is not None)
+
+        if self._workshop_id_str is not None:
+            self._update_workshop_dates(self._workshop_id_str)
+            if _get_details_from_cache(self._workshop_id_str) is None:
+                if _enqueue_details(self._workshop_id_str):
+                    if not self._details_queue_timer.isActive():
+                        self._process_details_queue()
+        else:
+            self.dates_widget.setVisible(False)
 
     def _show_placeholder(self) -> None:
         self._stop_movie()
@@ -441,10 +498,97 @@ class ModInfoPanel(QWidget):
         thread.start()
         self._icon_thread = thread
 
+    def _update_workshop_dates(self, ws_id: str) -> None:
+        cached = _get_details_from_cache(ws_id)
+        if cached is None:
+            self.dates_widget.setVisible(False)
+            return
+
+        self.dates_widget.setVisible(True)
+
+        ts_created = cached.get("time_created")
+        ts_updated = cached.get("time_updated")
+
+        if ts_created is None and ts_updated is None:
+            self.created_label.setText("Created: —")
+            self.created_label.setStyleSheet("color: gray;")
+            self.updated_label.setText(
+                "<span style='color:#FF4444;'>Not found on Steam Workshop</span>"
+            )
+            return
+
+        created_str = _format_date(ts_created)
+        self.created_label.setText(f"Created: {created_str}")
+        self.created_label.setStyleSheet("color: gray;")
+
+        updated_str = _format_date(ts_updated) if ts_updated else "Never"
+
+        badge_date = ts_updated or ts_created
+        latest_game, previous_major = game_versions.get_outdated_thresholds()
+        badge = ""
+        color = "white"
+        if latest_game is not None and badge_date:
+            try:
+                badge_dt = datetime.fromtimestamp(badge_date).date()
+                if badge_dt >= latest_game:
+                    color = "#55C755"
+                elif previous_major is None or badge_dt >= previous_major:
+                    color = "#FFA500"
+                    badge = " (Possibly outdated)"
+                else:
+                    color = "#FF4444"
+                    badge = " (OUTDATED)"
+            except (OSError, ValueError):
+                pass
+
+        self.updated_label.setText(
+            f"Updated: {updated_str}<span style='color:{color}; font-weight:bold;'>{badge}</span>"
+        )
+
+    def _process_details_queue(self) -> None:
+        if self._details_thread is not None:
+            return
+
+        ws_id = _dequeue_details()
+        if ws_id is None:
+            return
+
+        if not _check_workshop_rate_limit():
+            _requeue_details(ws_id)
+            self._details_queue_timer.start(5000)
+            return
+
+        _mark_details_pending(ws_id)
+
+        def on_done(result: dict):
+            _unmark_details_pending(ws_id)
+            _set_details_in_cache(ws_id, result)
+            if self._workshop_id_str == ws_id:
+                self._update_workshop_dates(ws_id)
+            self._details_thread = None
+            self._details_queue_timer.start(2000)
+
+        def on_error(msg: str):
+            _unmark_details_pending(ws_id)
+            self.log_message.emit(msg, "warning")
+            self._details_thread = None
+            self._details_queue_timer.start(10000)
+
+        thread = WorkerThread(_fetch_workshop_details, ws_id)
+        thread.finished.connect(on_done)
+        thread.error.connect(on_error)
+        thread.finished.connect(thread.deleteLater)
+        thread.error.connect(thread.deleteLater)
+        thread.start()
+        self._details_thread = thread
+
     def _cleanup_threads(self) -> None:
         if self._icon_thread is not None:
             self._icon_thread.quit()
             self._icon_thread = None
+        if self._details_thread is not None:
+            self._details_thread.quit()
+            self._details_thread = None
 
     def _open_link(self, url: QUrl) -> None:
         if not open_url(url.toString()):
@@ -635,10 +779,12 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.clear()
         self.tags_box.clear()
         self._workshop_id = None
+        self._workshop_id_str = None
         self._mod_path = os.path.join(config.mods_path, folder)
         self.folder_button.setEnabled(True)
         self.folder_label.setText(f"Separator: {separator_name}")
         self.workshop_button.setEnabled(False)
+        self.dates_widget.setVisible(False)
         self.tabs.setEnabled(False)
 
     def clear(self) -> None:
@@ -649,8 +795,10 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.clear()
         self.folder_label.setText("")
         self._workshop_id = None
+        self._workshop_id_str = None
         self._mod_path = None
         self.workshop_button.setEnabled(False)
         self.folder_button.setEnabled(False)
         self.tags_box.clear()
+        self.dates_widget.setVisible(False)
         self.tabs.setEnabled(False)

@@ -1,6 +1,7 @@
 """Configuration management: load, save, and provide defaults."""
 import os
 import threading
+import time
 from typing import Optional
 
 import toml
@@ -9,6 +10,8 @@ from PySide6.QtCore import QSettings
 from . import paths, sorter
 
 _save_lock = threading.Lock()
+_last_save: float = 0.0
+SAVE_DEBOUNCE: float = 2.0
 
 mods_path: str = ""
 backup_enabled: bool = False
@@ -24,6 +27,7 @@ loaded_mods: list = []
 workshop_timestamps: list[float] = []
 dead_workshop_ids: list[str] = []
 log_level: str = "info"
+date_format: str = ""
 ignored_items: list[str] = [
     ".git",
     "__pycache__",
@@ -46,7 +50,7 @@ def get_settings() -> QSettings:
 
 def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, disabled_mod_color, animate_icons, preview_images
-    global download_icons, workshop_timestamps, dead_workshop_ids, log_level, ignored_items, animate_anm2_preview
+    global download_icons, workshop_timestamps, dead_workshop_ids, log_level, date_format, ignored_items, animate_anm2_preview
     try:
         config_data = toml.load(f"{paths.config_dir}/config.toml")
         mods_path = config_data["paths"]["mods"]
@@ -63,6 +67,7 @@ def load() -> None:
         preview_images = settings_section.get("preview_images", True)
         download_icons = settings_section.get("download_icons", False)
         log_level = settings_section.get("log_level", "info")
+        date_format = settings_section.get("date_format", "")
         ignored_items = settings_section.get(
             "ignored_items",
             [
@@ -94,7 +99,22 @@ def load() -> None:
         save()
 
 
+def flush() -> None:
+    global _last_save
+    _last_save = 0.0
+    _do_save()
+
+
 def save() -> None:
+    global _last_save
+    now = time.time()
+    if now - _last_save < SAVE_DEBOUNCE:
+        return
+    _last_save = now
+    _do_save()
+
+
+def _do_save() -> None:
     with _save_lock:
         config_data = {
             "paths": {"mods": mods_path},
@@ -107,6 +127,7 @@ def save() -> None:
                 "preview_images": preview_images,
                 "download_icons": download_icons,
                 "log_level": log_level,
+                "date_format": date_format,
                 "dead_workshop_ids": dead_workshop_ids,
                 "ignored_items": ignored_items,
             },
