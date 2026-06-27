@@ -7,6 +7,7 @@ from typing import Optional
 from PySide6.QtCore import QDateTime, QLocale, Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QCheckBox,
     QColorDialog,
@@ -20,6 +21,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSlider,
+    QSpinBox,
     QStyledItemDelegate,
     QStyleFactory,
     QTabWidget,
@@ -31,6 +34,13 @@ from .. import config, logger, paths
 from ..backup import backup_all, get_backup_root
 from ..worker import WorkerThread
 from .file_utils import open_path
+
+try:
+    from ..controller import GamepadType
+    _HAS_SDL = True
+except ImportError:
+    GamepadType = object
+    _HAS_SDL = False
 
 CONFLICT_ROLE = Qt.ItemDataRole.UserRole + 1  # 257
 SEPARATOR_ROLE = Qt.ItemDataRole.UserRole + 2  # 258
@@ -115,7 +125,8 @@ class SeparatorDialog(QDialog):
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: Optional[QWidget] = None,
+                 controller_mgr=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(500)
@@ -123,6 +134,24 @@ class SettingsDialog(QDialog):
 
         main_layout = QVBoxLayout(self)
         tabs = QTabWidget()
+        self._tabs = tabs
+
+        if controller_mgr:
+            from ..controller import (
+                BUTTON_SOUTH, BUTTON_EAST, BUTTON_BACK,
+                BUTTON_DPAD_UP, BUTTON_DPAD_DOWN,
+                BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
+            )
+            self._ctrl_buttons = {
+                BUTTON_LEFT_SHOULDER: self._ctrl_prev_tab,
+                BUTTON_RIGHT_SHOULDER: self._ctrl_next_tab,
+                BUTTON_DPAD_UP: self._ctrl_focus_prev,
+                BUTTON_DPAD_DOWN: self._ctrl_focus_next,
+                BUTTON_SOUTH: self._ctrl_activate,
+                BUTTON_EAST: self.close,
+                BUTTON_BACK: self.close,
+            }
+            controller_mgr.button_down.connect(self._on_controller_button)
 
         behavior_tab = QWidget()
         behavior_layout = QVBoxLayout(behavior_tab)
@@ -281,8 +310,122 @@ class SettingsDialog(QDialog):
         theme_layout.addRow("Accent color:", self.accent_btn)
         tabs.addTab(theme_tab, "Theme")
 
+        controller_tab = QWidget()
+        controller_layout = QVBoxLayout(controller_tab)
+
+        ctrl_group = QGroupBox("Controller")
+        ctrl_form = QFormLayout(ctrl_group)
+        self.ctrl_enable_check = QCheckBox("Enable controller support")
+        self.ctrl_enable_check.setChecked(config.controller_enabled)
+        self.ctrl_enable_check.toggled.connect(self._save_settings)
+        ctrl_form.addRow(self.ctrl_enable_check)
+
+        ctrl_info_group = QGroupBox("Controller Info")
+        ctrl_info_layout = QFormLayout(ctrl_info_group)
+        self.ctrl_name_label = QLabel("Not connected")
+        self.ctrl_type_label = QLabel("-")
+        ctrl_info_layout.addRow("Name:", self.ctrl_name_label)
+        ctrl_info_layout.addRow("Type:", self.ctrl_type_label)
+        controller_layout.addWidget(ctrl_group)
+        controller_layout.addWidget(ctrl_info_group)
+        controller_layout.addStretch()
+
+        ctrl_deadzone_group = QGroupBox("Dead Zone")
+        ctrl_deadzone_layout = QFormLayout(ctrl_deadzone_group)
+        deadzone_layout = QHBoxLayout()
+        self.ctrl_deadzone_slider = QSlider(Qt.Orientation.Horizontal)
+        self.ctrl_deadzone_slider.setRange(0, 32768)
+        self.ctrl_deadzone_slider.setValue(config.controller_deadzone)
+        self.ctrl_deadzone_slider.valueChanged.connect(self._save_settings)
+        self.ctrl_deadzone_label = QLabel(str(config.controller_deadzone))
+        self.ctrl_deadzone_slider.valueChanged.connect(
+            lambda v: self.ctrl_deadzone_label.setText(str(v))
+        )
+        deadzone_layout.addWidget(self.ctrl_deadzone_slider, 1)
+        deadzone_layout.addWidget(self.ctrl_deadzone_label)
+        ctrl_deadzone_layout.addRow("Axis dead zone:", deadzone_layout)
+        controller_layout.addWidget(ctrl_deadzone_group)
+
+        tabs.addTab(controller_tab, "Controller")
+
+        accessibility_tab = QWidget()
+        accessibility_layout = QVBoxLayout(accessibility_tab)
+
+        a11y_group = QGroupBox("Controller Icons")
+        a11y_form = QFormLayout(a11y_group)
+        self.simple_icons_check = QCheckBox("Use simple controller icons")
+        self.simple_icons_check.setChecked(config.controller_simple_icons)
+        self.simple_icons_check.toggled.connect(self._save_settings)
+        a11y_form.addRow(self.simple_icons_check)
+        accessibility_layout.addWidget(a11y_group)
+        accessibility_layout.addStretch()
+        tabs.addTab(accessibility_tab, "Accessibility")
+
         main_layout.addWidget(tabs)
         self._update_open_buttons()
+        self._update_controller_info()
+
+    def _on_controller_button(self, button: int) -> None:
+        handler = getattr(self, '_ctrl_buttons', {}).get(button)
+        if handler:
+            handler()
+
+    def _ctrl_prev_tab(self) -> None:
+        i = self._tabs.currentIndex()
+        if i > 0:
+            self._tabs.setCurrentIndex(i - 1)
+            self._tabs.currentWidget().focusNextChild()
+
+    def _ctrl_next_tab(self) -> None:
+        i = self._tabs.currentIndex()
+        if i < self._tabs.count() - 1:
+            self._tabs.setCurrentIndex(i + 1)
+            self._tabs.currentWidget().focusNextChild()
+
+    def _ctrl_focus_prev(self) -> None:
+        w = QApplication.focusWidget()
+        if isinstance(w, (QSlider, QSpinBox)):
+            if isinstance(w, QSlider):
+                w.setValue(w.value() - w.singleStep())
+            else:
+                w.setValue(w.value() - w.singleStep())
+        else:
+            w = self._tabs.currentWidget()
+            if w:
+                w.focusPreviousChild()
+
+    def _ctrl_focus_next(self) -> None:
+        w = QApplication.focusWidget()
+        if isinstance(w, (QSlider, QSpinBox)):
+            if isinstance(w, QSlider):
+                w.setValue(w.value() + w.singleStep())
+            else:
+                w.setValue(w.value() + w.singleStep())
+        else:
+            w = self._tabs.currentWidget()
+            if w:
+                w.focusNextChild()
+
+    def _ctrl_activate(self) -> None:
+        w = QApplication.focusWidget()
+        if isinstance(w, QAbstractButton):
+            w.animateClick()
+        elif isinstance(w, QComboBox):
+            w.showPopup()
+
+    def _update_controller_info(self) -> None:
+        owner = self.parentWidget()
+        ctrl = getattr(owner, '_controller', None) if owner else None
+        if ctrl and ctrl.is_connected:
+            self.ctrl_name_label.setText(ctrl.gamepad_name)
+            type_names = {
+                0: "Unknown", 1: "Standard", 2: "Xbox 360", 3: "Xbox One",
+                4: "PS3", 5: "PS4", 6: "PS5", 7: "Switch Pro",
+            }
+            self.ctrl_type_label.setText(type_names.get(ctrl.gamepad_type, str(ctrl.gamepad_type)))
+        else:
+            self.ctrl_name_label.setText("Not connected")
+            self.ctrl_type_label.setText("-")
 
     def _pick_accent(self) -> None:
         color = QColorDialog.getColor(QColor(config.accent_color), self)
@@ -363,6 +506,8 @@ class SettingsDialog(QDialog):
     def _save_settings(self) -> None:
         prev_backup = config.backup_enabled
         prev_mods = config.mods_path
+        prev_ctrl = config.controller_enabled
+        prev_simple = config.controller_simple_icons
         config.backup_enabled = self.backup_check.isChecked()
         text = self.backup_path_edit.text().strip()
         config.backup_path = text if text else None
@@ -372,6 +517,9 @@ class SettingsDialog(QDialog):
         config.download_icons = self.download_icons_check.isChecked()
         config.log_level = self.log_level_combo.currentData()
         config.date_format = self.date_format_combo.currentData()
+        config.controller_enabled = self.ctrl_enable_check.isChecked()
+        config.controller_deadzone = self.ctrl_deadzone_slider.value()
+        config.controller_simple_icons = self.simple_icons_check.isChecked()
         self._update_date_preview()
         mods_text = self.mods_path_edit.text().strip()
         if mods_text:
@@ -400,7 +548,13 @@ class SettingsDialog(QDialog):
         log = getattr(owner_window, "log", None)
         if callable(log) and config.backup_enabled != prev_backup:
             log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
+        if config.controller_simple_icons != prev_simple:
+            if hasattr(owner_window, 'mod_list_panel'):
+                owner_window.mod_list_panel.set_simple_icons(config.controller_simple_icons)
+            if hasattr(owner_window, 'modInfoPanel'):
+                owner_window.modInfoPanel.set_simple_icons(config.controller_simple_icons)
         self._update_open_buttons()
+        self._update_controller_info()
         config.save()
 
     def _run_backup(self) -> None:

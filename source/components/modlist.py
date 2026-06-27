@@ -5,7 +5,7 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -25,6 +25,15 @@ from .. import config, logger, paths, sorter
 from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
 from ..worker import WorkerThread
+from ..controller import (
+    BUTTON_SOUTH,
+    BUTTON_EAST,
+    BUTTON_WEST,
+    BUTTON_NORTH,
+    BUTTON_DPAD_UP,
+    BUTTON_DPAD_DOWN,
+)
+from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .dialogs import (
     CONFLICT_ROLE,
     NORMALIZED_NAME_ROLE,
@@ -138,6 +147,15 @@ class ModListPanel(QWidget):
         self._load_thread = None
         self._sort_thread = None
         self._scan_thread = None
+        self._controller_mgr = None
+        self._controller_icons = []
+        self._move_mode = False
+        self._move_index = -1
+        self._move_original_row = -1
+        self._dpad_repeat_dir = None
+        self._dpad_repeat_timer = QTimer(self)
+        self._dpad_repeat_timer.setInterval(180)
+        self._dpad_repeat_timer.timeout.connect(self._dpad_repeat_tick)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -933,3 +951,170 @@ class ModListPanel(QWidget):
             f"QListView::item:selected {{ background-color: {color}; }}"
         )
         self.applyOrder.setStyleSheet(f"background-color : {color}")
+
+    def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
+        self._controller_mgr = controller_mgr
+        button_actions = {
+            BUTTON_SOUTH: self._controller_a,
+            BUTTON_EAST: self._controller_b,
+            BUTTON_WEST: self._controller_x,
+            BUTTON_NORTH: self._controller_y,
+            BUTTON_DPAD_UP: self._controller_dpad_up,
+            BUTTON_DPAD_DOWN: self._controller_dpad_down,
+        }
+        router.register(self, button_actions)
+
+        self._controller_icons = []
+        for btn_enum, widget in [
+            (BUTTON_SOUTH, self.applyOrder),
+            (BUTTON_NORTH, self.restoreOrder),
+            (BUTTON_EAST, self.settingsBtn),
+        ]:
+            icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
+            self._controller_icons.append(icon)
+
+        self._move_mode = False
+        self._move_index = -1
+        self._move_original_row = -1
+        self._dpad_repeat_dir = None
+        controller_mgr.button_up.connect(self._on_controller_button_up)
+        self._axis_scroller = AxisScroller(self._controller_scroll_with_dir, self)
+        controller_mgr.axis_moved.connect(self._axis_scroller.handle_axis)
+
+    def _on_controller_button_up(self, btn: int) -> None:
+        if btn in (BUTTON_DPAD_UP, BUTTON_DPAD_DOWN):
+            self._dpad_repeat_dir = None
+            self._dpad_repeat_timer.stop()
+
+    def _dpad_repeat_tick(self) -> None:
+        if self._dpad_repeat_dir == "up":
+            self._controller_dpad_move(-1)
+        elif self._dpad_repeat_dir == "down":
+            self._controller_dpad_move(1)
+
+    def set_controller_type(self, gp_type: int) -> None:
+        for icon in self._controller_icons:
+            icon._on_connected("", gp_type)
+
+    def set_controller_active(self, active: bool) -> None:
+        for icon in self._controller_icons:
+            icon._on_activity_changed(active)
+
+    def set_simple_icons(self, enabled: bool) -> None:
+        for icon in self._controller_icons:
+            icon.set_simple_mode(enabled)
+
+    def _controller_a(self) -> None:
+        if self._move_mode:
+            self._move_mode = False
+            item = self.model.item(self._move_index)
+            if item:
+                font = item.font()
+                font.setBold(False)
+                item.setFont(font)
+            self._move_index = -1
+            self._move_original_row = -1
+            return
+        idx = self.listView.currentIndex()
+        if idx.isValid():
+            item = self.model.itemFromIndex(idx)
+            if item and not item.data(SEPARATOR_ROLE):
+                item.setCheckState(
+                    Qt.CheckState.Unchecked
+                    if item.checkState() == Qt.CheckState.Checked
+                    else Qt.CheckState.Checked
+                )
+
+    def _controller_b(self) -> None:
+        if self._move_mode:
+            self._move_mode = False
+            item = self.model.item(self._move_index)
+            if item:
+                font = item.font()
+                font.setBold(False)
+                item.setFont(font)
+            if self._move_original_row >= 0:
+                folder = item.data(Qt.ItemDataRole.UserRole)
+                self._populating = True
+                self.model.takeRow(self._move_index)
+                self.model.insertRow(self._move_original_row, item)
+                self.listView.setCurrentIndex(self.model.indexFromItem(item))
+                self._populating = False
+                self._save_current_order()
+                self._update_conflict_indicators()
+            self._move_index = -1
+            self._move_original_row = -1
+            return
+        self.settingsBtn.click()
+
+    def _controller_x(self) -> None:
+        idx = self.listView.currentIndex()
+        if not idx.isValid():
+            return
+        item = self.model.itemFromIndex(idx)
+        if not item or item.data(SEPARATOR_ROLE):
+            return
+        self._move_mode = not self._move_mode
+        if self._move_mode:
+            self._move_index = idx.row()
+            self._move_original_row = idx.row()
+            font = item.font()
+            font.setBold(True)
+            item.setFont(font)
+        else:
+            item = self.model.item(self._move_index)
+            if item:
+                font = item.font()
+                font.setBold(False)
+                item.setFont(font)
+            self._move_index = -1
+            self._move_original_row = -1
+
+    def _controller_y(self) -> None:
+        if self._move_mode:
+            return
+        self.applyOrder.click()
+
+    def _controller_dpad_up(self) -> None:
+        if self._move_mode:
+            self._controller_dpad_move(-1)
+            self._dpad_repeat_dir = "up"
+            self._dpad_repeat_timer.start()
+        else:
+            self._controller_dpad_nav(-1)
+
+    def _controller_dpad_down(self) -> None:
+        if self._move_mode:
+            self._controller_dpad_move(1)
+            self._dpad_repeat_dir = "down"
+            self._dpad_repeat_timer.start()
+        else:
+            self._controller_dpad_nav(1)
+
+    def _controller_scroll_with_dir(self, direction: int) -> None:
+        focused = QApplication.focusWidget()
+        if not focused or not (focused is self or self.isAncestorOf(focused)):
+            return
+        if self._move_mode:
+            self._controller_dpad_move(direction)
+        else:
+            self._controller_dpad_nav(direction)
+
+    def _controller_dpad_move(self, direction: int) -> None:
+        new_idx = self._move_index + direction
+        if new_idx < 0 or new_idx >= self.model.rowCount():
+            return
+        items = self.model.takeRow(self._move_index)
+        self._move_index = new_idx
+        self.model.insertRow(self._move_index, items)
+        self.listView.setCurrentIndex(self.model.index(self._move_index, 0))
+        self._save_current_order()
+        self._update_conflict_indicators()
+
+    def _controller_dpad_nav(self, direction: int) -> None:
+        idx = self.listView.currentIndex()
+        row = (idx.row() + direction) if idx.isValid() else 0
+        if 0 <= row < self.model.rowCount():
+            self.listView.setCurrentIndex(self.model.index(row, 0))
+
+

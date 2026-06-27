@@ -7,4 +7,5 @@ dependencies = [
     "PySide6",
     "toml",
     "pyyaml",
+    "PySDL3",
 ]

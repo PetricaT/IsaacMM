@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import config, game_versions, logger, paths
+from .components.controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .components.file_utils import open_path, open_url
 from .components.modlist import normalize_mod_name
 from .components.preview import PreviewWidget
@@ -787,12 +788,135 @@ class ModInfoPanel(QWidget):
         self.dates_widget.setVisible(False)
         self.tabs.setEnabled(False)
 
+    def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
+        from .controller import (
+            BUTTON_SOUTH, BUTTON_WEST, BUTTON_NORTH,
+            BUTTON_DPAD_LEFT, BUTTON_DPAD_RIGHT,
+            BUTTON_DPAD_UP, BUTTON_DPAD_DOWN,
+        )
+        router.register(self, {
+            BUTTON_NORTH: self._open_workshop,
+            BUTTON_WEST: self._open_folder,
+            BUTTON_DPAD_LEFT: self._controller_prev_tab,
+            BUTTON_DPAD_RIGHT: self._controller_next_tab,
+            BUTTON_DPAD_UP: self._controller_scroll_up,
+            BUTTON_DPAD_DOWN: self._controller_scroll_down,
+        })
+        self._controller_icons = []
+        for btn_enum, widget in [
+            (BUTTON_NORTH, self.workshop_button),
+            (BUTTON_WEST, self.folder_button),
+        ]:
+            icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
+            self._controller_icons.append(icon)
+        self._axis_scroller = AxisScroller(self._controller_scroll_with_dir, self)
+        controller_mgr.axis_moved.connect(self._axis_scroller.handle_axis)
+
+    def set_controller_type(self, gp_type: int) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon._on_connected("", gp_type)
+
+    def set_controller_active(self, active: bool) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon._on_activity_changed(active)
+
+    def set_simple_icons(self, enabled: bool) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon.set_simple_mode(enabled)
+
+    def _controller_prev_tab(self) -> None:
+        i = self.tabs.currentIndex()
+        if i > 0:
+            self.tabs.setCurrentIndex(i - 1)
+            self.tabs.currentWidget().setFocus()
+
+    def _controller_next_tab(self) -> None:
+        i = self.tabs.currentIndex()
+        if i < self.tabs.count() - 1:
+            self.tabs.setCurrentIndex(i + 1)
+            self.tabs.currentWidget().setFocus()
+
+    def _controller_trigger_preview(self, tree: QTreeWidget) -> None:
+        if not config.preview_images:
+            return
+        item = tree.currentItem()
+        if not item or item.childCount():
+            self._preview.stop()
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            self._preview.stop()
+            return
+        mod_folder, relative_path = data
+        full_path = os.path.join(config.mods_path, mod_folder, relative_path)
+        if relative_path.lower().endswith((".png", ".anm2")):
+            vp = tree.viewport()
+            center = vp.mapToGlobal(vp.rect().center())
+            self._preview.show_preview(full_path, center)
+
+    def _controller_nav_up(self, w: QWidget) -> None:
+        if isinstance(w, QTreeWidget):
+            item = w.currentItem()
+            if item:
+                prev = w.itemAbove(item)
+                if prev:
+                    w.setCurrentItem(prev)
+                    w.scrollToItem(prev)
+                    self._controller_trigger_preview(w)
+            else:
+                first = w.topLevelItem(0)
+                if first:
+                    w.setCurrentItem(first)
+                    w.scrollToItem(first)
+                    self._controller_trigger_preview(w)
+        else:
+            sb = w.verticalScrollBar() if hasattr(w, 'verticalScrollBar') else None
+            if sb:
+                sb.setValue(sb.value() - sb.singleStep())
+
+    def _controller_nav_down(self, w: QWidget) -> None:
+        if isinstance(w, QTreeWidget):
+            item = w.currentItem()
+            if item:
+                nxt = w.itemBelow(item)
+                if nxt:
+                    w.setCurrentItem(nxt)
+                    w.scrollToItem(nxt)
+                    self._controller_trigger_preview(w)
+            else:
+                first = w.topLevelItem(0)
+                if first:
+                    w.setCurrentItem(first)
+                    w.scrollToItem(first)
+                    self._controller_trigger_preview(w)
+        else:
+            sb = w.verticalScrollBar() if hasattr(w, 'verticalScrollBar') else None
+            if sb:
+                sb.setValue(sb.value() + sb.singleStep())
+
+    def _controller_scroll_up(self) -> None:
+        self._controller_nav_up(self.tabs.currentWidget())
+
+    def _controller_scroll_down(self) -> None:
+        self._controller_nav_down(self.tabs.currentWidget())
+
+    def _controller_scroll_with_dir(self, direction: int) -> None:
+        focused = QApplication.focusWidget()
+        if not focused or not (focused is self or self.isAncestorOf(focused)):
+            return
+        w = self.tabs.currentWidget()
+        if direction < 0:
+            self._controller_nav_up(w)
+        else:
+            self._controller_nav_down(w)
+
     def clear(self) -> None:
         self._stop_movie()
         self._preview.stop()
         self._show_placeholder()
         self.description_text.clear()
         self.conflicts_tree.clear()
+        self.files_tree.clear()
         self.folder_label.setText("")
         self._workshop_id = None
         self._workshop_id_str = None

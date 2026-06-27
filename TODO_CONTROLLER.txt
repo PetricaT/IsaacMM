@@ -1,0 +1,3 @@
+* convert settings window
+* add shoulder buttons indicators
+* fix file preview on controller
