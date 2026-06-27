@@ -20,6 +20,14 @@ from .components.workshop import (
 )
 from .widgets import ModInfoPanel
 from .worker import WorkerThread
+from .controller import (
+    ControllerManager,
+    BUTTON_BACK,
+    BUTTON_START,
+    BUTTON_LEFT_SHOULDER,
+    BUTTON_RIGHT_SHOULDER,
+)
+from .components.controller_ui import ControllerRouter, FocusOverlay
 
 
 class DragApp(QWidget):
@@ -30,6 +38,8 @@ class DragApp(QWidget):
         self._backup_thread = None
         self._masterlist_thread = None
         self._game_versions_thread = None
+        self._controller = None
+        self._router = None
 
         self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
         s = config.get_settings()
@@ -46,6 +56,7 @@ class DragApp(QWidget):
         self.initUi()
         self._refresh_masterlist_background()
         self._refresh_game_versions_background()
+        self._init_controller()
 
     def closeEvent(self, close_event) -> None:
         s = config.get_settings()
@@ -57,6 +68,17 @@ class DragApp(QWidget):
         _sync_workshop_limiter()
         _save_details_cache()
         config.flush()
+        if self._controller:
+            self._controller.cleanup()
+        if hasattr(self, '_router'):
+            self._router.cleanup()
+        for icon in getattr(self.mod_list_panel, '_controller_icons', []):
+            icon.cleanup()
+        for icon in getattr(self.modInfoPanel, '_controller_icons', []):
+            icon.cleanup()
+        for ov in getattr(self, '_focus_overlays', []):
+            ov.hide()
+            ov.setParent(None)
         super().closeEvent(close_event)
 
     def initUi(self) -> None:
@@ -74,13 +96,13 @@ class DragApp(QWidget):
         self.modInfoPanel = ModInfoPanel()
         self.modInfoPanel.log_message.connect(self.console_widget.log)
 
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
+        self._left_panel = QWidget()
+        left_layout = QVBoxLayout(self._left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(self.mod_list_panel)
 
         horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
-        horizontal_splitter.addWidget(left_panel)
+        horizontal_splitter.addWidget(self._left_panel)
         horizontal_splitter.addWidget(self.modInfoPanel)
         horizontal_splitter.setStretchFactor(0, 1)
         horizontal_splitter.setStretchFactor(1, 1)
@@ -205,6 +227,77 @@ class DragApp(QWidget):
 
     def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None:
         self.console_widget.log_colored(segments)
+
+    def _init_controller(self) -> None:
+        if not config.controller_enabled:
+            return
+        try:
+            self._controller = ControllerManager(self)
+            self._router = ControllerRouter(self._controller)
+            self._router.register_global({
+                BUTTON_START: self._open_settings,
+                BUTTON_BACK: self._toggle_console,
+                BUTTON_LEFT_SHOULDER: self._focus_modlist,
+                BUTTON_RIGHT_SHOULDER: self._focus_modinfo,
+            })
+            self._focus_overlays = (
+                FocusOverlay(self.modInfoPanel),
+                FocusOverlay(self._left_panel),
+            )
+            self._controller_focus = None
+            self._controller.connected.connect(self._on_controller_connected)
+            self._controller.disconnected.connect(self._on_controller_disconnected)
+            self._controller.activity_changed.connect(self._on_controller_activity)
+            self.mod_list_panel.set_controller(self._controller, self._router)
+            self.modInfoPanel.set_controller(self._controller, self._router)
+
+            if self._controller.is_connected:
+                self._on_controller_connected(
+                    self._controller.gamepad_name, self._controller.gamepad_type
+                )
+            if self._controller.is_active:
+                self._on_controller_activity(True)
+        except Exception:
+            self.log("Controller support unavailable", "warning")
+
+    def _on_controller_connected(self, name: str, gp_type: int) -> None:
+        self.log(f"Controller connected: {name}", "info")
+        self.mod_list_panel.set_controller_type(gp_type)
+        self.modInfoPanel.set_controller_type(gp_type)
+
+    def _on_controller_disconnected(self) -> None:
+        self.log("Controller disconnected", "warning")
+        self.mod_list_panel.set_controller_active(False)
+        self.modInfoPanel.set_controller_active(False)
+
+    def _on_controller_activity(self, active: bool) -> None:
+        self.mod_list_panel.set_controller_active(active)
+        self.modInfoPanel.set_controller_active(active)
+        if active:
+            if self._controller_focus is None:
+                self._focus_modlist()
+        else:
+            for ov in self._focus_overlays:
+                ov.hide()
+            self._controller_focus = None
+
+    def _toggle_console(self) -> None:
+        self.console_widget.setVisible(not self.console_widget.isVisible())
+
+    def _focus_modlist(self) -> None:
+        self._controller_focus = "modlist"
+        self._focus_overlays[0].show()
+        self._focus_overlays[1].hide()
+        lv = self.mod_list_panel.listView
+        lv.setFocus()
+        if not lv.currentIndex().isValid() and self.mod_list_panel.model.rowCount() > 0:
+            lv.setCurrentIndex(self.mod_list_panel.model.index(0, 0))
+
+    def _focus_modinfo(self) -> None:
+        self._controller_focus = "modinfo"
+        self._focus_overlays[0].hide()
+        self._focus_overlays[1].show()
+        self.modInfoPanel.setFocus()
 
     def update_accent_style(self, color: str) -> None:
         self.mod_list_panel.update_accent_color(color)

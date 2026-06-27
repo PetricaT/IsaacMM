@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import config, game_versions, logger, paths
+from .components.controller_ui import ControllerButtonIcon, ControllerRouter
 from .components.file_utils import open_path, open_url
 from .components.modlist import normalize_mod_name
 from .components.preview import PreviewWidget
@@ -787,12 +788,101 @@ class ModInfoPanel(QWidget):
         self.dates_widget.setVisible(False)
         self.tabs.setEnabled(False)
 
+    def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
+        from .controller import (
+            BUTTON_SOUTH, BUTTON_WEST, BUTTON_NORTH,
+            BUTTON_DPAD_LEFT, BUTTON_DPAD_RIGHT,
+            BUTTON_DPAD_UP, BUTTON_DPAD_DOWN,
+        )
+        router.register(self, {
+            BUTTON_NORTH: self._open_workshop,
+            BUTTON_WEST: self._open_folder,
+            BUTTON_DPAD_LEFT: self._controller_prev_tab,
+            BUTTON_DPAD_RIGHT: self._controller_next_tab,
+            BUTTON_DPAD_UP: self._controller_scroll_up,
+            BUTTON_DPAD_DOWN: self._controller_scroll_down,
+        })
+        self._controller_icons = []
+        for btn_enum, widget in [
+            (BUTTON_NORTH, self.workshop_button),
+            (BUTTON_WEST, self.folder_button),
+        ]:
+            icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
+            self._controller_icons.append(icon)
+
+    def set_controller_type(self, gp_type: int) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon._on_connected("", gp_type)
+
+    def set_controller_active(self, active: bool) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon._on_activity_changed(active)
+
+    def set_simple_icons(self, enabled: bool) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon.set_simple_mode(enabled)
+
+    def _controller_prev_tab(self) -> None:
+        i = self.tabs.currentIndex()
+        if i > 0:
+            self.tabs.setCurrentIndex(i - 1)
+            self.tabs.currentWidget().setFocus()
+
+    def _controller_next_tab(self) -> None:
+        i = self.tabs.currentIndex()
+        if i < self.tabs.count() - 1:
+            self.tabs.setCurrentIndex(i + 1)
+            self.tabs.currentWidget().setFocus()
+
+    def _controller_nav_up(self, w: QWidget) -> None:
+        if isinstance(w, QTreeWidget):
+            item = w.currentItem()
+            if item:
+                prev = w.itemAbove(item)
+                if prev:
+                    w.setCurrentItem(prev)
+                    w.scrollToItem(prev)
+            else:
+                first = w.topLevelItem(0)
+                if first:
+                    w.setCurrentItem(first)
+                    w.scrollToItem(first)
+        else:
+            sb = w.verticalScrollBar() if hasattr(w, 'verticalScrollBar') else None
+            if sb:
+                sb.setValue(sb.value() - sb.singleStep())
+
+    def _controller_nav_down(self, w: QWidget) -> None:
+        if isinstance(w, QTreeWidget):
+            item = w.currentItem()
+            if item:
+                nxt = w.itemBelow(item)
+                if nxt:
+                    w.setCurrentItem(nxt)
+                    w.scrollToItem(nxt)
+            else:
+                first = w.topLevelItem(0)
+                if first:
+                    w.setCurrentItem(first)
+                    w.scrollToItem(first)
+        else:
+            sb = w.verticalScrollBar() if hasattr(w, 'verticalScrollBar') else None
+            if sb:
+                sb.setValue(sb.value() + sb.singleStep())
+
+    def _controller_scroll_up(self) -> None:
+        self._controller_nav_up(self.tabs.currentWidget())
+
+    def _controller_scroll_down(self) -> None:
+        self._controller_nav_down(self.tabs.currentWidget())
+
     def clear(self) -> None:
         self._stop_movie()
         self._preview.stop()
         self._show_placeholder()
         self.description_text.clear()
         self.conflicts_tree.clear()
+        self.files_tree.clear()
         self.folder_label.setText("")
         self._workshop_id = None
         self._workshop_id_str = None
