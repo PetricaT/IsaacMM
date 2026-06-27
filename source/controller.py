@@ -92,9 +92,6 @@ class ControllerManager(QObject):
         self._prev_buttons = [False] * BUTTON_COUNT
         self._prev_axes = [0] * AXIS_COUNT
         self._deadzone = DEADZONE_DEFAULT
-        self._idle_timer = QTimer(self)
-        self._idle_timer.setSingleShot(True)
-        self._idle_timer.timeout.connect(self._on_idle_timeout)
 
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(33)
@@ -147,7 +144,7 @@ class ControllerManager(QObject):
             self._connected = True
             self._prev_buttons = [False] * BUTTON_COUNT
             self._prev_axes = [0] * AXIS_COUNT
-        self._set_active(True)
+        self.set_active(True)
         self.connected.emit(self._gamepad_name, int(self._gamepad_type))
 
     def _close_controller(self) -> None:
@@ -159,7 +156,7 @@ class ControllerManager(QObject):
                 self._gamepad_type = GamepadType.UNKNOWN
                 self._gamepad_name = ""
                 self._connected = False
-        self._set_active(False)
+        self.set_active(False)
         self.disconnected.emit()
 
     def _poll(self) -> None:
@@ -177,7 +174,7 @@ class ControllerManager(QObject):
                 with self._lock:
                     if btn < BUTTON_COUNT:
                         self._prev_buttons[btn] = True
-                self._set_active(True)
+                self.set_active(True)
                 self.button_down.emit(btn)
             elif event.type == sdl3.SDL_EVENT_GAMEPAD_BUTTON_UP:
                 btn = int(event.gbutton.button)
@@ -197,22 +194,16 @@ class ControllerManager(QObject):
                     val = 0
                 if val != self._prev_axes[axis_idx]:
                     self._prev_axes[axis_idx] = val
-                    if val != 0:
-                        axis_events.append((axis_idx, val))
+                    axis_events.append((axis_idx, val))
         for axis_idx, val in axis_events:
             if val != 0:
-                self._set_active(True)
+                self.set_active(True)
             self.axis_moved.emit(axis_idx, val)
 
-    def _set_active(self, active: bool) -> None:
+    def set_active(self, active: bool) -> None:
         if active != self._active:
             self._active = active
             self.activity_changed.emit(active)
-        if active:
-            self._idle_timer.start(int(config.controller_idle_timeout * 1000))
-
-    def _on_idle_timeout(self) -> None:
-        self._set_active(False)
 
     @property
     def gamepad_type(self) -> int:
@@ -254,7 +245,6 @@ class ControllerManager(QObject):
 
     def cleanup(self) -> None:
         self._poll_timer.stop()
-        self._idle_timer.stop()
         self._close_controller()
         try:
             sdl3.SDL_Quit()

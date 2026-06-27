@@ -1,9 +1,11 @@
 """Main application window and entry point."""
 
+import os
 from typing import Optional
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QSize, QTimer, Qt
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QLabel, QSplitter, QVBoxLayout, QWidget
 
 from . import config, game_versions, paths, sorter
 from .backup import backup_all, get_backup_root
@@ -35,6 +37,7 @@ class DragApp(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.installEventFilter(self)
         self._backup_thread = None
         self._masterlist_thread = None
         self._game_versions_thread = None
@@ -79,6 +82,9 @@ class DragApp(QWidget):
         for ov in getattr(self, '_focus_overlays', []):
             ov.hide()
             ov.setParent(None)
+        for lbl, _ in getattr(self, '_shoulder_indicators', []):
+            lbl.hide()
+            lbl.setParent(None)
         super().closeEvent(close_event)
 
     def initUi(self) -> None:
@@ -126,8 +132,20 @@ class DragApp(QWidget):
         self.modInfoPanel.show_mod_info(mod_name, mod_folder, None, conflicts)
 
     def _open_settings(self) -> None:
-        dialog = SettingsDialog(self)
+        dialog = SettingsDialog(self, getattr(self, '_controller', None))
+        if self._controller and self._controller.is_connected:
+            self._router.unregister_global(
+                BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
+                BUTTON_BACK, BUTTON_START,
+            )
         dialog.exec()
+        if self._controller and self._controller.is_connected:
+            self._router.register_global({
+                BUTTON_LEFT_SHOULDER: self._focus_modlist,
+                BUTTON_RIGHT_SHOULDER: self._focus_modinfo,
+                BUTTON_BACK: self._toggle_console,
+                BUTTON_START: self._open_settings,
+            })
 
     def _maybe_backup(self) -> None:
         if not config.backup_enabled or not config.mods_path:
@@ -228,6 +246,44 @@ class DragApp(QWidget):
     def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None:
         self.console_widget.log_colored(segments)
 
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Resize:
+            for lbl, panel in getattr(self, '_shoulder_indicators', []):
+                if obj is panel and lbl.isVisible():
+                    self._reposition_shoulder_indicators()
+                    break
+        return super().eventFilter(obj, event)
+
+    def _setup_shoulder_indicators(self) -> None:
+        SH = 20
+        base = os.path.join(paths.BASE_DIR, "assets", "controller")
+        self._shoulder_indicators = []
+
+        for panel, btn_name in (
+            (self._left_panel, "LEFT_SHOULDER"),
+            (self.modInfoPanel, "RIGHT_SHOULDER"),
+        ):
+            lbl = QLabel(panel)
+            lbl.setFixedSize(SH, SH)
+            path = os.path.join(base, f"{btn_name}.png")
+            pm = QPixmap(path)
+            if not pm.isNull():
+                scaled = pm.scaled(SH, SH, Qt.AspectRatioMode.KeepAspectRatio,
+                                   Qt.TransformationMode.SmoothTransformation)
+                lbl.setPixmap(scaled)
+            lbl.hide()
+            panel.installEventFilter(self)
+            self._shoulder_indicators.append((lbl, panel))
+
+    def _reposition_shoulder_indicators(self) -> None:
+        SH = 20
+        for lbl, panel in self._shoulder_indicators:
+            if panel is self._left_panel:
+                lbl.move(panel.width() - SH - 4, 4)
+            else:
+                lbl.move(4, 4)
+            lbl.raise_()
+
     def _init_controller(self) -> None:
         if not config.controller_enabled:
             return
@@ -245,6 +301,7 @@ class DragApp(QWidget):
                 FocusOverlay(self._left_panel),
             )
             self._controller_focus = None
+            self._setup_shoulder_indicators()
             self._controller.connected.connect(self._on_controller_connected)
             self._controller.disconnected.connect(self._on_controller_disconnected)
             self._controller.activity_changed.connect(self._on_controller_activity)
@@ -257,8 +314,8 @@ class DragApp(QWidget):
                 )
             if self._controller.is_active:
                 self._on_controller_activity(True)
-        except Exception:
-            self.log("Controller support unavailable", "warning")
+        except Exception as exc:
+            self.log(f"Controller support unavailable: {exc}", "warning")
 
     def _on_controller_connected(self, name: str, gp_type: int) -> None:
         self.log(f"Controller connected: {name}", "info")
@@ -270,15 +327,27 @@ class DragApp(QWidget):
         self.mod_list_panel.set_controller_active(False)
         self.modInfoPanel.set_controller_active(False)
 
+    def eventFilter(self, obj, event) -> bool:
+        if self._controller and self._controller.is_connected:
+            etype = event.type()
+            if etype in (QEvent.MouseButtonPress, QEvent.KeyPress, QEvent.Wheel):
+                self._controller.set_active(False)
+        return super().eventFilter(obj, event)
+
     def _on_controller_activity(self, active: bool) -> None:
         self.mod_list_panel.set_controller_active(active)
         self.modInfoPanel.set_controller_active(active)
         if active:
+            self._reposition_shoulder_indicators()
+            for lbl, _ in self._shoulder_indicators:
+                lbl.show()
             if self._controller_focus is None:
                 self._focus_modlist()
         else:
             for ov in self._focus_overlays:
                 ov.hide()
+            for lbl, _ in self._shoulder_indicators:
+                lbl.hide()
             self._controller_focus = None
 
     def _toggle_console(self) -> None:

@@ -33,7 +33,7 @@ from ..controller import (
     BUTTON_DPAD_UP,
     BUTTON_DPAD_DOWN,
 )
-from .controller_ui import ControllerButtonIcon, ControllerRouter
+from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .dialogs import (
     CONFLICT_ROLE,
     NORMALIZED_NAME_ROLE,
@@ -978,6 +978,8 @@ class ModListPanel(QWidget):
         self._move_original_row = -1
         self._dpad_repeat_dir = None
         controller_mgr.button_up.connect(self._on_controller_button_up)
+        self._axis_scroller = AxisScroller(self._controller_scroll_with_dir, self)
+        controller_mgr.axis_moved.connect(self._axis_scroller.handle_axis)
 
     def _on_controller_button_up(self, btn: int) -> None:
         if btn in (BUTTON_DPAD_UP, BUTTON_DPAD_DOWN):
@@ -1088,6 +1090,15 @@ class ModListPanel(QWidget):
             self._dpad_repeat_timer.start()
         else:
             self._controller_dpad_nav(1)
+
+    def _controller_scroll_with_dir(self, direction: int) -> None:
+        focused = QApplication.focusWidget()
+        if not focused or not (focused is self or self.isAncestorOf(focused)):
+            return
+        if self._move_mode:
+            self._controller_dpad_move(direction)
+        else:
+            self._controller_dpad_nav(direction)
 
     def _controller_dpad_move(self, direction: int) -> None:
         new_idx = self._move_index + direction

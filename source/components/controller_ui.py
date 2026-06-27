@@ -1,12 +1,15 @@
 """Controller UI: hint icons inside buttons and action router."""
 import os
+import time
+from typing import Optional
 
-from PySide6.QtCore import QEvent, QSize, Qt
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from .. import config, paths
 from ..controller import (
+    AXIS_LEFTY,
     BUTTON_SOUTH, BUTTON_EAST, BUTTON_WEST, BUTTON_NORTH,
     BUTTON_BACK, BUTTON_START,
     BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
@@ -116,6 +119,7 @@ class ControllerRouter:
         self._controller_mgr = controller_mgr
         self._registry: list[tuple[QWidget, dict[int, callable]]] = []
         self._global_actions: dict[int, callable] = {}
+        self._modal_override: Optional[dict[int, callable]] = None
 
         self._regions: list[tuple[QWidget, dict[int, callable], int]] = []
         self._focus_order: list[QWidget] = []
@@ -135,11 +139,28 @@ class ControllerRouter:
     def register_global(self, actions: dict[int, callable]) -> None:
         self._global_actions.update(actions)
 
+    def unregister_global(self, *buttons: int) -> None:
+        for btn in buttons:
+            self._global_actions.pop(btn, None)
+
+    def unregister(self, widget: QWidget) -> None:
+        self._registry = [(w, a) for w, a in self._registry if w is not widget]
+
+    def set_modal_override(self, actions: dict[int, callable]) -> None:
+        self._modal_override = actions
+
+    def clear_modal_override(self) -> None:
+        self._modal_override = None
+
     def register_focus_region(self, widget: QWidget, actions: dict[int, callable], order: int = 0) -> None:
         self._regions.append((widget, actions, order))
         self._regions.sort(key=lambda x: x[2])
 
     def _route(self, button: int) -> None:
+        override = self._modal_override
+        if override and button in override:
+            override[button]()
+            return
         if button in self._global_actions:
             self._global_actions[button]()
             return
@@ -186,3 +207,49 @@ class FocusOverlay(QWidget):
         self._reposition()
         super().show()
         self.update()
+
+
+_AXIS_THRESHOLD = 14000
+_AXIS_INITIAL_MS = 180
+_AXIS_MIN_MS = 30
+_AXIS_ACCEL = 40  # ms faster per second held
+
+
+class AxisScroller:
+    def __init__(self, scroll_fn: callable, parent: QObject = None) -> None:
+        self._scroll_fn = scroll_fn
+        self._timer = QTimer(parent)
+        self._timer.timeout.connect(self._tick)
+        self._dir = 0
+        self._started_at = 0.0
+        self._interval = 0
+
+    def handle_axis(self, axis_idx: int, val: int) -> None:
+        if axis_idx != AXIS_LEFTY:
+            return
+        if abs(val) < _AXIS_THRESHOLD:
+            if self._dir:
+                self._dir = 0
+                self._timer.stop()
+            return
+        new_dir = -1 if val < 0 else 1
+        if new_dir != self._dir:
+            self._dir = new_dir
+            self._started_at = time.monotonic()
+            self._interval = _AXIS_INITIAL_MS
+            self._timer.start(_AXIS_INITIAL_MS)
+            self._scroll_fn(new_dir)
+
+    def _tick(self) -> None:
+        if not self._dir:
+            return
+        elapsed = time.monotonic() - self._started_at
+        interval = max(_AXIS_MIN_MS, _AXIS_INITIAL_MS - int(elapsed * _AXIS_ACCEL))
+        if interval != self._interval:
+            self._interval = interval
+            self._timer.setInterval(interval)
+        self._scroll_fn(self._dir)
+
+    def stop(self) -> None:
+        self._dir = 0
+        self._timer.stop()

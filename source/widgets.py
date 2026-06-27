@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import config, game_versions, logger, paths
-from .components.controller_ui import ControllerButtonIcon, ControllerRouter
+from .components.controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .components.file_utils import open_path, open_url
 from .components.modlist import normalize_mod_name
 from .components.preview import PreviewWidget
@@ -809,6 +809,8 @@ class ModInfoPanel(QWidget):
         ]:
             icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
             self._controller_icons.append(icon)
+        self._axis_scroller = AxisScroller(self._controller_scroll_with_dir, self)
+        controller_mgr.axis_moved.connect(self._axis_scroller.handle_axis)
 
     def set_controller_type(self, gp_type: int) -> None:
         for icon in getattr(self, '_controller_icons', []):
@@ -834,6 +836,24 @@ class ModInfoPanel(QWidget):
             self.tabs.setCurrentIndex(i + 1)
             self.tabs.currentWidget().setFocus()
 
+    def _controller_trigger_preview(self, tree: QTreeWidget) -> None:
+        if not config.preview_images:
+            return
+        item = tree.currentItem()
+        if not item or item.childCount():
+            self._preview.stop()
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            self._preview.stop()
+            return
+        mod_folder, relative_path = data
+        full_path = os.path.join(config.mods_path, mod_folder, relative_path)
+        if relative_path.lower().endswith((".png", ".anm2")):
+            vp = tree.viewport()
+            center = vp.mapToGlobal(vp.rect().center())
+            self._preview.show_preview(full_path, center)
+
     def _controller_nav_up(self, w: QWidget) -> None:
         if isinstance(w, QTreeWidget):
             item = w.currentItem()
@@ -842,11 +862,13 @@ class ModInfoPanel(QWidget):
                 if prev:
                     w.setCurrentItem(prev)
                     w.scrollToItem(prev)
+                    self._controller_trigger_preview(w)
             else:
                 first = w.topLevelItem(0)
                 if first:
                     w.setCurrentItem(first)
                     w.scrollToItem(first)
+                    self._controller_trigger_preview(w)
         else:
             sb = w.verticalScrollBar() if hasattr(w, 'verticalScrollBar') else None
             if sb:
@@ -860,11 +882,13 @@ class ModInfoPanel(QWidget):
                 if nxt:
                     w.setCurrentItem(nxt)
                     w.scrollToItem(nxt)
+                    self._controller_trigger_preview(w)
             else:
                 first = w.topLevelItem(0)
                 if first:
                     w.setCurrentItem(first)
                     w.scrollToItem(first)
+                    self._controller_trigger_preview(w)
         else:
             sb = w.verticalScrollBar() if hasattr(w, 'verticalScrollBar') else None
             if sb:
@@ -875,6 +899,16 @@ class ModInfoPanel(QWidget):
 
     def _controller_scroll_down(self) -> None:
         self._controller_nav_down(self.tabs.currentWidget())
+
+    def _controller_scroll_with_dir(self, direction: int) -> None:
+        focused = QApplication.focusWidget()
+        if not focused or not (focused is self or self.isAncestorOf(focused)):
+            return
+        w = self.tabs.currentWidget()
+        if direction < 0:
+            self._controller_nav_up(w)
+        else:
+            self._controller_nav_down(w)
 
     def clear(self) -> None:
         self._stop_movie()

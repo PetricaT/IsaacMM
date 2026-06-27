@@ -7,6 +7,7 @@ from typing import Optional
 from PySide6.QtCore import QDateTime, QLocale, Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QCheckBox,
     QColorDialog,
@@ -124,7 +125,8 @@ class SeparatorDialog(QDialog):
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: Optional[QWidget] = None,
+                 controller_mgr=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(500)
@@ -132,6 +134,24 @@ class SettingsDialog(QDialog):
 
         main_layout = QVBoxLayout(self)
         tabs = QTabWidget()
+        self._tabs = tabs
+
+        if controller_mgr:
+            from ..controller import (
+                BUTTON_SOUTH, BUTTON_EAST, BUTTON_BACK,
+                BUTTON_DPAD_UP, BUTTON_DPAD_DOWN,
+                BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
+            )
+            self._ctrl_buttons = {
+                BUTTON_LEFT_SHOULDER: self._ctrl_prev_tab,
+                BUTTON_RIGHT_SHOULDER: self._ctrl_next_tab,
+                BUTTON_DPAD_UP: self._ctrl_focus_prev,
+                BUTTON_DPAD_DOWN: self._ctrl_focus_next,
+                BUTTON_SOUTH: self._ctrl_activate,
+                BUTTON_EAST: self.close,
+                BUTTON_BACK: self.close,
+            }
+            controller_mgr.button_down.connect(self._on_controller_button)
 
         behavior_tab = QWidget()
         behavior_layout = QVBoxLayout(behavior_tab)
@@ -310,8 +330,6 @@ class SettingsDialog(QDialog):
         controller_layout.addWidget(ctrl_info_group)
         controller_layout.addStretch()
 
-        from PySide6.QtWidgets import QSlider
-
         ctrl_deadzone_group = QGroupBox("Dead Zone")
         ctrl_deadzone_layout = QFormLayout(ctrl_deadzone_group)
         deadzone_layout = QHBoxLayout()
@@ -327,16 +345,6 @@ class SettingsDialog(QDialog):
         deadzone_layout.addWidget(self.ctrl_deadzone_label)
         ctrl_deadzone_layout.addRow("Axis dead zone:", deadzone_layout)
         controller_layout.addWidget(ctrl_deadzone_group)
-
-        ctrl_idle_group = QGroupBox("Idle Timeout")
-        ctrl_idle_layout = QFormLayout(ctrl_idle_group)
-        self.ctrl_idle_spin = QSpinBox()
-        self.ctrl_idle_spin.setRange(1, 30)
-        self.ctrl_idle_spin.setSuffix(" sec")
-        self.ctrl_idle_spin.setValue(int(config.controller_idle_timeout))
-        self.ctrl_idle_spin.valueChanged.connect(self._save_settings)
-        ctrl_idle_layout.addRow("Idle timeout:", self.ctrl_idle_spin)
-        controller_layout.addWidget(ctrl_idle_group)
 
         tabs.addTab(controller_tab, "Controller")
 
@@ -356,6 +364,54 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(tabs)
         self._update_open_buttons()
         self._update_controller_info()
+
+    def _on_controller_button(self, button: int) -> None:
+        handler = getattr(self, '_ctrl_buttons', {}).get(button)
+        if handler:
+            handler()
+
+    def _ctrl_prev_tab(self) -> None:
+        i = self._tabs.currentIndex()
+        if i > 0:
+            self._tabs.setCurrentIndex(i - 1)
+            self._tabs.currentWidget().focusNextChild()
+
+    def _ctrl_next_tab(self) -> None:
+        i = self._tabs.currentIndex()
+        if i < self._tabs.count() - 1:
+            self._tabs.setCurrentIndex(i + 1)
+            self._tabs.currentWidget().focusNextChild()
+
+    def _ctrl_focus_prev(self) -> None:
+        w = QApplication.focusWidget()
+        if isinstance(w, (QSlider, QSpinBox)):
+            if isinstance(w, QSlider):
+                w.setValue(w.value() - w.singleStep())
+            else:
+                w.setValue(w.value() - w.singleStep())
+        else:
+            w = self._tabs.currentWidget()
+            if w:
+                w.focusPreviousChild()
+
+    def _ctrl_focus_next(self) -> None:
+        w = QApplication.focusWidget()
+        if isinstance(w, (QSlider, QSpinBox)):
+            if isinstance(w, QSlider):
+                w.setValue(w.value() + w.singleStep())
+            else:
+                w.setValue(w.value() + w.singleStep())
+        else:
+            w = self._tabs.currentWidget()
+            if w:
+                w.focusNextChild()
+
+    def _ctrl_activate(self) -> None:
+        w = QApplication.focusWidget()
+        if isinstance(w, QAbstractButton):
+            w.animateClick()
+        elif isinstance(w, QComboBox):
+            w.showPopup()
 
     def _update_controller_info(self) -> None:
         owner = self.parentWidget()
@@ -463,7 +519,6 @@ class SettingsDialog(QDialog):
         config.date_format = self.date_format_combo.currentData()
         config.controller_enabled = self.ctrl_enable_check.isChecked()
         config.controller_deadzone = self.ctrl_deadzone_slider.value()
-        config.controller_idle_timeout = float(self.ctrl_idle_spin.value())
         config.controller_simple_icons = self.simple_icons_check.isChecked()
         self._update_date_preview()
         mods_text = self.mods_path_edit.text().strip()

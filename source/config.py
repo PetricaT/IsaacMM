@@ -44,7 +44,6 @@ ignored_items: list[str] = [
 ]
 controller_enabled: bool = True
 controller_deadzone: int = 8000
-controller_idle_timeout: float = 5.0
 controller_simple_icons: bool = False
 
 
@@ -55,7 +54,7 @@ def get_settings() -> QSettings:
 def load() -> None:
     global mods_path, backup_enabled, backup_path, theme, accent_color, disabled_mod_color, animate_icons, preview_images
     global download_icons, workshop_timestamps, dead_workshop_ids, log_level, date_format, ignored_items, animate_anm2_preview
-    global controller_enabled, controller_deadzone, controller_idle_timeout, controller_simple_icons
+    global controller_enabled, controller_deadzone, controller_simple_icons
     try:
         config_data = toml.load(f"{paths.config_dir}/config.toml")
         mods_path = config_data["paths"]["mods"]
@@ -92,7 +91,6 @@ def load() -> None:
         )
         controller_enabled = settings_section.get("controller_enabled", True)
         controller_deadzone = settings_section.get("controller_deadzone", 8000)
-        controller_idle_timeout = settings_section.get("controller_idle_timeout", 5.0)
         controller_simple_icons = settings_section.get("controller_simple_icons", False)
         theme_section = config_data.get("theme", {})
         accent_color = theme_section.get("accent", "#3daee9")
@@ -141,7 +139,6 @@ def _do_save() -> None:
                 "ignored_items": ignored_items,
                 "controller_enabled": controller_enabled,
                 "controller_deadzone": controller_deadzone,
-                "controller_idle_timeout": controller_idle_timeout,
                 "controller_simple_icons": controller_simple_icons,
             },
             "theme": {
