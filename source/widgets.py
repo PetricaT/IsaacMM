@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import config, game_versions, logger, paths
+from .components.controller_ui import ICON_SIZE, BUTTON_SIZE
 from .components.controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .components.file_utils import open_path, open_url
 from .components.modlist import normalize_mod_name
@@ -178,6 +179,24 @@ class ModInfoPanel(QWidget):
 
         self.tabs = QTabWidget()
         self.tabs.currentChanged.connect(self.stop_preview)
+
+        self._controller_dpad_icons: list[QLabel] = []
+
+        self._left_dpad_icon = QLabel("\u25C0")
+        self._left_dpad_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
+        self._left_dpad_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._left_dpad_icon.setStyleSheet("color: #888; font-size: 14px;")
+        self._left_dpad_icon.hide()
+        self.tabs.setCornerWidget(self._left_dpad_icon, Qt.Corner.TopLeftCorner)
+        self._controller_dpad_icons.append(self._left_dpad_icon)
+
+        self._right_dpad_icon = QLabel("\u25B6")
+        self._right_dpad_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
+        self._right_dpad_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._right_dpad_icon.setStyleSheet("color: #888; font-size: 14px;")
+        self._right_dpad_icon.hide()
+        self.tabs.setCornerWidget(self._right_dpad_icon, Qt.Corner.TopRightCorner)
+        self._controller_dpad_icons.append(self._right_dpad_icon)
 
         self.description_text = QTextBrowser()
         self.description_text.setPlaceholderText("Select a mod to view its description")
@@ -829,6 +848,9 @@ class ModInfoPanel(QWidget):
             self._controller_icons.append(icon)
         self._axis_scroller = AxisScroller(self._controller_scroll_with_dir, self)
         controller_mgr.axis_moved.connect(self._axis_scroller.handle_axis)
+        controller_mgr.activity_changed.connect(self._on_controller_activity)
+        is_active = getattr(controller_mgr, 'is_active', True)
+        self._on_controller_activity(is_active)
 
     def set_controller_type(self, gp_type: int) -> None:
         for icon in getattr(self, '_controller_icons', []):
@@ -837,6 +859,11 @@ class ModInfoPanel(QWidget):
     def set_controller_active(self, active: bool) -> None:
         for icon in getattr(self, '_controller_icons', []):
             icon._on_activity_changed(active)
+        self._on_controller_activity(active)
+
+    def _on_controller_activity(self, active: bool) -> None:
+        for lbl in self._controller_dpad_icons:
+            lbl.setVisible(active)
 
     def set_simple_icons(self, enabled: bool) -> None:
         for icon in getattr(self, '_controller_icons', []):

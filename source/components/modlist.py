@@ -31,6 +31,7 @@ from ..controller import (
     BUTTON_WEST,
     BUTTON_NORTH,
     BUTTON_BACK,
+    BUTTON_START,
     BUTTON_DPAD_UP,
     BUTTON_DPAD_DOWN,
 )
@@ -52,6 +53,12 @@ sorted_pattern = re.compile(r"[0-9]{3}\s.*")
 
 def normalize_mod_name(name: str) -> str:
     return re.sub(r"^[^a-zA-Z]+", "", name)
+
+
+def _text_color_for_bg(hex_color: str) -> str:
+    c = QColor(hex_color)
+    l = (0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()) / 255
+    return "#000000" if l > 0.5 else "#ffffff"
 
 
 _CONFLICT_EXTS = {".png", ".anm2", ".wav", ".lua"}
@@ -230,7 +237,8 @@ class ModListPanel(QWidget):
         self.restoreOrder.clicked.connect(self.restore_last_order)
         self.listView.selectionModel().selectionChanged.connect(self._on_mod_selected)
 
-        self.applyOrder.setStyleSheet(f"background-color : {self._accent_color}")
+        fg = _text_color_for_bg(self._accent_color)
+        self.applyOrder.setStyleSheet(f"background-color: {self._accent_color}; color: {fg};")
         self.load_mod_list()
 
     def load_mod_list(self) -> None:
@@ -951,7 +959,8 @@ class ModListPanel(QWidget):
         self.listView.setStyleSheet(
             f"QListView::item:selected {{ background-color: {color}; }}"
         )
-        self.applyOrder.setStyleSheet(f"background-color : {color}")
+        fg = _text_color_for_bg(color)
+        self.applyOrder.setStyleSheet(f"background-color: {color}; color: {fg};")
 
     def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
         self._controller_mgr = controller_mgr
@@ -960,6 +969,7 @@ class ModListPanel(QWidget):
             BUTTON_EAST: self._controller_b,
             BUTTON_WEST: self._controller_x,
             BUTTON_NORTH: self._controller_y,
+            BUTTON_START: self.auto_sort_mods,
             BUTTON_DPAD_UP: self._controller_dpad_up,
             BUTTON_DPAD_DOWN: self._controller_dpad_down,
         }
@@ -970,6 +980,7 @@ class ModListPanel(QWidget):
             (BUTTON_SOUTH, self.applyOrder),
             (BUTTON_NORTH, self.restoreOrder),
             (BUTTON_BACK, self.settingsBtn),
+            (BUTTON_START, self.autoSort),
         ]:
             icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
             self._controller_icons.append(icon)

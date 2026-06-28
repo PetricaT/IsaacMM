@@ -16,7 +16,8 @@ from ..controller import (
     is_playstation_type,
 )
 
-ICON_SIZE = 20
+ICON_SIZE = 32
+BUTTON_SIZE = ICON_SIZE + 8
 
 _BUTTON_NAMES = {
     BUTTON_SOUTH: "SOUTH",

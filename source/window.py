@@ -25,11 +25,10 @@ from .worker import WorkerThread
 from .controller import (
     ControllerManager,
     BUTTON_BACK,
-    BUTTON_START,
     BUTTON_LEFT_SHOULDER,
     BUTTON_RIGHT_SHOULDER,
 )
-from .components.controller_ui import ControllerRouter, FocusOverlay
+from .components.controller_ui import ControllerRouter, FocusOverlay, ICON_SIZE
 
 
 class DragApp(QWidget):
@@ -149,7 +148,7 @@ class DragApp(QWidget):
         if self._controller and self._controller.is_connected:
             self._router.unregister_global(
                 BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
-                BUTTON_BACK, BUTTON_START,
+                BUTTON_BACK,
             )
             self._settings_panel.connect_controller(self._controller)
 
@@ -161,7 +160,6 @@ class DragApp(QWidget):
                 BUTTON_LEFT_SHOULDER: self._focus_modlist,
                 BUTTON_RIGHT_SHOULDER: self._focus_modinfo,
                 BUTTON_BACK: self._open_settings,
-                BUTTON_START: self._toggle_console,
             })
 
     def _maybe_backup(self) -> None:
@@ -281,7 +279,7 @@ class DragApp(QWidget):
         super().changeEvent(event)
 
     def _setup_shoulder_indicators(self) -> None:
-        SH = 20
+        SH = ICON_SIZE
         base = os.path.join(paths.BASE_DIR, "assets", "controller")
         self._shoulder_indicators = []
 
@@ -302,7 +300,7 @@ class DragApp(QWidget):
             self._shoulder_indicators.append((lbl, panel))
 
     def _reposition_shoulder_indicators(self) -> None:
-        SH = 20
+        SH = ICON_SIZE
         for lbl, panel in self._shoulder_indicators:
             if panel is self._left_panel:
                 lbl.move(panel.width() - SH - 4, 4)
@@ -318,7 +316,6 @@ class DragApp(QWidget):
             self._router = ControllerRouter(self._controller)
             self._router.register_global({
                 BUTTON_BACK: self._open_settings,
-                BUTTON_START: self._toggle_console,
                 BUTTON_LEFT_SHOULDER: self._focus_modlist,
                 BUTTON_RIGHT_SHOULDER: self._focus_modinfo,
             })
@@ -368,9 +365,6 @@ class DragApp(QWidget):
             for lbl, _ in self._shoulder_indicators:
                 lbl.hide()
             self._controller_focus = None
-
-    def _toggle_console(self) -> None:
-        self.console_widget.setVisible(not self.console_widget.isVisible())
 
     def _focus_modlist(self) -> None:
         self.modInfoPanel.stop_preview()

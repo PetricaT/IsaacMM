@@ -34,6 +34,7 @@ from .. import config, logger, paths
 from ..backup import backup_all, get_backup_root
 from ..worker import WorkerThread
 from .file_utils import open_path
+from .controller_ui import ICON_SIZE, BUTTON_SIZE
 
 try:
     from ..controller import GamepadType
@@ -141,7 +142,7 @@ class SettingsPanel(QWidget):
         header.addWidget(done_btn)
 
         self._back_icon = QLabel()
-        self._back_icon.setFixedSize(20, 20)
+        self._back_icon.setFixedSize(ICON_SIZE, ICON_SIZE)
         self._back_icon.hide()
         header.addWidget(self._back_icon)
         header.addStretch()
@@ -152,24 +153,24 @@ class SettingsPanel(QWidget):
         self._ctrl_buttons: dict[int, callable] = {}
 
         self._left_tab_icon = QLabel()
-        self._left_tab_icon.setFixedSize(28, 20)
+        self._left_tab_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
         self._left_tab_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pm = QPixmap(os.path.join(base, "left_shoulder.png"))
         if not pm.isNull():
             self._left_tab_icon.setPixmap(
-                pm.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
                           Qt.TransformationMode.SmoothTransformation)
             )
         self._left_tab_icon.hide()
         tabs.setCornerWidget(self._left_tab_icon, Qt.Corner.TopLeftCorner)
 
         self._right_tab_icon = QLabel()
-        self._right_tab_icon.setFixedSize(28, 20)
+        self._right_tab_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
         self._right_tab_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pm = QPixmap(os.path.join(base, "right_shoulder.png"))
         if not pm.isNull():
             self._right_tab_icon.setPixmap(
-                pm.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
                           Qt.TransformationMode.SmoothTransformation)
             )
         self._right_tab_icon.hide()
@@ -195,7 +196,7 @@ class SettingsPanel(QWidget):
         browse_mods_btn = QPushButton("Browse...")
         browse_mods_btn.clicked.connect(self._pick_mods_path)
         self.open_mods_btn = QPushButton("\u2197")
-        self.open_mods_btn.setFixedWidth(28)
+        self.open_mods_btn.setFixedWidth(BUTTON_SIZE)
         self.open_mods_btn.clicked.connect(self._open_mods_folder)
         mods_path_layout.addWidget(self.mods_path_edit, 1)
         mods_path_layout.addWidget(browse_mods_btn)
@@ -222,7 +223,7 @@ class SettingsPanel(QWidget):
         reset_button = QPushButton("Reset")
         reset_button.clicked.connect(self._reset_path)
         self.open_backup_btn = QPushButton("\u2197")
-        self.open_backup_btn.setFixedWidth(28)
+        self.open_backup_btn.setFixedWidth(BUTTON_SIZE)
         self.open_backup_btn.clicked.connect(self._open_backup_folder)
         backup_path_layout.addWidget(self.backup_path_edit, 1)
         backup_path_layout.addWidget(browse_button)
@@ -397,7 +398,7 @@ class SettingsPanel(QWidget):
         if pm.isNull():
             pm = QPixmap(os.path.join(base, "select.png"))
         self._back_icon.setPixmap(
-            pm.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+            pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
                       Qt.TransformationMode.SmoothTransformation)
         )
 

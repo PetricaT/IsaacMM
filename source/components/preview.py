@@ -249,6 +249,7 @@ class PreviewWidget(QLabel):
         self._worker: WorkerThread | None = None
         self._pending_path: str | None = None
         self._pending_pos: QPoint | None = None
+        self._zombie_workers: list[WorkerThread] = []
 
     def stop(self) -> None:
         self._request_id += 1
@@ -264,17 +265,19 @@ class PreviewWidget(QLabel):
 
     def _cancel_worker(self) -> None:
         if self._worker is not None:
-            try:
-                self._worker.finished.disconnect()
-            except (TypeError, RuntimeError):
-                pass
-            try:
-                self._worker.error.disconnect()
-            except (TypeError, RuntimeError):
-                pass
-            self._worker.quit()
-            self._worker.wait(500)
+            self._zombie_workers.append(self._worker)
             self._worker = None
+        self._sweep_zombies()
+
+    def _sweep_zombies(self) -> None:
+        alive = []
+        for w in self._zombie_workers:
+            try:
+                if w.isRunning():
+                    alive.append(w)
+            except RuntimeError:
+                pass
+        self._zombie_workers = alive
 
     def _on_debounce_fire(self) -> None:
         if self._pending_path is not None and self._pending_pos is not None:
@@ -317,6 +320,8 @@ class PreviewWidget(QLabel):
             lambda result: self._on_preview_ready(req_id, result, global_pos)
         )
         worker.error.connect(lambda err: None)
+        worker.finished.connect(worker.deleteLater)
+        worker.error.connect(worker.deleteLater)
         self._worker = worker
         worker.start()
 
