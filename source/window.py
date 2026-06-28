@@ -5,12 +5,12 @@ from typing import Optional
 
 from PySide6.QtCore import QEvent, QSize, QTimer, Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QLabel, QSplitter, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
 from . import config, game_versions, paths, sorter
 from .backup import backup_all, get_backup_root
 from .components.console import ConsoleWidget
-from .components.dialogs import SEPARATOR_ROLE, SettingsDialog
+from .components.dialogs import SEPARATOR_ROLE, SettingsPanel
 from .components.modlist import SEPARATOR_SUFFIX, ModListPanel
 from .components.workshop import (
     _enqueue_details,
@@ -118,8 +118,20 @@ class DragApp(QWidget):
             horizontal_splitter.restoreState(splitter_state)
         self._splitter = horizontal_splitter
 
-        layout.addWidget(horizontal_splitter, 1)
-        layout.addWidget(self.console_widget)
+        main_page = QWidget()
+        main_layout = QVBoxLayout(main_page)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(horizontal_splitter, 1)
+        main_layout.addWidget(self.console_widget)
+
+        self._settings_panel = SettingsPanel(self)
+        self._settings_panel.closed.connect(self._on_settings_closed)
+
+        self._stack = QStackedWidget()
+        self._stack.addWidget(main_page)
+        self._stack.addWidget(self._settings_panel)
+
+        layout.addWidget(self._stack)
 
         column_state = s.value("ui/column_state")
         if column_state:
@@ -132,19 +144,24 @@ class DragApp(QWidget):
         self.modInfoPanel.show_mod_info(mod_name, mod_folder, None, conflicts)
 
     def _open_settings(self) -> None:
-        dialog = SettingsDialog(self, getattr(self, '_controller', None))
+        self.modInfoPanel.stop_preview()
+        self._stack.setCurrentWidget(self._settings_panel)
         if self._controller and self._controller.is_connected:
             self._router.unregister_global(
                 BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
                 BUTTON_BACK, BUTTON_START,
             )
-        dialog.exec()
+            self._settings_panel.connect_controller(self._controller)
+
+    def _on_settings_closed(self) -> None:
+        self._stack.setCurrentIndex(0)
         if self._controller and self._controller.is_connected:
+            self._settings_panel.disconnect_controller(self._controller)
             self._router.register_global({
                 BUTTON_LEFT_SHOULDER: self._focus_modlist,
                 BUTTON_RIGHT_SHOULDER: self._focus_modinfo,
-                BUTTON_BACK: self._toggle_console,
-                BUTTON_START: self._open_settings,
+                BUTTON_BACK: self._open_settings,
+                BUTTON_START: self._toggle_console,
             })
 
     def _maybe_backup(self) -> None:
@@ -247,12 +264,21 @@ class DragApp(QWidget):
         self.console_widget.log_colored(segments)
 
     def eventFilter(self, obj, event) -> bool:
+        if self._controller and self._controller.is_connected:
+            etype = event.type()
+            if etype in (QEvent.MouseButtonPress, QEvent.KeyPress, QEvent.Wheel):
+                self._controller.set_active(False)
         if event.type() == QEvent.Resize:
             for lbl, panel in getattr(self, '_shoulder_indicators', []):
                 if obj is panel and lbl.isVisible():
                     self._reposition_shoulder_indicators()
                     break
         return super().eventFilter(obj, event)
+
+    def changeEvent(self, event) -> None:
+        if event.type() == QEvent.ActivationChange and not self.isActiveWindow():
+            self.modInfoPanel.stop_preview()
+        super().changeEvent(event)
 
     def _setup_shoulder_indicators(self) -> None:
         SH = 20
@@ -291,8 +317,8 @@ class DragApp(QWidget):
             self._controller = ControllerManager(self)
             self._router = ControllerRouter(self._controller)
             self._router.register_global({
-                BUTTON_START: self._open_settings,
-                BUTTON_BACK: self._toggle_console,
+                BUTTON_BACK: self._open_settings,
+                BUTTON_START: self._toggle_console,
                 BUTTON_LEFT_SHOULDER: self._focus_modlist,
                 BUTTON_RIGHT_SHOULDER: self._focus_modinfo,
             })
@@ -327,13 +353,6 @@ class DragApp(QWidget):
         self.mod_list_panel.set_controller_active(False)
         self.modInfoPanel.set_controller_active(False)
 
-    def eventFilter(self, obj, event) -> bool:
-        if self._controller and self._controller.is_connected:
-            etype = event.type()
-            if etype in (QEvent.MouseButtonPress, QEvent.KeyPress, QEvent.Wheel):
-                self._controller.set_active(False)
-        return super().eventFilter(obj, event)
-
     def _on_controller_activity(self, active: bool) -> None:
         self.mod_list_panel.set_controller_active(active)
         self.modInfoPanel.set_controller_active(active)
@@ -354,6 +373,7 @@ class DragApp(QWidget):
         self.console_widget.setVisible(not self.console_widget.isVisible())
 
     def _focus_modlist(self) -> None:
+        self.modInfoPanel.stop_preview()
         self._controller_focus = "modlist"
         self._focus_overlays[0].show()
         self._focus_overlays[1].hide()

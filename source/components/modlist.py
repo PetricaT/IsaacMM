@@ -30,6 +30,7 @@ from ..controller import (
     BUTTON_EAST,
     BUTTON_WEST,
     BUTTON_NORTH,
+    BUTTON_BACK,
     BUTTON_DPAD_UP,
     BUTTON_DPAD_DOWN,
 )
@@ -968,7 +969,7 @@ class ModListPanel(QWidget):
         for btn_enum, widget in [
             (BUTTON_SOUTH, self.applyOrder),
             (BUTTON_NORTH, self.restoreOrder),
-            (BUTTON_EAST, self.settingsBtn),
+            (BUTTON_BACK, self.settingsBtn),
         ]:
             icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
             self._controller_icons.append(icon)
@@ -1044,8 +1045,6 @@ class ModListPanel(QWidget):
                 self._update_conflict_indicators()
             self._move_index = -1
             self._move_original_row = -1
-            return
-        self.settingsBtn.click()
 
     def _controller_x(self) -> None:
         idx = self.listView.currentIndex()

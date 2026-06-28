@@ -177,6 +177,7 @@ class ModInfoPanel(QWidget):
         self._top_container.setFixedHeight(148)
 
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self.stop_preview)
 
         self.description_text = QTextBrowser()
         self.description_text.setPlaceholderText("Select a mod to view its description")
@@ -206,6 +207,11 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.viewport().installEventFilter(self)
         self.conflicts_tree.viewport().setMouseTracking(True)
         self._preview = PreviewWidget(self)
+        QApplication.instance().applicationStateChanged.connect(
+            lambda state: self._preview.stop()
+            if state == Qt.ApplicationState.ApplicationInactive
+            else None
+        )
         self.conflicts_tree.verticalScrollBar().valueChanged.connect(
             self._on_preview_tree_scroll
         )
@@ -332,12 +338,19 @@ class ModInfoPanel(QWidget):
                 self.conflicts_tree.addTopLevelItem(mod_tree_item)
             self.conflicts_tree.expandAll()
 
+        overwritten_files: set[str] = set()
+        if conflicts:
+            for conflict_data in conflicts.values():
+                if not conflict_data["overwrites"]:
+                    for f in conflict_data["files"]:
+                        overwritten_files.add(f.replace("\\", "/"))
+
         self.files_tree.clear()
         root_item = QTreeWidgetItem([mod_folder])
         root_item.setIcon(0, self._folder_icon)
         root_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
         self.files_tree.addTopLevelItem(root_item)
-        self._populate_mod_files(root_item, full_mod_path, "", mod_folder)
+        self._populate_mod_files(root_item, full_mod_path, "", mod_folder, overwritten_files)
         self.files_tree.expandAll()
 
         try:
@@ -641,7 +654,8 @@ class ModInfoPanel(QWidget):
         add_branches(path_tree, parent_item)
 
     def _populate_mod_files(
-        self, parent_item, current_path: str, relative_prefix: str, mod_folder: str
+        self, parent_item, current_path: str, relative_prefix: str, mod_folder: str,
+        overwritten_files: set[str] | None = None,
     ) -> None:
         try:
             entries = sorted(os.listdir(current_path))
@@ -657,10 +671,14 @@ class ModInfoPanel(QWidget):
                 dir_item.setIcon(0, self._folder_icon)
                 dir_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
                 parent_item.addChild(dir_item)
-                self._populate_mod_files(dir_item, full_entry, rel_path, mod_folder)
+                self._populate_mod_files(dir_item, full_entry, rel_path, mod_folder, overwritten_files)
             else:
                 file_item = QTreeWidgetItem([entry])
                 file_item.setData(0, Qt.ItemDataRole.UserRole, (mod_folder, rel_path))
+                if overwritten_files and rel_path in overwritten_files:
+                    font = file_item.font(0)
+                    font.setItalic(True)
+                    file_item.setFont(0, font)
                 parent_item.addChild(file_item)
 
     def _open_file(self, item, column) -> None:
@@ -852,7 +870,7 @@ class ModInfoPanel(QWidget):
         if relative_path.lower().endswith((".png", ".anm2")):
             vp = tree.viewport()
             center = vp.mapToGlobal(vp.rect().center())
-            self._preview.show_preview(full_path, center)
+            self._preview.show_preview(full_path, center, debounce=False)
 
     def _controller_nav_up(self, w: QWidget) -> None:
         if isinstance(w, QTreeWidget):
@@ -912,7 +930,7 @@ class ModInfoPanel(QWidget):
 
     def clear(self) -> None:
         self._stop_movie()
-        self._preview.stop()
+        self.stop_preview()
         self._show_placeholder()
         self.description_text.clear()
         self.conflicts_tree.clear()
@@ -926,3 +944,7 @@ class ModInfoPanel(QWidget):
         self.tags_box.clear()
         self.dates_widget.setVisible(False)
         self.tabs.setEnabled(False)
+
+    def stop_preview(self) -> None:
+        if hasattr(self, '_preview'):
+            self._preview.stop()

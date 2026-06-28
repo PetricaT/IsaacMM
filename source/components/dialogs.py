@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import QDateTime, QLocale, Qt
+from PySide6.QtCore import QDateTime, QLocale, Qt, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -124,34 +124,56 @@ class SeparatorDialog(QDialog):
         return self._color
 
 
-class SettingsDialog(QDialog):
-    def __init__(self, parent: Optional[QWidget] = None,
-                 controller_mgr=None) -> None:
+class SettingsPanel(QWidget):
+    closed = Signal()
+
+    def __init__(self, owner: QWidget, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Settings")
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(595)
+        self._owner = owner
 
         main_layout = QVBoxLayout(self)
+
+        base = os.path.join(paths.BASE_DIR, "assets", "controller")
+
+        header = QHBoxLayout()
+        done_btn = QPushButton("\u2190 Back")
+        done_btn.clicked.connect(self.closed.emit)
+        header.addWidget(done_btn)
+
+        self._back_icon = QLabel()
+        self._back_icon.setFixedSize(20, 20)
+        self._back_icon.hide()
+        header.addWidget(self._back_icon)
+        header.addStretch()
+        main_layout.addLayout(header)
+
         tabs = QTabWidget()
         self._tabs = tabs
+        self._ctrl_buttons: dict[int, callable] = {}
 
-        if controller_mgr:
-            from ..controller import (
-                BUTTON_SOUTH, BUTTON_EAST, BUTTON_BACK,
-                BUTTON_DPAD_UP, BUTTON_DPAD_DOWN,
-                BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
+        self._left_tab_icon = QLabel()
+        self._left_tab_icon.setFixedSize(28, 20)
+        self._left_tab_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pm = QPixmap(os.path.join(base, "left_shoulder.png"))
+        if not pm.isNull():
+            self._left_tab_icon.setPixmap(
+                pm.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                          Qt.TransformationMode.SmoothTransformation)
             )
-            self._ctrl_buttons = {
-                BUTTON_LEFT_SHOULDER: self._ctrl_prev_tab,
-                BUTTON_RIGHT_SHOULDER: self._ctrl_next_tab,
-                BUTTON_DPAD_UP: self._ctrl_focus_prev,
-                BUTTON_DPAD_DOWN: self._ctrl_focus_next,
-                BUTTON_SOUTH: self._ctrl_activate,
-                BUTTON_EAST: self.close,
-                BUTTON_BACK: self.close,
-            }
-            controller_mgr.button_down.connect(self._on_controller_button)
+        self._left_tab_icon.hide()
+        tabs.setCornerWidget(self._left_tab_icon, Qt.Corner.TopLeftCorner)
+
+        self._right_tab_icon = QLabel()
+        self._right_tab_icon.setFixedSize(28, 20)
+        self._right_tab_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pm = QPixmap(os.path.join(base, "right_shoulder.png"))
+        if not pm.isNull():
+            self._right_tab_icon.setPixmap(
+                pm.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                          Qt.TransformationMode.SmoothTransformation)
+            )
+        self._right_tab_icon.hide()
+        tabs.setCornerWidget(self._right_tab_icon, Qt.Corner.TopRightCorner)
 
         behavior_tab = QWidget()
         behavior_layout = QVBoxLayout(behavior_tab)
@@ -365,6 +387,67 @@ class SettingsDialog(QDialog):
         self._update_open_buttons()
         self._update_controller_info()
 
+    def _set_back_icon(self, gamepad_type: int) -> None:
+        dir_map = {2: "xbox", 3: "xbox", 4: "ps", 5: "ps", 6: "ps"}
+        subdir = dir_map.get(gamepad_type, "xbox")
+        base = os.path.join(paths.BASE_DIR, "assets", "controller")
+        pm = QPixmap(os.path.join(base, subdir, "EAST.png"))
+        if pm.isNull():
+            pm = QPixmap(os.path.join(base, "EAST.png"))
+        if pm.isNull():
+            pm = QPixmap(os.path.join(base, "select.png"))
+        self._back_icon.setPixmap(
+            pm.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                      Qt.TransformationMode.SmoothTransformation)
+        )
+
+    def connect_controller(self, controller_mgr) -> None:
+        from ..controller import (
+            BUTTON_SOUTH, BUTTON_EAST, BUTTON_BACK,
+            BUTTON_DPAD_UP, BUTTON_DPAD_DOWN,
+            BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
+        )
+        self._ctrl_buttons = {
+            BUTTON_LEFT_SHOULDER: self._ctrl_prev_tab,
+            BUTTON_RIGHT_SHOULDER: self._ctrl_next_tab,
+            BUTTON_DPAD_UP: self._ctrl_focus_prev,
+            BUTTON_DPAD_DOWN: self._ctrl_focus_next,
+            BUTTON_SOUTH: self._ctrl_activate,
+            BUTTON_EAST: self._ctrl_close,
+            BUTTON_BACK: self._ctrl_close,
+        }
+        controller_mgr.button_down.connect(self._on_controller_button)
+        controller_mgr.activity_changed.connect(self._on_controller_activity)
+        self._set_back_icon(getattr(controller_mgr, 'gamepad_type', 0))
+        is_active = getattr(controller_mgr, 'is_active', True)
+        self._on_controller_activity(is_active)
+
+    def disconnect_controller(self, controller_mgr) -> None:
+        try:
+            controller_mgr.button_down.disconnect(self._on_controller_button)
+        except Exception:
+            pass
+        try:
+            controller_mgr.activity_changed.disconnect(self._on_controller_activity)
+        except Exception:
+            pass
+        self._back_icon.hide()
+        self._left_tab_icon.hide()
+        self._right_tab_icon.hide()
+
+    def _ctrl_close(self) -> None:
+        self.closed.emit()
+
+    def _on_controller_activity(self, active: bool) -> None:
+        if active:
+            self._back_icon.show()
+            self._left_tab_icon.show()
+            self._right_tab_icon.show()
+        else:
+            self._back_icon.hide()
+            self._left_tab_icon.hide()
+            self._right_tab_icon.hide()
+
     def _on_controller_button(self, button: int) -> None:
         handler = getattr(self, '_ctrl_buttons', {}).get(button)
         if handler:
@@ -414,8 +497,7 @@ class SettingsDialog(QDialog):
             w.showPopup()
 
     def _update_controller_info(self) -> None:
-        owner = self.parentWidget()
-        ctrl = getattr(owner, '_controller', None) if owner else None
+        ctrl = getattr(self._owner, '_controller', None)
         if ctrl and ctrl.is_connected:
             self.ctrl_name_label.setText(ctrl.gamepad_name)
             type_names = {
@@ -433,9 +515,8 @@ class SettingsDialog(QDialog):
             config.accent_color = color.name()
             self.accent_btn.setStyleSheet(f"background-color: {config.accent_color};")
             self._save_settings()
-            owner_window = self.parentWidget()
-            if owner_window is not None:
-                update_style = getattr(owner_window, "update_accent_style", None)
+            if self._owner is not None:
+                update_style = getattr(self._owner, "update_accent_style", None)
                 if callable(update_style):
                     update_style(color.name())
 
@@ -540,19 +621,17 @@ class SettingsDialog(QDialog):
                 if style_name:
                     app.setStyle(style_name)
         if config.mods_path != prev_mods:
-            owner_window = self.parent()
-            get_mod_list = getattr(owner_window, "getModList", None)
+            get_mod_list = getattr(self._owner, "getModList", None)
             if callable(get_mod_list):
                 get_mod_list()
-        owner_window = self.parent()
-        log = getattr(owner_window, "log", None)
+        log = getattr(self._owner, "log", None)
         if callable(log) and config.backup_enabled != prev_backup:
             log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
         if config.controller_simple_icons != prev_simple:
-            if hasattr(owner_window, 'mod_list_panel'):
-                owner_window.mod_list_panel.set_simple_icons(config.controller_simple_icons)
-            if hasattr(owner_window, 'modInfoPanel'):
-                owner_window.modInfoPanel.set_simple_icons(config.controller_simple_icons)
+            if hasattr(self._owner, 'mod_list_panel'):
+                self._owner.mod_list_panel.set_simple_icons(config.controller_simple_icons)
+            if hasattr(self._owner, 'modInfoPanel'):
+                self._owner.modInfoPanel.set_simple_icons(config.controller_simple_icons)
         self._update_open_buttons()
         self._update_controller_info()
         config.save()
@@ -560,10 +639,9 @@ class SettingsDialog(QDialog):
     def _run_backup(self) -> None:
         if not config.mods_path:
             return
-        owner_window = self.parent()
-        if getattr(owner_window, "_backup_thread", None):
+        if getattr(self._owner, "_backup_thread", None):
             return
-        log = getattr(owner_window, "log", None)
+        log = getattr(self._owner, "log", None)
         if callable(log):
             log("Running manual backup...")
 
@@ -586,7 +664,7 @@ class SettingsDialog(QDialog):
         def _on_finished(results: list[tuple[str, str, str]]) -> None:
             for mod_name, old_ver, new_ver in results:
                 if old_ver == "?":
-                    log_colored = getattr(owner_window, "log_colored", None)
+                    log_colored = getattr(self._owner, "log_colored", None)
                     if log_colored:
                         log_colored([("Added: ", None), (mod_name, "#65A665")])
                     continue
@@ -594,15 +672,15 @@ class SettingsDialog(QDialog):
                     continue
                 segments = [(f"{mod_name}: ", None)]
                 segments.extend(_colorize(old_ver, new_ver))
-                log_colored = getattr(owner_window, "log_colored", None)
+                log_colored = getattr(self._owner, "log_colored", None)
                 if log_colored:
                     log_colored(segments)
-            log = getattr(owner_window, "log", None)
+            log = getattr(self._owner, "log", None)
             if callable(log):
                 log("Manual backup complete")
 
         def _on_error(error_msg: str) -> None:
-            log = getattr(owner_window, "log", None)
+            log = getattr(self._owner, "log", None)
             if callable(log):
                 log(f"Backup failed: {error_msg}", "error")
 
@@ -616,12 +694,13 @@ class SettingsDialog(QDialog):
         thread.error.connect(_on_error)
         thread.finished.connect(thread.deleteLater)
         thread.error.connect(thread.deleteLater)
-        if owner_window is not None:
+        owner = self._owner
+        if owner is not None:
             thread.finished.connect(
-                lambda: setattr(owner_window, "_backup_thread", None)
+                lambda: setattr(owner, "_backup_thread", None)
             )
             thread.error.connect(
-                lambda: setattr(owner_window, "_backup_thread", None)
+                lambda: setattr(owner, "_backup_thread", None)
             )
-            setattr(owner_window, "_backup_thread", thread)
+            setattr(owner, "_backup_thread", thread)
         thread.start()
