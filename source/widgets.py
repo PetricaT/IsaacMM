@@ -112,10 +112,10 @@ class ModInfoPanel(QWidget):
         self._details_queue_timer.timeout.connect(self._process_details_queue)
         self.destroyed.connect(self._cleanup_threads)
         self._placeholder = QPixmap(
-            os.path.join(paths.BASE_DIR, "assets", "no_image.png")
+            os.path.join(paths.BASE_DIR, "assets", "ui", "no_image.png")
         )
         self._folder_icon = QIcon(
-            os.path.join(paths.BASE_DIR, "assets", "folder-yellow.png")
+            os.path.join(paths.BASE_DIR, "assets", "ui", "folder-yellow.png")
         )
         modinfo_label = QLabel("<b>Mod Info</b>")
         modinfo_label.setAlignment(

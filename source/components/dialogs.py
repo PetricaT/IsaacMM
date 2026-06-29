@@ -53,7 +53,7 @@ NORMALIZED_NAME_ROLE = Qt.ItemDataRole.UserRole + 5  # 261
 class ConflictDelegate(QStyledItemDelegate):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        warning_pixmap = QPixmap(os.path.join(paths.BASE_DIR, "assets", "warning.png"))
+        warning_pixmap = QPixmap(os.path.join(paths.BASE_DIR, "assets", "ui", "warning.png"))
         self._warning = (
             warning_pixmap.scaled(
                 16,
