@@ -2,12 +2,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-# if [ ! -d .venv ]; then
-#     uv venv
-# fi
-# source .venv/bin/activate
-# uv pip install -r requirements.txt pyinstaller
-pip install -r requirements.txt pyinstaller
+if command -v uv &>/dev/null; then
+    if [ ! -d .venv ]; then
+        uv venv
+    fi
+    source .venv/bin/activate
+    uv pip install -r requirements.txt pyinstaller
+else
+    pip install -r requirements.txt pyinstaller
+fi
 
 VERSION=$(python3 -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
 

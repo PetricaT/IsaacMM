@@ -1,14 +1,18 @@
 """Main application window and entry point."""
+from __future__ import annotations
 
+
+import os
 from typing import Optional
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QSize, QTimer, Qt
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QApplication, QLabel, QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
 from . import config, game_versions, paths, sorter
 from .backup import backup_all, get_backup_root
 from .components.console import ConsoleWidget
-from .components.dialogs import SEPARATOR_ROLE, SettingsDialog
+from .components.dialogs import SEPARATOR_ROLE, SettingsPanel
 from .components.modlist import SEPARATOR_SUFFIX, ModListPanel
 from .components.workshop import (
     _enqueue_details,
@@ -20,16 +24,38 @@ from .components.workshop import (
 )
 from .widgets import ModInfoPanel
 from .worker import WorkerThread
+from .controller import (
+    ControllerManager,
+    Button,
+)
+from .components.controller_ui import ControllerRouter, FocusOverlay, ICON_SIZE
 
 
 class DragApp(QWidget):
     loaded_mods = config.loaded_mods
+    FOCUS_QSS = """
+QComboBox:focus, QSpinBox:focus, QLineEdit:focus {
+    border: 2px solid palette(highlight);
+}
+QCheckBox:focus {
+    outline: 2px solid palette(highlight);
+}
+QSlider:focus {
+    border: 1px solid palette(highlight);
+}
+QPushButton:focus {
+    border: 2px solid palette(highlight);
+}
+"""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.installEventFilter(self)
         self._backup_thread = None
         self._masterlist_thread = None
         self._game_versions_thread = None
+        self._controller = None
+        self._router = None
 
         self.setWindowTitle(f"Tboi Mod Manager [{paths.version}]")
         s = config.get_settings()
@@ -46,6 +72,8 @@ class DragApp(QWidget):
         self.initUi()
         self._refresh_masterlist_background()
         self._refresh_game_versions_background()
+        self._load_base_qss()
+        self._init_controller()
 
     def closeEvent(self, close_event) -> None:
         s = config.get_settings()
@@ -57,6 +85,20 @@ class DragApp(QWidget):
         _sync_workshop_limiter()
         _save_details_cache()
         config.flush()
+        if self._controller:
+            self._controller.cleanup()
+        if hasattr(self, '_router'):
+            self._router.cleanup()
+        for icon in getattr(self.mod_list_panel, '_controller_icons', []):
+            icon.cleanup()
+        for icon in getattr(self.modInfoPanel, '_controller_icons', []):
+            icon.cleanup()
+        for ov in getattr(self, '_focus_overlays', []):
+            ov.hide()
+            ov.setParent(None)
+        for lbl, _ in getattr(self, '_shoulder_indicators', []):
+            lbl.hide()
+            lbl.setParent(None)
         super().closeEvent(close_event)
 
     def initUi(self) -> None:
@@ -74,13 +116,13 @@ class DragApp(QWidget):
         self.modInfoPanel = ModInfoPanel()
         self.modInfoPanel.log_message.connect(self.console_widget.log)
 
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
+        self._left_panel = QWidget()
+        left_layout = QVBoxLayout(self._left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(self.mod_list_panel)
 
         horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
-        horizontal_splitter.addWidget(left_panel)
+        horizontal_splitter.addWidget(self._left_panel)
         horizontal_splitter.addWidget(self.modInfoPanel)
         horizontal_splitter.setStretchFactor(0, 1)
         horizontal_splitter.setStretchFactor(1, 1)
@@ -90,8 +132,20 @@ class DragApp(QWidget):
             horizontal_splitter.restoreState(splitter_state)
         self._splitter = horizontal_splitter
 
-        layout.addWidget(horizontal_splitter, 1)
-        layout.addWidget(self.console_widget)
+        main_page = QWidget()
+        main_layout = QVBoxLayout(main_page)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(horizontal_splitter, 1)
+        main_layout.addWidget(self.console_widget)
+
+        self._settings_panel = SettingsPanel(self)
+        self._settings_panel.closed.connect(self._on_settings_closed)
+
+        self._stack = QStackedWidget()
+        self._stack.addWidget(main_page)
+        self._stack.addWidget(self._settings_panel)
+
+        layout.addWidget(self._stack)
 
         column_state = s.value("ui/column_state")
         if column_state:
@@ -104,8 +158,24 @@ class DragApp(QWidget):
         self.modInfoPanel.show_mod_info(mod_name, mod_folder, None, conflicts)
 
     def _open_settings(self) -> None:
-        dialog = SettingsDialog(self)
-        dialog.exec()
+        self.modInfoPanel.stop_preview()
+        self._stack.setCurrentWidget(self._settings_panel)
+        if self._controller and self._controller.is_connected:
+            self._router.unregister_global(
+                Button.LEFT_SHOULDER, Button.RIGHT_SHOULDER,
+                Button.BACK,
+            )
+            self._settings_panel.connect_controller(self._controller)
+
+    def _on_settings_closed(self) -> None:
+        self._stack.setCurrentIndex(0)
+        if self._controller and self._controller.is_connected:
+            self._settings_panel.disconnect_controller(self._controller)
+            self._router.register_global({
+                Button.LEFT_SHOULDER: self._focus_modlist,
+                Button.RIGHT_SHOULDER: self._focus_modinfo,
+                Button.BACK: self._open_settings,
+            })
 
     def _maybe_backup(self) -> None:
         if not config.backup_enabled or not config.mods_path:
@@ -205,6 +275,144 @@ class DragApp(QWidget):
 
     def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None:
         self.console_widget.log_colored(segments)
+
+    def eventFilter(self, obj, event) -> bool:
+        if self._controller and self._controller.is_connected:
+            etype = event.type()
+            if etype in (QEvent.MouseButtonPress, QEvent.KeyPress, QEvent.Wheel):
+                self._controller.set_active(False)
+        if event.type() == QEvent.Resize:
+            for lbl, panel in getattr(self, '_shoulder_indicators', []):
+                if obj is panel and lbl.isVisible():
+                    self._reposition_shoulder_indicators()
+                    break
+        return super().eventFilter(obj, event)
+
+    def changeEvent(self, event) -> None:
+        if event.type() == QEvent.ActivationChange and not self.isActiveWindow():
+            self.modInfoPanel.stop_preview()
+        super().changeEvent(event)
+
+    def _setup_shoulder_indicators(self) -> None:
+        SH = ICON_SIZE
+        base = os.path.join(paths.BASE_DIR, "assets", "controller")
+        self._shoulder_indicators = []
+
+        for panel, btn_name in (
+            (self._left_panel, "LEFT_SHOULDER"),
+            (self.modInfoPanel, "RIGHT_SHOULDER"),
+        ):
+            lbl = QLabel(panel)
+            lbl.setFixedSize(SH, SH)
+            path = os.path.join(base, f"{btn_name}.png")
+            pm = QPixmap(path)
+            if not pm.isNull():
+                scaled = pm.scaled(SH, SH, Qt.AspectRatioMode.KeepAspectRatio,
+                                   Qt.TransformationMode.SmoothTransformation)
+                lbl.setPixmap(scaled)
+            lbl.hide()
+            panel.installEventFilter(self)
+            self._shoulder_indicators.append((lbl, panel))
+
+    def _reposition_shoulder_indicators(self) -> None:
+        SH = ICON_SIZE
+        for lbl, panel in self._shoulder_indicators:
+            if panel is self._left_panel:
+                lbl.move(panel.width() - SH - 4, 4)
+            else:
+                lbl.move(4, 4)
+            lbl.raise_()
+
+    def _init_controller(self) -> None:
+        if not config.controller_enabled:
+            return
+        try:
+            self._controller = ControllerManager(self)
+            self._router = ControllerRouter(self._controller)
+            self._router.register_global({
+                Button.BACK: self._open_settings,
+                Button.LEFT_SHOULDER: self._focus_modlist,
+                Button.RIGHT_SHOULDER: self._focus_modinfo,
+            })
+            self._focus_overlays = (
+                FocusOverlay(self.modInfoPanel),
+                FocusOverlay(self._left_panel),
+            )
+            self._controller_focus = None
+            self._setup_shoulder_indicators()
+            self._controller.connected.connect(self._on_controller_connected)
+            self._controller.disconnected.connect(self._on_controller_disconnected)
+            self._controller.activity_changed.connect(self._on_controller_activity)
+            self.mod_list_panel.set_controller(self._controller, self._router)
+            self.modInfoPanel.set_controller(self._controller, self._router)
+
+            if self._controller.is_connected:
+                self._on_controller_connected(
+                    self._controller.gamepad_name, self._controller.gamepad_type
+                )
+            if self._controller.is_active:
+                self._on_controller_activity(True)
+        except Exception as exc:
+            self.log(f"Controller support unavailable: {exc}", "warning")
+
+    def _load_base_qss(self) -> None:
+        qss_path = os.path.join(paths.BASE_DIR, "assets", "styles.qss")
+        if os.path.exists(qss_path):
+            with open(qss_path) as f:
+                self._base_qss = f.read()
+        else:
+            self._base_qss = ""
+        QApplication.instance().setStyleSheet(self._base_qss)
+
+    def _apply_focus_qss(self, active: bool) -> None:
+        if active:
+            QApplication.instance().setStyleSheet(self._base_qss + self.FOCUS_QSS)
+        else:
+            QApplication.instance().setStyleSheet(self._base_qss)
+
+    def _on_controller_connected(self, name: str, gp_type: int) -> None:
+        self.log(f"Controller connected: {name}", "info")
+        self.mod_list_panel.set_controller_type(gp_type)
+        self.modInfoPanel.set_controller_type(gp_type)
+
+    def _on_controller_disconnected(self) -> None:
+        self.log("Controller disconnected", "warning")
+        self._apply_focus_qss(False)
+        self.mod_list_panel.set_controller_active(False)
+        self.modInfoPanel.set_controller_active(False)
+
+    def _on_controller_activity(self, active: bool) -> None:
+        self.mod_list_panel.set_controller_active(active)
+        self.modInfoPanel.set_controller_active(active)
+        self._apply_focus_qss(active)
+        if active:
+            self._reposition_shoulder_indicators()
+            for lbl, _ in self._shoulder_indicators:
+                lbl.show()
+            if self._controller_focus is None:
+                self._focus_modlist()
+        else:
+            for ov in self._focus_overlays:
+                ov.hide()
+            for lbl, _ in self._shoulder_indicators:
+                lbl.hide()
+            self._controller_focus = None
+
+    def _focus_modlist(self) -> None:
+        self.modInfoPanel.stop_preview()
+        self._controller_focus = "modlist"
+        self._focus_overlays[0].show()
+        self._focus_overlays[1].hide()
+        lv = self.mod_list_panel.listView
+        lv.setFocus()
+        if not lv.currentIndex().isValid() and self.mod_list_panel.model.rowCount() > 0:
+            lv.setCurrentIndex(self.mod_list_panel.model.index(0, 0))
+
+    def _focus_modinfo(self) -> None:
+        self._controller_focus = "modinfo"
+        self._focus_overlays[0].hide()
+        self._focus_overlays[1].show()
+        self.modInfoPanel.setFocus()
 
     def update_accent_style(self, color: str) -> None:
         self.mod_list_panel.update_accent_color(color)

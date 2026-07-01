@@ -1,8 +1,12 @@
-# if (!(Test-Path .venv)) {
-#     uv venv
-# }
-# .\.venv\Scripts\activate
-pip install -r requirements.txt pyinstaller
+if (Get-Command uv -ErrorAction SilentlyContinue) {
+    if (!(Test-Path .venv)) {
+        uv venv
+    }
+    . .\.venv\Scripts\activate
+    uv pip install -r requirements.txt pyinstaller
+} else {
+    pip install -r requirements.txt pyinstaller
+}
 
 $version = Select-String -Path "pyproject.toml" -Pattern '^version = "(.*)"' | ForEach-Object { $_.Matches.Groups[1].Value }
 

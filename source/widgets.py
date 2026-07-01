@@ -1,4 +1,6 @@
 """Mod info panel and preview widgets."""
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
@@ -33,6 +35,8 @@ from PySide6.QtWidgets import (
 )
 
 from . import config, game_versions, logger, paths
+from .components.controller_ui import ICON_SIZE, BUTTON_SIZE
+from .components.controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .components.file_utils import open_path, open_url
 from .components.modlist import normalize_mod_name
 from .components.preview import PreviewWidget
@@ -109,12 +113,7 @@ class ModInfoPanel(QWidget):
         self._details_queue_timer.setSingleShot(True)
         self._details_queue_timer.timeout.connect(self._process_details_queue)
         self.destroyed.connect(self._cleanup_threads)
-        self._placeholder = QPixmap(
-            os.path.join(paths.BASE_DIR, "assets", "no_image.png")
-        )
-        self._folder_icon = QIcon(
-            os.path.join(paths.BASE_DIR, "assets", "folder-yellow.png")
-        )
+        self._init_icons()
         modinfo_label = QLabel("<b>Mod Info</b>")
         modinfo_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
@@ -124,7 +123,7 @@ class ModInfoPanel(QWidget):
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(128, 128)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet("border: 1px solid gray;")
+        self.icon_label.setStyleSheet(f"border: 1px solid {config.icon_border_color};")
 
         self.tags_box = QListWidget()
         self.tags_box.setMaximumHeight(128)
@@ -133,9 +132,6 @@ class ModInfoPanel(QWidget):
         self.tags_box.setFlow(QListWidget.LeftToRight)
         self.tags_box.setWrapping(True)
         self.tags_box.setSpacing(4)
-        self.tags_box.setStyleSheet(
-            "QListWidget { border: none; background: transparent; }"
-        )
 
         self.workshop_button = QPushButton("Steam Workshop")
         self.workshop_button.clicked.connect(self._open_workshop)
@@ -176,6 +172,25 @@ class ModInfoPanel(QWidget):
         self._top_container.setFixedHeight(148)
 
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self.stop_preview)
+
+        self._controller_dpad_icons: list[QLabel] = []
+
+        self._left_dpad_icon = QLabel()
+        self._left_dpad_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
+        self._left_dpad_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._left_dpad_icon.hide()
+        self.tabs.setCornerWidget(self._left_dpad_icon, Qt.Corner.TopLeftCorner)
+        self._controller_dpad_icons.append(self._left_dpad_icon)
+
+        self._right_dpad_icon = QLabel()
+        self._right_dpad_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
+        self._right_dpad_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._right_dpad_icon.hide()
+        self.tabs.setCornerWidget(self._right_dpad_icon, Qt.Corner.TopRightCorner)
+        self._controller_dpad_icons.append(self._right_dpad_icon)
+
+        self._load_dpad_icons()
 
         self.description_text = QTextBrowser()
         self.description_text.setPlaceholderText("Select a mod to view its description")
@@ -205,6 +220,11 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.viewport().installEventFilter(self)
         self.conflicts_tree.viewport().setMouseTracking(True)
         self._preview = PreviewWidget(self)
+        QApplication.instance().applicationStateChanged.connect(
+            lambda state: self._preview.stop()
+            if state == Qt.ApplicationState.ApplicationInactive
+            else None
+        )
         self.conflicts_tree.verticalScrollBar().valueChanged.connect(
             self._on_preview_tree_scroll
         )
@@ -237,7 +257,7 @@ class ModInfoPanel(QWidget):
         self.folder_label = QPushButton()
         self.folder_label.setFlat(True)
         self.folder_label.setStyleSheet(
-            "QPushButton { color: gray; font-size: 10px; text-align: left; border: none; }"
+            f"QPushButton {{ color: {config.folder_label_color}; font-size: 10px; text-align: left; border: none; }}"
         )
         self.folder_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.folder_label.clicked.connect(self._open_folder)
@@ -245,6 +265,30 @@ class ModInfoPanel(QWidget):
         layout.addWidget(self._top_container)
         layout.addWidget(self.tabs)
         layout.addWidget(self.folder_label)
+
+    def _init_icons(self) -> None:
+        if config.use_system_icons:
+            self._folder_icon = QIcon.fromTheme("folder")
+            self._placeholder = QIcon.fromTheme("image-x-generic").pixmap(128, 128)
+        else:
+            self._placeholder = QPixmap(
+                os.path.join(paths.BASE_DIR, "assets", "ui", "no_image.png")
+            )
+            self._folder_icon = QIcon(
+                os.path.join(paths.BASE_DIR, "assets", "ui", "folder-yellow.png")
+            )
+
+    def refresh_icons(self) -> None:
+        self._init_icons()
+        self._update_tree_icons(self.files_tree.invisibleRootItem())
+        self._show_placeholder()
+
+    def _update_tree_icons(self, parent: QTreeWidgetItem) -> None:
+        for i in range(parent.childCount()):
+            item = parent.child(i)
+            if item.childCount():
+                item.setIcon(0, self._folder_icon)
+                self._update_tree_icons(item)
 
     def show_mod_info(
         self,
@@ -321,7 +365,7 @@ class ModInfoPanel(QWidget):
             for conflict_mod_name, conflict_data in sorted(conflicts.items()):
                 conflict_folder = conflict_data["folder"]
                 overwrite_color = (
-                    "#65A665" if conflict_data["overwrites"] else "#9E4D4D"
+                    config.win_color if conflict_data["overwrites"] else config.lose_color
                 )
                 mod_tree_item = QTreeWidgetItem([conflict_mod_name, ""])
                 mod_tree_item.setForeground(0, QColor(overwrite_color))
@@ -331,12 +375,19 @@ class ModInfoPanel(QWidget):
                 self.conflicts_tree.addTopLevelItem(mod_tree_item)
             self.conflicts_tree.expandAll()
 
+        overwritten_files: set[str] = set()
+        if conflicts:
+            for conflict_data in conflicts.values():
+                if not conflict_data["overwrites"]:
+                    for f in conflict_data["files"]:
+                        overwritten_files.add(f.replace("\\", "/"))
+
         self.files_tree.clear()
         root_item = QTreeWidgetItem([mod_folder])
         root_item.setIcon(0, self._folder_icon)
         root_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
         self.files_tree.addTopLevelItem(root_item)
-        self._populate_mod_files(root_item, full_mod_path, "", mod_folder)
+        self._populate_mod_files(root_item, full_mod_path, "", mod_folder, overwritten_files)
         self.files_tree.expandAll()
 
         try:
@@ -361,8 +412,8 @@ class ModInfoPanel(QWidget):
                 if not tag_id:
                     continue
                 tag_item = QListWidgetItem(tag_id)
-                tag_item.setBackground(QColor("#9BB7D4"))
-                tag_item.setForeground(QColor("#111111"))
+                tag_item.setBackground(QColor(config.tag_bg))
+                tag_item.setForeground(QColor(config.tag_fg))
                 self.tags_box.addItem(tag_item)
 
         except Exception as exc:
@@ -511,32 +562,32 @@ class ModInfoPanel(QWidget):
 
         if ts_created is None and ts_updated is None:
             self.created_label.setText("Created: —")
-            self.created_label.setStyleSheet("color: gray;")
+            self.created_label.setStyleSheet(f"color: {config.folder_label_color};")
             self.updated_label.setText(
-                "<span style='color:#FF4444;'>Not found on Steam Workshop</span>"
+                f"<span style='color:{config.workshop_missing_color};'>Not found on Steam Workshop</span>"
             )
             return
 
         created_str = _format_date(ts_created)
         self.created_label.setText(f"Created: {created_str}")
-        self.created_label.setStyleSheet("color: gray;")
+        self.created_label.setStyleSheet(f"color: {config.folder_label_color};")
 
         updated_str = _format_date(ts_updated) if ts_updated else "Never"
 
         badge_date = ts_updated or ts_created
         latest_game, previous_major = game_versions.get_outdated_thresholds()
         badge = ""
-        color = "white"
+        color = config.workshop_badge_default
         if latest_game is not None and badge_date:
             try:
                 badge_dt = datetime.fromtimestamp(badge_date).date()
                 if badge_dt >= latest_game:
-                    color = "#55C755"
+                    color = config.workshop_badge_current
                 elif previous_major is None or badge_dt >= previous_major:
-                    color = "#FFA500"
+                    color = config.workshop_badge_possible
                     badge = " (Possibly outdated)"
                 else:
-                    color = "#FF4444"
+                    color = config.workshop_badge_outdated
                     badge = " (OUTDATED)"
             except (OSError, ValueError):
                 pass
@@ -640,7 +691,8 @@ class ModInfoPanel(QWidget):
         add_branches(path_tree, parent_item)
 
     def _populate_mod_files(
-        self, parent_item, current_path: str, relative_prefix: str, mod_folder: str
+        self, parent_item, current_path: str, relative_prefix: str, mod_folder: str,
+        overwritten_files: set[str] | None = None,
     ) -> None:
         try:
             entries = sorted(os.listdir(current_path))
@@ -656,10 +708,14 @@ class ModInfoPanel(QWidget):
                 dir_item.setIcon(0, self._folder_icon)
                 dir_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
                 parent_item.addChild(dir_item)
-                self._populate_mod_files(dir_item, full_entry, rel_path, mod_folder)
+                self._populate_mod_files(dir_item, full_entry, rel_path, mod_folder, overwritten_files)
             else:
                 file_item = QTreeWidgetItem([entry])
                 file_item.setData(0, Qt.ItemDataRole.UserRole, (mod_folder, rel_path))
+                if overwritten_files and rel_path in overwritten_files:
+                    font = file_item.font(0)
+                    font.setItalic(True)
+                    file_item.setFont(0, font)
                 parent_item.addChild(file_item)
 
     def _open_file(self, item, column) -> None:
@@ -787,12 +843,155 @@ class ModInfoPanel(QWidget):
         self.dates_widget.setVisible(False)
         self.tabs.setEnabled(False)
 
+    def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
+        from .controller import Button
+        router.register(self, {
+            Button.NORTH: self._open_workshop,
+            Button.WEST: self._open_folder,
+            Button.DPAD_LEFT: self._controller_prev_tab,
+            Button.DPAD_RIGHT: self._controller_next_tab,
+            Button.DPAD_UP: self._controller_scroll_up,
+            Button.DPAD_DOWN: self._controller_scroll_down,
+        })
+        self._controller_icons = []
+        for btn_enum, widget in [
+            (Button.NORTH, self.workshop_button),
+            (Button.WEST, self.folder_button),
+        ]:
+            icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
+            self._controller_icons.append(icon)
+        self._axis_scroller = AxisScroller(self._controller_scroll_with_dir, self)
+        controller_mgr.axis_moved.connect(self._axis_scroller.handle_axis)
+        controller_mgr.activity_changed.connect(self._on_controller_activity)
+        is_active = getattr(controller_mgr, 'is_active', True)
+        self._on_controller_activity(is_active)
+
+    def set_controller_type(self, gp_type: int) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon._on_connected("", gp_type)
+
+    def set_controller_active(self, active: bool) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon._on_activity_changed(active)
+        self._on_controller_activity(active)
+
+    def _on_controller_activity(self, active: bool) -> None:
+        for lbl in self._controller_dpad_icons:
+            lbl.setVisible(active)
+
+    def _load_dpad_icons(self) -> None:
+        simple = config.controller_simple_icons
+        base = os.path.join(paths.BASE_DIR, "assets", "controller")
+        if simple:
+            base = os.path.join(base, "simple")
+
+        for lbl, name in ((self._left_dpad_icon, "left"), (self._right_dpad_icon, "right")):
+            path = os.path.join(base, f"{name}.png")
+            pm = QPixmap(path)
+            if not pm.isNull():
+                scaled = pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                lbl.setPixmap(scaled)
+            else:
+                lbl.clear()
+
+    def set_simple_icons(self, enabled: bool) -> None:
+        for icon in getattr(self, '_controller_icons', []):
+            icon.set_simple_mode(enabled)
+        self._load_dpad_icons()
+
+    def _controller_prev_tab(self) -> None:
+        i = self.tabs.currentIndex()
+        if i > 0:
+            self.tabs.setCurrentIndex(i - 1)
+            self.tabs.currentWidget().setFocus()
+
+    def _controller_next_tab(self) -> None:
+        i = self.tabs.currentIndex()
+        if i < self.tabs.count() - 1:
+            self.tabs.setCurrentIndex(i + 1)
+            self.tabs.currentWidget().setFocus()
+
+    def _controller_trigger_preview(self, tree: QTreeWidget) -> None:
+        if not config.preview_images:
+            return
+        item = tree.currentItem()
+        if not item or item.childCount():
+            self._preview.stop()
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            self._preview.stop()
+            return
+        mod_folder, relative_path = data
+        full_path = os.path.join(config.mods_path, mod_folder, relative_path)
+        if relative_path.lower().endswith((".png", ".anm2")):
+            vp = tree.viewport()
+            center = vp.mapToGlobal(vp.rect().center())
+            self._preview.show_preview(full_path, center, debounce=False)
+
+    def _controller_nav_up(self, w: QWidget) -> None:
+        if isinstance(w, QTreeWidget):
+            item = w.currentItem()
+            if item:
+                prev = w.itemAbove(item)
+                if prev:
+                    w.setCurrentItem(prev)
+                    w.scrollToItem(prev)
+                    self._controller_trigger_preview(w)
+            else:
+                first = w.topLevelItem(0)
+                if first:
+                    w.setCurrentItem(first)
+                    w.scrollToItem(first)
+                    self._controller_trigger_preview(w)
+        else:
+            sb = w.verticalScrollBar() if hasattr(w, 'verticalScrollBar') else None
+            if sb:
+                sb.setValue(sb.value() - sb.singleStep())
+
+    def _controller_nav_down(self, w: QWidget) -> None:
+        if isinstance(w, QTreeWidget):
+            item = w.currentItem()
+            if item:
+                nxt = w.itemBelow(item)
+                if nxt:
+                    w.setCurrentItem(nxt)
+                    w.scrollToItem(nxt)
+                    self._controller_trigger_preview(w)
+            else:
+                first = w.topLevelItem(0)
+                if first:
+                    w.setCurrentItem(first)
+                    w.scrollToItem(first)
+                    self._controller_trigger_preview(w)
+        else:
+            sb = w.verticalScrollBar() if hasattr(w, 'verticalScrollBar') else None
+            if sb:
+                sb.setValue(sb.value() + sb.singleStep())
+
+    def _controller_scroll_up(self) -> None:
+        self._controller_nav_up(self.tabs.currentWidget())
+
+    def _controller_scroll_down(self) -> None:
+        self._controller_nav_down(self.tabs.currentWidget())
+
+    def _controller_scroll_with_dir(self, direction: int) -> None:
+        focused = QApplication.focusWidget()
+        if not focused or not (focused is self or self.isAncestorOf(focused)):
+            return
+        w = self.tabs.currentWidget()
+        if direction < 0:
+            self._controller_nav_up(w)
+        else:
+            self._controller_nav_down(w)
+
     def clear(self) -> None:
         self._stop_movie()
-        self._preview.stop()
+        self.stop_preview()
         self._show_placeholder()
         self.description_text.clear()
         self.conflicts_tree.clear()
+        self.files_tree.clear()
         self.folder_label.setText("")
         self._workshop_id = None
         self._workshop_id_str = None
@@ -802,3 +1001,7 @@ class ModInfoPanel(QWidget):
         self.tags_box.clear()
         self.dates_widget.setVisible(False)
         self.tabs.setEnabled(False)
+
+    def stop_preview(self) -> None:
+        if hasattr(self, '_preview'):
+            self._preview.stop()

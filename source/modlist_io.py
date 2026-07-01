@@ -1,15 +1,11 @@
 """Mod list import/export to CSV."""
+from __future__ import annotations
+
 
 import csv
-import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
-WORKSHOP_ID_RE: re.Pattern = re.compile(r"_(\d+)$")
-
-
-def _extract_workshop_id(folder_name: str) -> Optional[str]:
-    match = WORKSHOP_ID_RE.search(folder_name)
-    return match.group(1) if match else None
+from . import paths
 
 
 def export_modlist_csv(file_path: str, items: List[Tuple[str, str]]) -> int:
@@ -17,7 +13,7 @@ def export_modlist_csv(file_path: str, items: List[Tuple[str, str]]) -> int:
         writer = csv.writer(csv_file)
         writer.writerow(["mod_order", "mod_id", "mod_name", "mod_workshop_link"])
         for sort_index, (folder_name, display_name) in enumerate(items, start=1):
-            workshop_id = _extract_workshop_id(folder_name) or ""
+            workshop_id = paths._extract_workshop_id(folder_name) or ""
             workshop_link = (
                 f"https://steamcommunity.com/sharedfiles/filedetails/?id={workshop_id}"
                 if workshop_id
