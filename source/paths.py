@@ -1,4 +1,6 @@
 """Filesystem path resolution and symlink setup."""
+from __future__ import annotations
+
 import os
 import re
 import sys
@@ -36,6 +38,15 @@ else:
         cache_dir = os.path.join(appdata, "cache")
 
 
+def _ensure_symlink(target: str, link: str) -> None:
+    if os.path.islink(link):
+        if os.readlink(link) != target:
+            os.unlink(link)
+            os.symlink(target, link)
+    elif not os.path.exists(link):
+        os.symlink(target, link)
+
+
 def setup_symlinks() -> None:
     os.makedirs(appdata, exist_ok=True)
     if config_dir != appdata and os.path.isdir(config_dir):
@@ -47,10 +58,9 @@ def setup_symlinks() -> None:
             dst = os.path.join(appdata, entry)
             if not os.path.exists(dst) and not os.path.islink(dst):
                 os.symlink(src, dst)
-    if cache_dir != appdata:
-        link = os.path.join(appdata, "cache")
-        if not os.path.islink(link):
-            os.symlink(cache_dir, link)
+    cache_link = os.path.join(appdata, "cache")
+    if cache_dir != appdata and cache_dir != cache_link:
+        _ensure_symlink(cache_dir, cache_link)
 
 
 if getattr(sys, "frozen", False):
@@ -60,15 +70,26 @@ elif os.environ.get("FLATPAK_ID"):
 else:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-version: str = "0.0.0"
-try:
-    import toml
 
-    pyproject_path = os.path.join(BASE_DIR, "pyproject.toml")
-    if os.path.exists(pyproject_path):
-        version = toml.load(pyproject_path)["project"]["version"]
-except Exception:
-    pass
+def initialize() -> None:
+    global version
+    try:
+        import toml
+
+        pyproject_path = os.path.join(BASE_DIR, "pyproject.toml")
+        if os.path.exists(pyproject_path):
+            version = toml.load(pyproject_path)["project"]["version"]
+    except Exception:
+        pass
+
+
+version: str = "0.0.0"
+initialize()
+
+
+def _extract_workshop_id(folder_name: str) -> Optional[str]:
+    match = WORKSHOP_ID_RE.search(folder_name)
+    return match.group(1) if match else None
 
 
 def find_isaac_mods_folder() -> Optional[str]:
@@ -98,7 +119,7 @@ def _parse_vdf_path(steam_path: str) -> Optional[str]:
                     )
                     if os.path.exists(candidate_path):
                         return game_root_path
-    except FileNotFoundError, IndexError:
+    except (FileNotFoundError, IndexError):
         pass
     return None
 

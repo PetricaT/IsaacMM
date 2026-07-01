@@ -1,4 +1,6 @@
 """Mod info panel and preview widgets."""
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
@@ -826,23 +828,19 @@ class ModInfoPanel(QWidget):
         self.tabs.setEnabled(False)
 
     def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
-        from .controller import (
-            BUTTON_SOUTH, BUTTON_WEST, BUTTON_NORTH,
-            BUTTON_DPAD_LEFT, BUTTON_DPAD_RIGHT,
-            BUTTON_DPAD_UP, BUTTON_DPAD_DOWN,
-        )
+        from .controller import Button
         router.register(self, {
-            BUTTON_NORTH: self._open_workshop,
-            BUTTON_WEST: self._open_folder,
-            BUTTON_DPAD_LEFT: self._controller_prev_tab,
-            BUTTON_DPAD_RIGHT: self._controller_next_tab,
-            BUTTON_DPAD_UP: self._controller_scroll_up,
-            BUTTON_DPAD_DOWN: self._controller_scroll_down,
+            Button.NORTH: self._open_workshop,
+            Button.WEST: self._open_folder,
+            Button.DPAD_LEFT: self._controller_prev_tab,
+            Button.DPAD_RIGHT: self._controller_next_tab,
+            Button.DPAD_UP: self._controller_scroll_up,
+            Button.DPAD_DOWN: self._controller_scroll_down,
         })
         self._controller_icons = []
         for btn_enum, widget in [
-            (BUTTON_NORTH, self.workshop_button),
-            (BUTTON_WEST, self.folder_button),
+            (Button.NORTH, self.workshop_button),
+            (Button.WEST, self.folder_button),
         ]:
             icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
             self._controller_icons.append(icon)

@@ -1,4 +1,6 @@
 """Controller UI: hint icons inside buttons and action router."""
+from __future__ import annotations
+
 import os
 import time
 from typing import Optional
@@ -9,10 +11,7 @@ from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from .. import config, paths
 from ..controller import (
-    AXIS_LEFTY,
-    BUTTON_SOUTH, BUTTON_EAST, BUTTON_WEST, BUTTON_NORTH,
-    BUTTON_BACK, BUTTON_START,
-    BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
+    Axis, Button,
     is_playstation_type,
 )
 
@@ -20,14 +19,14 @@ ICON_SIZE = 32
 BUTTON_SIZE = ICON_SIZE + 8
 
 _BUTTON_NAMES = {
-    BUTTON_SOUTH: "SOUTH",
-    BUTTON_EAST: "EAST",
-    BUTTON_WEST: "WEST",
-    BUTTON_NORTH: "NORTH",
-    BUTTON_BACK: "select",
-    BUTTON_START: "start",
-    BUTTON_LEFT_SHOULDER: "LEFT_SHOULDER",
-    BUTTON_RIGHT_SHOULDER: "RIGHT_SHOULDER",
+    Button.SOUTH: "SOUTH",
+    Button.EAST: "EAST",
+    Button.WEST: "WEST",
+    Button.NORTH: "NORTH",
+    Button.BACK: "select",
+    Button.START: "start",
+    Button.LEFT_SHOULDER: "LEFT_SHOULDER",
+    Button.RIGHT_SHOULDER: "RIGHT_SHOULDER",
 }
 
 
@@ -226,7 +225,7 @@ class AxisScroller:
         self._interval = 0
 
     def handle_axis(self, axis_idx: int, val: int) -> None:
-        if axis_idx != AXIS_LEFTY:
+        if axis_idx != Axis.LEFTY:
             return
         if abs(val) < _AXIS_THRESHOLD:
             if self._dir:

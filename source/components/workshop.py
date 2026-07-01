@@ -1,4 +1,6 @@
 """Steam Workshop integration: download icons, rate limiting, queue, details."""
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -10,12 +12,69 @@ import urllib.parse
 import urllib.request
 from collections import deque
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Optional
 
 from .. import config, logger, paths
 
-_ssl_context = ssl._create_unverified_context()
+_ssl_context = ssl.create_default_context()
 _workshop_lock = threading.Lock()
+
+
+class WorkshopQueue:
+    """Thread-safe queue with pending-set tracking for workshop items."""
+
+    def __init__(self, lock: threading.Lock) -> None:
+        self._queue: deque = deque()
+        self._pending: set = set()
+        self._lock = lock
+
+    def enqueue(self, item, key=None) -> bool:
+        with self._lock:
+            check_key = key if key is not None else item
+            for qitem in self._queue:
+                qkey = qitem[0] if isinstance(qitem, tuple) else qitem
+                if qkey == check_key:
+                    return False
+            if check_key in self._pending:
+                return False
+            self._queue.append(item)
+            return True
+
+    def dequeue(self):
+        with self._lock:
+            return self._queue.popleft() if self._queue else None
+
+    def discard(self, key) -> None:
+        with self._lock:
+            for i, item in enumerate(self._queue):
+                qkey = item[0] if isinstance(item, tuple) else item
+                if qkey == key:
+                    del self._queue[i]
+                    break
+
+    def requeue(self, item) -> None:
+        with self._lock:
+            self._queue.appendleft(item)
+
+    def mark_pending(self, key) -> None:
+        with self._lock:
+            self._pending.add(key)
+
+    def unmark_pending(self, key) -> None:
+        with self._lock:
+            self._pending.discard(key)
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._queue)
+
+    @property
+    def pending(self) -> set:
+        return self._pending
+
+
+_icon_queue = WorkshopQueue(_workshop_lock)
+_details_queue = WorkshopQueue(_workshop_lock)
 
 _WORKSHOP_LIMITER: deque = deque()
 WORKSHOP_RATE_LIMIT: int = 180
@@ -23,47 +82,35 @@ WORKSHOP_RATE_WINDOW: int = 300
 WORKSHOP_RETRY_COOLDOWN: int = 300
 _failed_workshop_ids: dict[str, float] = {}
 _permanent_failures: set[str] = set()
-_pending_workshop_ids: set[str] = set()
-_workshop_queue: deque[tuple[str, str]] = deque()
+_icon_names: dict[str, str] = {}
 
 DETAILS_CACHE_FILE: str = os.path.join(paths.cache_dir, "workshop_details.json")
 _workshop_details_cache: dict[str, dict] = {}
-_details_queue: deque[str] = deque()
-_details_pending_ids: set[str] = set()
 
 
 def _workshop_queue_length() -> int:
-    with _workshop_lock:
-        return len(_workshop_queue)
+    return len(_icon_queue)
 
 
 def _enqueue_workshop(ws_id: str, normalized_name: str) -> bool:
-    with _workshop_lock:
-        for wid, _ in _workshop_queue:
-            if wid == ws_id:
-                return False
-        if ws_id in _pending_workshop_ids:
-            return False
-        _workshop_queue.append((ws_id, normalized_name))
-        return True
+    _icon_names[ws_id] = normalized_name
+    return _icon_queue.enqueue(ws_id, key=ws_id)
 
 
 def _dequeue_workshop() -> Optional[tuple[str, str]]:
-    with _workshop_lock:
-        return _workshop_queue.popleft() if _workshop_queue else None
+    ws_id = _icon_queue.dequeue()
+    if ws_id is None:
+        return None
+    return (ws_id, _icon_names.get(ws_id, ws_id))
 
 
 def _discard_from_queue(ws_id: str) -> None:
-    with _workshop_lock:
-        for i, (wid, _) in enumerate(_workshop_queue):
-            if wid == ws_id:
-                del _workshop_queue[i]
-                break
+    _icon_queue.discard(ws_id)
 
 
 def _requeue_workshop(ws_id: str, normalized_name: str) -> None:
-    with _workshop_lock:
-        _workshop_queue.appendleft((ws_id, normalized_name))
+    _icon_names[ws_id] = normalized_name
+    _icon_queue.requeue(ws_id)
 
 
 def _init_workshop_limiter() -> None:
@@ -103,13 +150,11 @@ def _prune_failures() -> None:
 
 
 def _mark_pending(ws_id: str) -> None:
-    with _workshop_lock:
-        _pending_workshop_ids.add(ws_id)
+    _icon_queue.mark_pending(ws_id)
 
 
 def _unmark_pending(ws_id: str) -> None:
-    with _workshop_lock:
-        _pending_workshop_ids.discard(ws_id)
+    _icon_queue.unmark_pending(ws_id)
 
 
 def _record_failure(ws_id: str, timestamp: float) -> None:
@@ -163,42 +208,31 @@ def _set_details_in_cache(ws_id: str, data: dict) -> None:
 
 
 def _details_queue_length() -> int:
-    with _workshop_lock:
-        return len(_details_queue)
+    return len(_details_queue)
 
 
 def _enqueue_details(ws_id: str) -> bool:
-    with _workshop_lock:
-        if ws_id in _details_queue or ws_id in _details_pending_ids:
-            return False
-        _details_queue.append(ws_id)
-        return True
+    return _details_queue.enqueue(ws_id, key=ws_id)
 
 
 def _dequeue_details() -> Optional[str]:
-    with _workshop_lock:
-        return _details_queue.popleft() if _details_queue else None
+    return _details_queue.dequeue()
 
 
 def _discard_details_from_queue(ws_id: str) -> None:
-    with _workshop_lock:
-        if ws_id in _details_queue:
-            _details_queue.remove(ws_id)
+    _details_queue.discard(ws_id)
 
 
 def _requeue_details(ws_id: str) -> None:
-    with _workshop_lock:
-        _details_queue.appendleft(ws_id)
+    _details_queue.requeue(ws_id)
 
 
 def _mark_details_pending(ws_id: str) -> None:
-    with _workshop_lock:
-        _details_pending_ids.add(ws_id)
+    _details_queue.mark_pending(ws_id)
 
 
 def _unmark_details_pending(ws_id: str) -> None:
-    with _workshop_lock:
-        _details_pending_ids.discard(ws_id)
+    _details_queue.unmark_pending(ws_id)
 
 
 def _check_workshop_rate_limit() -> bool:

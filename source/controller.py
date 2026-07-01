@@ -1,4 +1,6 @@
 """Controller support via SDL3 gamepad API."""
+from __future__ import annotations
+
 import ctypes
 import enum
 import os
@@ -25,36 +27,38 @@ class GamepadType(enum.IntEnum):
     GAMECUBE = sdl3.SDL_GAMEPAD_TYPE_GAMECUBE
 
 
-BUTTON_SOUTH = 0
-BUTTON_EAST = 1
-BUTTON_WEST = 2
-BUTTON_NORTH = 3
-BUTTON_BACK = 4
-BUTTON_GUIDE = 5
-BUTTON_START = 6
-BUTTON_LEFT_STICK = 7
-BUTTON_RIGHT_STICK = 8
-BUTTON_LEFT_SHOULDER = 9
-BUTTON_RIGHT_SHOULDER = 10
-BUTTON_DPAD_UP = 11
-BUTTON_DPAD_DOWN = 12
-BUTTON_DPAD_LEFT = 13
-BUTTON_DPAD_RIGHT = 14
-BUTTON_MISC1 = 15
-BUTTON_RIGHT_PADDLE1 = 16
-BUTTON_LEFT_PADDLE1 = 17
-BUTTON_RIGHT_PADDLE2 = 18
-BUTTON_LEFT_PADDLE2 = 19
-BUTTON_TOUCHPAD = 20
-BUTTON_COUNT = 21
+class Button(enum.IntEnum):
+    SOUTH = sdl3.SDL_GAMEPAD_BUTTON_SOUTH
+    EAST = sdl3.SDL_GAMEPAD_BUTTON_EAST
+    WEST = sdl3.SDL_GAMEPAD_BUTTON_WEST
+    NORTH = sdl3.SDL_GAMEPAD_BUTTON_NORTH
+    BACK = sdl3.SDL_GAMEPAD_BUTTON_BACK
+    GUIDE = sdl3.SDL_GAMEPAD_BUTTON_GUIDE
+    START = sdl3.SDL_GAMEPAD_BUTTON_START
+    LEFT_STICK = sdl3.SDL_GAMEPAD_BUTTON_LEFT_STICK
+    RIGHT_STICK = sdl3.SDL_GAMEPAD_BUTTON_RIGHT_STICK
+    LEFT_SHOULDER = sdl3.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER
+    RIGHT_SHOULDER = sdl3.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER
+    DPAD_UP = sdl3.SDL_GAMEPAD_BUTTON_DPAD_UP
+    DPAD_DOWN = sdl3.SDL_GAMEPAD_BUTTON_DPAD_DOWN
+    DPAD_LEFT = sdl3.SDL_GAMEPAD_BUTTON_DPAD_LEFT
+    DPAD_RIGHT = sdl3.SDL_GAMEPAD_BUTTON_DPAD_RIGHT
+    MISC1 = sdl3.SDL_GAMEPAD_BUTTON_MISC1
+    RIGHT_PADDLE1 = sdl3.SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1
+    LEFT_PADDLE1 = sdl3.SDL_GAMEPAD_BUTTON_LEFT_PADDLE1
+    RIGHT_PADDLE2 = sdl3.SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2
+    LEFT_PADDLE2 = sdl3.SDL_GAMEPAD_BUTTON_LEFT_PADDLE2
+    TOUCHPAD = sdl3.SDL_GAMEPAD_BUTTON_TOUCHPAD
 
-AXIS_LEFTX = 0
-AXIS_LEFTY = 1
-AXIS_RIGHTX = 2
-AXIS_RIGHTY = 3
-AXIS_LEFT_TRIGGER = 4
-AXIS_RIGHT_TRIGGER = 5
-AXIS_COUNT = 6
+
+class Axis(enum.IntEnum):
+    LEFTX = sdl3.SDL_GAMEPAD_AXIS_LEFTX
+    LEFTY = sdl3.SDL_GAMEPAD_AXIS_LEFTY
+    RIGHTX = sdl3.SDL_GAMEPAD_AXIS_RIGHTX
+    RIGHTY = sdl3.SDL_GAMEPAD_AXIS_RIGHTY
+    LEFT_TRIGGER = sdl3.SDL_GAMEPAD_AXIS_LEFT_TRIGGER
+    RIGHT_TRIGGER = sdl3.SDL_GAMEPAD_AXIS_RIGHT_TRIGGER
+
 
 DEADZONE_DEFAULT = 8000
 
@@ -89,8 +93,8 @@ class ControllerManager(QObject):
         self._gamepad_name = ""
         self._connected = False
         self._active = False
-        self._prev_buttons = [False] * BUTTON_COUNT
-        self._prev_axes = [0] * AXIS_COUNT
+        self._prev_buttons = [False] * len(Button)
+        self._prev_axes = [0] * len(Axis)
         self._deadzone = DEADZONE_DEFAULT
 
         self._poll_timer = QTimer(self)
@@ -142,8 +146,8 @@ class ControllerManager(QObject):
             raw_type = sdl3.SDL_GetGamepadType(ctrl)
             self._gamepad_type = GamepadType(raw_type)
             self._connected = True
-            self._prev_buttons = [False] * BUTTON_COUNT
-            self._prev_axes = [0] * AXIS_COUNT
+            self._prev_buttons = [False] * len(Button)
+            self._prev_axes = [0] * len(Axis)
         self.set_active(True)
         self.connected.emit(self._gamepad_name, int(self._gamepad_type))
 
@@ -172,14 +176,14 @@ class ControllerManager(QObject):
             elif event.type == sdl3.SDL_EVENT_GAMEPAD_BUTTON_DOWN:
                 btn = int(event.gbutton.button)
                 with self._lock:
-                    if btn < BUTTON_COUNT:
+                    if btn < len(Button):
                         self._prev_buttons[btn] = True
                 self.set_active(True)
                 self.button_down.emit(btn)
             elif event.type == sdl3.SDL_EVENT_GAMEPAD_BUTTON_UP:
                 btn = int(event.gbutton.button)
                 with self._lock:
-                    if btn < BUTTON_COUNT:
+                    if btn < len(Button):
                         self._prev_buttons[btn] = False
                 self.button_up.emit(btn)
 
@@ -187,7 +191,7 @@ class ControllerManager(QObject):
         with self._lock:
             if not self._controller:
                 return
-            for axis_idx in range(AXIS_COUNT):
+            for axis_idx in range(len(Axis)):
                 val = sdl3.SDL_GetGamepadAxis(self._controller, axis_idx)
                 dead = self._deadzone
                 if abs(val) < dead:
@@ -230,7 +234,7 @@ class ControllerManager(QObject):
                 return False
             try:
                 label = sdl3.SDL_GetGamepadButtonLabel(
-                    self._controller, BUTTON_SOUTH
+                    self._controller, Button.SOUTH
                 )
                 return label in (
                     sdl3.SDL_GAMEPAD_BUTTON_LABEL_CROSS,
@@ -252,4 +256,3 @@ class ControllerManager(QObject):
             pass
 
 
-from . import config

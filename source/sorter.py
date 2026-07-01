@@ -1,66 +1,37 @@
 """Mod sorting logic: masterlist, auto-sort, topological sort."""
+from __future__ import annotations
+
 import os
 import re
-import ssl
-import threading
 import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Callable, Optional
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 import yaml
 
 from . import logger, paths
+from .remote_cache import RemoteCache
 
-_ssl_context = ssl.create_default_context()
-_masterlist_lock = threading.Lock()
-
-MASTERLIST_URL: str = (
-    "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml"
-)
-CACHE_FILE: str = os.path.join(paths.appdata, "masterlist.yaml")
 USER_RULES_FILE: str = os.path.join(paths.config_dir, "user_rules.yaml")
 LAST_ORDER_FILE: str = os.path.join(paths.appdata, "last_order.yaml")
-CACHE_TTL: timedelta = timedelta(hours=24)
 
-_masterlist: Optional[dict] = None
+_masterlist_cache = RemoteCache(
+    url="https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml",
+    cache_path=os.path.join(paths.appdata, "masterlist.yaml"),
+    bundled_path=os.path.join(paths.BASE_DIR, "masterlist.yaml"),
+    ttl=timedelta(hours=24),
+    parse_fn=yaml.safe_load,
+    fallback={"groups": [], "mods": []},
+)
 
 
 def fetch_background() -> Optional[bool]:
-    global _masterlist
-    with _masterlist_lock:
-        if _is_cache_fresh():
-            return None
-        yaml_data = _try_fetch()
-        if yaml_data is not None:
-            _masterlist = yaml_data
-            return True
-        return False
+    return _masterlist_cache.fetch_background()
 
 
 def get_masterlist() -> dict:
-    global _masterlist
-    with _masterlist_lock:
-        if _masterlist is not None:
-            return _masterlist
-
-        yaml_data = None
-        if _is_cache_fresh():
-            yaml_data = _try_cache()
-
-        if yaml_data is None:
-            yaml_data = _try_fetch()
-
-        if yaml_data is None:
-            yaml_data = _try_cache()
-
-        if yaml_data is None:
-            yaml_data = _try_bundled()
-
-        _masterlist = yaml_data if yaml_data else {"groups": [], "mods": []}
-        return _masterlist
+    return _masterlist_cache.get()
 
 
 def fetch_initial() -> None:
@@ -81,51 +52,6 @@ def fetch_initial() -> None:
             )
 
 
-def _is_cache_fresh() -> bool:
-    try:
-        if not os.path.exists(CACHE_FILE):
-            return False
-        file_mtime = datetime.fromtimestamp(os.path.getmtime(CACHE_FILE))
-        return datetime.now() - file_mtime <= CACHE_TTL
-    except OSError:
-        return False
-
-
-def _try_fetch() -> Optional[dict]:
-    try:
-        request = Request(MASTERLIST_URL, headers={"User-Agent": "IsaacMM/1.0"})
-        with urlopen(request, timeout=10, context=_ssl_context) as response:
-            raw_content = response.read().decode("utf-8")
-        yaml_data = yaml.safe_load(raw_content)
-        os.makedirs(paths.appdata, exist_ok=True)
-        with open(CACHE_FILE, "w") as cache_file:
-            cache_file.write(raw_content)
-        return yaml_data
-    except URLError:
-        logger.log("warning", "No network, cannot fetch latest masterlist")
-        return None
-    except (OSError, yaml.YAMLError) as exc:
-        logger.log("error", f"Error loading masterlist: {exc}")
-        return None
-
-
-def _try_cache() -> Optional[dict]:
-    try:
-        with open(CACHE_FILE) as cache_file:
-            return yaml.safe_load(cache_file)
-    except OSError, yaml.YAMLError:
-        return None
-
-
-def _try_bundled() -> Optional[dict]:
-    bundled_path = os.path.join(paths.BASE_DIR, "masterlist.yaml")
-    try:
-        with open(bundled_path) as bundled_file:
-            return yaml.safe_load(bundled_file)
-    except OSError, yaml.YAMLError:
-        return None
-
-
 def save_last_order(folder_order: list) -> None:
     try:
         os.makedirs(paths.appdata, exist_ok=True)
@@ -142,7 +68,7 @@ def load_last_order() -> Optional[list]:
         with open(LAST_ORDER_FILE) as order_file:
             yaml_data = yaml.safe_load(order_file)
             return yaml_data.get("ordered_folders") if yaml_data else None
-    except OSError, yaml.YAMLError:
+    except (OSError, yaml.YAMLError):
         return None
 
 
@@ -151,7 +77,7 @@ def _load_user_rules() -> list:
         with open(USER_RULES_FILE) as rules_file:
             yaml_data = yaml.safe_load(rules_file)
             return yaml_data.get("rules", []) if yaml_data else []
-    except OSError, yaml.YAMLError:
+    except (OSError, yaml.YAMLError):
         return []
 
 
@@ -178,8 +104,8 @@ def _merge_user_rules(mod_lookup: dict, rules: list) -> None:
 
 
 def _extract_workshop_id(folder_name: str) -> Optional[int]:
-    workshop_match = paths.WORKSHOP_ID_RE.search(folder_name)
-    return int(workshop_match.group(1)) if workshop_match else None
+    ws = paths._extract_workshop_id(folder_name)
+    return int(ws) if ws else None
 
 
 def _read_tags(mod_path: str) -> list:

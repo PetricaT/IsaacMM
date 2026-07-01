@@ -1,4 +1,6 @@
 """Main application window and entry point."""
+from __future__ import annotations
+
 
 import os
 from typing import Optional
@@ -24,9 +26,7 @@ from .widgets import ModInfoPanel
 from .worker import WorkerThread
 from .controller import (
     ControllerManager,
-    BUTTON_BACK,
-    BUTTON_LEFT_SHOULDER,
-    BUTTON_RIGHT_SHOULDER,
+    Button,
 )
 from .components.controller_ui import ControllerRouter, FocusOverlay, ICON_SIZE
 
@@ -147,8 +147,8 @@ class DragApp(QWidget):
         self._stack.setCurrentWidget(self._settings_panel)
         if self._controller and self._controller.is_connected:
             self._router.unregister_global(
-                BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
-                BUTTON_BACK,
+                Button.LEFT_SHOULDER, Button.RIGHT_SHOULDER,
+                Button.BACK,
             )
             self._settings_panel.connect_controller(self._controller)
 
@@ -157,9 +157,9 @@ class DragApp(QWidget):
         if self._controller and self._controller.is_connected:
             self._settings_panel.disconnect_controller(self._controller)
             self._router.register_global({
-                BUTTON_LEFT_SHOULDER: self._focus_modlist,
-                BUTTON_RIGHT_SHOULDER: self._focus_modinfo,
-                BUTTON_BACK: self._open_settings,
+                Button.LEFT_SHOULDER: self._focus_modlist,
+                Button.RIGHT_SHOULDER: self._focus_modinfo,
+                Button.BACK: self._open_settings,
             })
 
     def _maybe_backup(self) -> None:
@@ -315,9 +315,9 @@ class DragApp(QWidget):
             self._controller = ControllerManager(self)
             self._router = ControllerRouter(self._controller)
             self._router.register_global({
-                BUTTON_BACK: self._open_settings,
-                BUTTON_LEFT_SHOULDER: self._focus_modlist,
-                BUTTON_RIGHT_SHOULDER: self._focus_modinfo,
+                Button.BACK: self._open_settings,
+                Button.LEFT_SHOULDER: self._focus_modlist,
+                Button.RIGHT_SHOULDER: self._focus_modinfo,
             })
             self._focus_overlays = (
                 FocusOverlay(self.modInfoPanel),

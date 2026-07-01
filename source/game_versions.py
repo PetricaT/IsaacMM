@@ -1,63 +1,47 @@
 """Game version tracking: fetch, cache, and query game update dates."""
+from __future__ import annotations
+
 import json
 import os
-import ssl
-import threading
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 from . import logger, paths
+from .remote_cache import RemoteCache
 
-_ssl_context = ssl.create_default_context()
-_game_versions_lock = threading.Lock()
 
-GAME_VERSIONS_URL: str = (
-    "https://raw.githubusercontent.com/PetricaT/IsaacMM/main/game_versions.json"
+def _on_game_versions_http_error(exc: HTTPError) -> None:
+    if exc.code == 404:
+        logger.log(
+            "info",
+            "No game_versions.json on remote (not published yet), "
+            "using bundled or empty fallback",
+        )
+    else:
+        logger.log(
+            "warning",
+            f"Failed to fetch game versions (HTTP {exc.code}): {exc.reason}",
+        )
+
+
+_game_versions_cache = RemoteCache(
+    url="https://raw.githubusercontent.com/PetricaT/IsaacMM/main/game_versions.json",
+    cache_path=os.path.join(paths.appdata, "game_versions.json"),
+    bundled_path=os.path.join(paths.BASE_DIR, "game_versions.json"),
+    ttl=timedelta(days=30),
+    parse_fn=lambda raw: json.loads(raw),
+    fallback={},
+    on_http_error=_on_game_versions_http_error,
 )
-CACHE_FILE: str = os.path.join(paths.appdata, "game_versions.json")
-CACHE_TTL: timedelta = timedelta(days=30)
-
-_game_versions: Optional[dict[str, str]] = None
 
 
 def fetch_background() -> Optional[bool]:
-    global _game_versions
-    with _game_versions_lock:
-        if _is_cache_fresh():
-            return None
-        json_data = _try_fetch()
-        if json_data is not None:
-            _game_versions = json_data
-            return True
-        return False
+    return _game_versions_cache.fetch_background()
 
 
 def get_game_versions() -> dict[str, str]:
-    global _game_versions
-    with _game_versions_lock:
-        if _game_versions is not None:
-            return _game_versions
-
-        json_data = None
-        if _is_cache_fresh():
-            json_data = _try_cache()
-
-        if json_data is None:
-            json_data = _try_fetch()
-
-        if json_data is None:
-            json_data = _try_cache()
-
-        if json_data is None:
-            json_data = _try_bundled()
-
-        if json_data is None:
-            json_data = {}
-
-        _game_versions = json_data
-        return _game_versions
+    return _game_versions_cache.get()
 
 
 def fetch_initial() -> None:
@@ -122,59 +106,4 @@ def get_outdated_thresholds() -> tuple[Optional[date], Optional[date]]:
     return (latest, previous)
 
 
-def _is_cache_fresh() -> bool:
-    try:
-        if not os.path.exists(CACHE_FILE):
-            return False
-        file_mtime = datetime.fromtimestamp(os.path.getmtime(CACHE_FILE))
-        return datetime.now() - file_mtime <= CACHE_TTL
-    except OSError:
-        return False
 
-
-def _try_fetch() -> Optional[dict[str, str]]:
-    try:
-        request = Request(GAME_VERSIONS_URL, headers={"User-Agent": "IsaacMM/1.0"})
-        with urlopen(request, timeout=10, context=_ssl_context) as response:
-            raw_content = response.read().decode("utf-8")
-        json_data = json.loads(raw_content)
-        os.makedirs(paths.appdata, exist_ok=True)
-        with open(CACHE_FILE, "w") as cache_file:
-            cache_file.write(raw_content)
-        return json_data
-    except HTTPError as exc:
-        if exc.code == 404:
-            logger.log(
-                "info",
-                "No game_versions.json on remote (not published yet), "
-                "using bundled or empty fallback",
-            )
-        else:
-            logger.log(
-                "warning",
-                f"Failed to fetch game versions (HTTP {exc.code}): {exc.reason}",
-            )
-        return None
-    except URLError:
-        logger.log("warning", "No network, cannot fetch latest game versions")
-        return None
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.log("error", f"Error loading game versions: {exc}")
-        return None
-
-
-def _try_cache() -> Optional[dict[str, str]]:
-    try:
-        with open(CACHE_FILE) as cache_file:
-            return json.load(cache_file)
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def _try_bundled() -> Optional[dict[str, str]]:
-    bundled_path = os.path.join(paths.BASE_DIR, "game_versions.json")
-    try:
-        with open(bundled_path) as bundled_file:
-            return json.load(bundled_file)
-    except (OSError, json.JSONDecodeError):
-        return None

@@ -1,8 +1,10 @@
 """Dialog windows: settings, separator editing, etc."""
+from __future__ import annotations
+
 
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Protocol, Any
 
 from PySide6.QtCore import QDateTime, QLocale, Qt, Signal
 from PySide6.QtGui import QColor, QPixmap
@@ -35,6 +37,15 @@ from ..backup import backup_all, get_backup_root
 from ..worker import WorkerThread
 from .file_utils import open_path
 from .controller_ui import ICON_SIZE, BUTTON_SIZE
+
+
+class SettingsPanelOwner(Protocol):
+    def log(self, message: str, level: str = "info") -> None: ...
+    def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None: ...
+    def getModList(self) -> None: ...
+    mod_list_panel: Any
+    modInfoPanel: Any
+    _backup_thread: Any
 
 try:
     from ..controller import GamepadType
@@ -128,7 +139,7 @@ class SeparatorDialog(QDialog):
 class SettingsPanel(QWidget):
     closed = Signal()
 
-    def __init__(self, owner: QWidget, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, owner: SettingsPanelOwner, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._owner = owner
 
@@ -403,19 +414,15 @@ class SettingsPanel(QWidget):
         )
 
     def connect_controller(self, controller_mgr) -> None:
-        from ..controller import (
-            BUTTON_SOUTH, BUTTON_EAST, BUTTON_BACK,
-            BUTTON_DPAD_UP, BUTTON_DPAD_DOWN,
-            BUTTON_LEFT_SHOULDER, BUTTON_RIGHT_SHOULDER,
-        )
+        from ..controller import Button
         self._ctrl_buttons = {
-            BUTTON_LEFT_SHOULDER: self._ctrl_prev_tab,
-            BUTTON_RIGHT_SHOULDER: self._ctrl_next_tab,
-            BUTTON_DPAD_UP: self._ctrl_focus_prev,
-            BUTTON_DPAD_DOWN: self._ctrl_focus_next,
-            BUTTON_SOUTH: self._ctrl_activate,
-            BUTTON_EAST: self._ctrl_close,
-            BUTTON_BACK: self._ctrl_close,
+            Button.LEFT_SHOULDER: self._ctrl_prev_tab,
+            Button.RIGHT_SHOULDER: self._ctrl_next_tab,
+            Button.DPAD_UP: self._ctrl_focus_prev,
+            Button.DPAD_DOWN: self._ctrl_focus_next,
+            Button.SOUTH: self._ctrl_activate,
+            Button.EAST: self._ctrl_close,
+            Button.BACK: self._ctrl_close,
         }
         controller_mgr.button_down.connect(self._on_controller_button)
         controller_mgr.activity_changed.connect(self._on_controller_activity)

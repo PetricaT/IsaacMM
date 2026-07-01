@@ -1,4 +1,6 @@
 """Main mod list panel with sorting, toggling, and conflict display."""
+from __future__ import annotations
+
 import os
 import re
 import time
@@ -25,16 +27,7 @@ from .. import config, logger, paths, sorter
 from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
 from ..worker import WorkerThread
-from ..controller import (
-    BUTTON_SOUTH,
-    BUTTON_EAST,
-    BUTTON_WEST,
-    BUTTON_NORTH,
-    BUTTON_BACK,
-    BUTTON_START,
-    BUTTON_DPAD_UP,
-    BUTTON_DPAD_DOWN,
-)
+from ..controller import Button
 from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .dialogs import (
     CONFLICT_ROLE,
@@ -335,6 +328,19 @@ class ModListPanel(QWidget):
 
         return QStandardItem()
 
+    def _apply_item_style(self, item) -> None:
+        if item is None or item.data(SEPARATOR_ROLE):
+            return
+        if item.checkState() != Qt.CheckState.Checked:
+            item.setForeground(QColor(config.disabled_mod_color))
+        elif item.data(OVERWRITTEN_ROLE):
+            item.setForeground(QColor(config.disabled_mod_color))
+            font = item.font()
+            font.setItalic(True)
+            item.setFont(font)
+        else:
+            item.setData(None, Qt.ItemDataRole.ForegroundRole)
+
     def _on_rows_inserted(self, parent, first_row: int, last_row: int) -> None:
         if self._populating:
             return
@@ -400,15 +406,7 @@ class ModListPanel(QWidget):
             list_item = self.model.item(row_index)
             if list_item is None or list_item.data(SEPARATOR_ROLE):
                 continue
-            if list_item.checkState() != Qt.CheckState.Checked:
-                list_item.setForeground(QColor(config.disabled_mod_color))
-            elif list_item.data(OVERWRITTEN_ROLE):
-                list_item.setForeground(QColor(config.disabled_mod_color))
-                font = list_item.font()
-                font.setItalic(True)
-                list_item.setFont(font)
-            else:
-                list_item.setData(None, Qt.ItemDataRole.ForegroundRole)
+            self._apply_item_style(list_item)
 
         total_ms = (time.perf_counter() - t0) * 1000
         if total_ms > 5 and config.log_level == "debug":
@@ -458,15 +456,7 @@ class ModListPanel(QWidget):
                 list_item.setBackground(QColor(separator_data["color"]))
             else:
                 list_item.setBackground(QBrush())
-                if list_item.checkState() != Qt.CheckState.Checked:
-                    list_item.setForeground(QColor(config.disabled_mod_color))
-                elif list_item.data(OVERWRITTEN_ROLE):
-                    list_item.setForeground(QColor(config.disabled_mod_color))
-                    font = list_item.font()
-                    font.setItalic(True)
-                    list_item.setFont(font)
-                else:
-                    list_item.setData(None, Qt.ItemDataRole.ForegroundRole)
+                self._apply_item_style(list_item)
 
         if not selected_indexes:
             self.mod_selected.emit("", None, None)
@@ -549,10 +539,7 @@ class ModListPanel(QWidget):
 
         list_item.setData(current_state, PREV_CHECK_ROLE)
         self.pending_toggles[mod_folder] = current_state
-        if current_state != Qt.CheckState.Checked:
-            list_item.setForeground(QColor(config.disabled_mod_color))
-        else:
-            list_item.setData(None, Qt.ItemDataRole.ForegroundRole)
+        self._apply_item_style(list_item)
         self._update_conflict_indicators()
 
         selected_indexes = self.listView.selectedIndexes()
@@ -565,15 +552,7 @@ class ModListPanel(QWidget):
                         item.setBackground(QColor(item.data(SEPARATOR_ROLE)["color"]))
                     else:
                         item.setBackground(QBrush())
-                        if item.checkState() != Qt.CheckState.Checked:
-                            item.setForeground(QColor(config.disabled_mod_color))
-                        elif item.data(OVERWRITTEN_ROLE):
-                            item.setForeground(QColor(config.disabled_mod_color))
-                            font = item.font()
-                            font.setItalic(True)
-                            item.setFont(font)
-                        else:
-                            item.setData(None, Qt.ItemDataRole.ForegroundRole)
+                        self._apply_item_style(item)
 
                 self._refresh_selection_conflicts(selected_item)
 
@@ -965,22 +944,22 @@ class ModListPanel(QWidget):
     def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
         self._controller_mgr = controller_mgr
         button_actions = {
-            BUTTON_SOUTH: self._controller_a,
-            BUTTON_EAST: self._controller_b,
-            BUTTON_WEST: self._controller_x,
-            BUTTON_NORTH: self._controller_y,
-            BUTTON_START: self.auto_sort_mods,
-            BUTTON_DPAD_UP: self._controller_dpad_up,
-            BUTTON_DPAD_DOWN: self._controller_dpad_down,
+            Button.SOUTH: self._controller_a,
+            Button.EAST: self._controller_b,
+            Button.WEST: self._controller_x,
+            Button.NORTH: self._controller_y,
+            Button.START: self.auto_sort_mods,
+            Button.DPAD_UP: self._controller_dpad_up,
+            Button.DPAD_DOWN: self._controller_dpad_down,
         }
         router.register(self, button_actions)
 
         self._controller_icons = []
         for btn_enum, widget in [
-            (BUTTON_SOUTH, self.applyOrder),
-            (BUTTON_NORTH, self.restoreOrder),
-            (BUTTON_BACK, self.settingsBtn),
-            (BUTTON_START, self.autoSort),
+            (Button.SOUTH, self.applyOrder),
+            (Button.NORTH, self.restoreOrder),
+            (Button.BACK, self.settingsBtn),
+            (Button.START, self.autoSort),
         ]:
             icon = ControllerButtonIcon(widget, btn_enum, controller_mgr)
             self._controller_icons.append(icon)
@@ -994,7 +973,7 @@ class ModListPanel(QWidget):
         controller_mgr.axis_moved.connect(self._axis_scroller.handle_axis)
 
     def _on_controller_button_up(self, btn: int) -> None:
-        if btn in (BUTTON_DPAD_UP, BUTTON_DPAD_DOWN):
+        if btn in (Button.DPAD_UP, Button.DPAD_DOWN):
             self._dpad_repeat_dir = None
             self._dpad_repeat_timer.stop()
 
