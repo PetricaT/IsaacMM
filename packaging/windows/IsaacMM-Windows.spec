@@ -1,17 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files
+
+
+sdl3_bins = collect_dynamic_libs("sdl3")
+sdl3_data = collect_data_files("sdl3")
 
 a = Analysis(
     ["../../main.py"],
     pathex=["../.."],
-    binaries=[],
+    binaries=sdl3_bins + sdl3_data,
     datas=[
         ("../../masterlist.yaml", "."),
         ("../../pyproject.toml", "."),
         ("../../assets/icon.ico", "assets"),
-        ("../../assets/no_image.png", "assets"),
-        ("../../assets/warning.png", "assets"),
-        ("../../assets/folder-yellow.png", "assets"),
+        ("../../assets/ui/no_image.png", "assets/ui"),
+        ("../../assets/ui/warning.png", "assets/ui"),
+        ("../../assets/ui/folder-yellow.png", "assets/ui"),
         ("../../assets/styles.qss", "assets"),
         ("../../assets/ui/empty.png", "assets/ui"),
         ("../../assets/controller", "assets/controller"),
@@ -25,6 +30,7 @@ a = Analysis(
         "source.sorter",
         "toml",
         "yaml",
+        "sdl3",
     ],
     hookspath=[],
     hooksconfig={},
