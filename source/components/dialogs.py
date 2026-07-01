@@ -66,11 +66,36 @@ OVERWRITTEN_ROLE = Qt.ItemDataRole.UserRole + 4  # 260
 NORMALIZED_NAME_ROLE = Qt.ItemDataRole.UserRole + 5  # 261
 WINS_ROLE = Qt.ItemDataRole.UserRole + 6  # 262
 LOSSES_ROLE = Qt.ItemDataRole.UserRole + 7  # 263
+EMPTY_ROLE = Qt.ItemDataRole.UserRole + 8  # 264
 
 
 class ConflictDelegate(QStyledItemDelegate):
+    _empty_pixmap: QPixmap | None = None
+
+    @classmethod
+    def _get_empty_pixmap(cls) -> QPixmap | None:
+        if cls._empty_pixmap is None:
+            from .. import paths
+            path = os.path.join(paths.BASE_DIR, "assets", "ui", "empty.png")
+            if os.path.exists(path):
+                pm = QPixmap(path)
+                if not pm.isNull():
+                    cls._empty_pixmap = pm.scaled(
+                        16, 16, Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+        return cls._empty_pixmap
+
     def paint(self, painter, option, index) -> None:
         super().paint(painter, option, index)
+        if index.data(EMPTY_ROLE):
+            pm = self._get_empty_pixmap()
+            if pm and not pm.isNull():
+                item_rect = option.rect
+                x = item_rect.right() - pm.width() - 4
+                y = item_rect.top() + (item_rect.height() - pm.height()) // 2
+                painter.drawPixmap(x, y, pm)
+            return
         wins = index.data(WINS_ROLE)
         losses = index.data(LOSSES_ROLE)
         if not wins and not losses:

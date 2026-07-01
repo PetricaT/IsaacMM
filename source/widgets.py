@@ -176,21 +176,21 @@ class ModInfoPanel(QWidget):
 
         self._controller_dpad_icons: list[QLabel] = []
 
-        self._left_dpad_icon = QLabel("\u25C0")
+        self._left_dpad_icon = QLabel()
         self._left_dpad_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
         self._left_dpad_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._left_dpad_icon.setStyleSheet(f"color: {config.dpad_color}; font-size: 14px;")
         self._left_dpad_icon.hide()
         self.tabs.setCornerWidget(self._left_dpad_icon, Qt.Corner.TopLeftCorner)
         self._controller_dpad_icons.append(self._left_dpad_icon)
 
-        self._right_dpad_icon = QLabel("\u25B6")
+        self._right_dpad_icon = QLabel()
         self._right_dpad_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
         self._right_dpad_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._right_dpad_icon.setStyleSheet(f"color: {config.dpad_color}; font-size: 14px;")
         self._right_dpad_icon.hide()
         self.tabs.setCornerWidget(self._right_dpad_icon, Qt.Corner.TopRightCorner)
         self._controller_dpad_icons.append(self._right_dpad_icon)
+
+        self._load_dpad_icons()
 
         self.description_text = QTextBrowser()
         self.description_text.setPlaceholderText("Select a mod to view its description")
@@ -879,9 +879,25 @@ class ModInfoPanel(QWidget):
         for lbl in self._controller_dpad_icons:
             lbl.setVisible(active)
 
+    def _load_dpad_icons(self) -> None:
+        simple = config.controller_simple_icons
+        base = os.path.join(paths.BASE_DIR, "assets", "controller")
+        if simple:
+            base = os.path.join(base, "simple")
+
+        for lbl, name in ((self._left_dpad_icon, "left"), (self._right_dpad_icon, "right")):
+            path = os.path.join(base, f"{name}.png")
+            pm = QPixmap(path)
+            if not pm.isNull():
+                scaled = pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                lbl.setPixmap(scaled)
+            else:
+                lbl.clear()
+
     def set_simple_icons(self, enabled: bool) -> None:
         for icon in getattr(self, '_controller_icons', []):
             icon.set_simple_mode(enabled)
+        self._load_dpad_icons()
 
     def _controller_prev_tab(self) -> None:
         i = self.tabs.currentIndex()

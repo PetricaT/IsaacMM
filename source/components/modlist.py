@@ -32,6 +32,7 @@ from ..controller import Button
 from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .dialogs import (
     CONFLICT_ROLE,
+    EMPTY_ROLE,
     LOSSES_ROLE,
     NORMALIZED_NAME_ROLE,
     OVERWRITTEN_ROLE,
@@ -437,6 +438,7 @@ class ModListPanel(QWidget):
             if col1:
                 col1.setData(None, WINS_ROLE)
                 col1.setData(None, LOSSES_ROLE)
+                col1.setData(None, EMPTY_ROLE)
             separator_data = col0.data(SEPARATOR_ROLE)
             if separator_data:
                 bg = QColor(separator_data["color"])
@@ -514,6 +516,9 @@ class ModListPanel(QWidget):
             mod_files = self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole))
             if mod_files and mod_files.issubset(running_files):
                 col0.setData(True, OVERWRITTEN_ROLE)
+                col1 = self.model.item(row_index, 1)
+                if col1:
+                    col1.setData(True, EMPTY_ROLE)
             running_files |= mod_files
 
         for row_index in range(self.model.rowCount()):

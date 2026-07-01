@@ -12,6 +12,9 @@ a = Analysis(
         ("../../assets/no_image.png", "assets"),
         ("../../assets/warning.png", "assets"),
         ("../../assets/folder-yellow.png", "assets"),
+        ("../../assets/styles.qss", "assets"),
+        ("../../assets/ui/empty.png", "assets/ui"),
+        ("../../assets/controller", "assets/controller"),
     ],
     hiddenimports=[
         "source.paths",
