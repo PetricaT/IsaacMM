@@ -15,10 +15,11 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
-    QListView,
     QMenu,
     QPushButton,
+    QTreeView,
     QVBoxLayout,
     QWidget,
 )
@@ -31,10 +32,12 @@ from ..controller import Button
 from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .dialogs import (
     CONFLICT_ROLE,
+    LOSSES_ROLE,
     NORMALIZED_NAME_ROLE,
     OVERWRITTEN_ROLE,
     PREV_CHECK_ROLE,
     SEPARATOR_ROLE,
+    WINS_ROLE,
     ConflictDelegate,
     SeparatorDialog,
 )
@@ -45,7 +48,7 @@ sorted_pattern = re.compile(r"[0-9]{3}\s.*")
 
 
 def normalize_mod_name(name: str) -> str:
-    return re.sub(r"^[^a-zA-Z]+", "", name)
+    return re.sub(r"^[^a-zA-Z]+", "", name).strip()
 
 
 def _text_color_for_bg(hex_color: str) -> str:
@@ -82,12 +85,12 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
                 separator_name = xml_root.find("name").text
                 color_element = xml_root.find("color")
                 separator_color = (
-                    color_element.text if color_element is not None else "#888888"
+                    color_element.text if color_element is not None else config.separator_color
                 )
             except Exception:
                 separator_name = directory_entry[: -len(SEPARATOR_SUFFIX)]
-                separator_color = "#888888"
-            entries.append((separator_name, directory_entry))
+                separator_color = config.separator_color
+            entries.append((separator_name, directory_entry, ""))
             separator_map[directory_entry] = separator_color
             continue
 
@@ -95,8 +98,10 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
             metadata_tree = ET.parse(os.path.join(full_path, "metadata.xml"))
             xml_root = metadata_tree.getroot()
             mod_name = xml_root.find("name").text
-            loaded_mods.append([mod_name, directory_entry])
-            entries.append((mod_name, directory_entry))
+            version_element = xml_root.find("version")
+            mod_version = version_element.text if version_element is not None else ""
+            loaded_mods.append([mod_name, directory_entry, mod_version])
+            entries.append((mod_name, directory_entry, mod_version))
         except FileNotFoundError:
             continue
 
@@ -157,6 +162,7 @@ class ModListPanel(QWidget):
         self._dpad_repeat_timer = QTimer(self)
         self._dpad_repeat_timer.setInterval(180)
         self._dpad_repeat_timer.timeout.connect(self._dpad_repeat_tick)
+        self._restoring_widths = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -177,9 +183,9 @@ class ModListPanel(QWidget):
         modlist_header_layout.addWidget(menu_button)
         layout.addLayout(modlist_header_layout)
 
-        self.listView = QListView(self)
+        self.listView = QTreeView(self)
         self.listView.setStyleSheet(
-            f"QListView::item:selected {{ background-color: {self._accent_color}; }}"
+            f"QTreeView::item:selected {{ background-color: {self._accent_color}; }}"
         )
         self.listView.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.listView.setDragEnabled(True)
@@ -188,6 +194,8 @@ class ModListPanel(QWidget):
         self.listView.setDragDropMode(QAbstractItemView.InternalMove)
         self.listView.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.listView.setAlternatingRowColors(True)
+        self.listView.setRootIsDecorated(False)
+        self.listView.setSelectionBehavior(QAbstractItemView.SelectRows)
         current_palette = self.listView.palette()
         base_color = current_palette.color(QPalette.Base)
         alternate_color = (
@@ -198,12 +206,28 @@ class ModListPanel(QWidget):
         current_palette.setColor(QPalette.AlternateBase, alternate_color)
         self.listView.setPalette(current_palette)
 
+        header = self.listView.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        header.setMinimumSectionSize(40)
+        header.setSectionsMovable(True)
+        header.show()
+
         self.model = FlatDropModel()
+        self.model.setHorizontalHeaderLabels(
+            ["Mod Name", "Flags", "Version", "Priority"]
+        )
         self.listView.setModel(self.model)
-        self.listView.setItemDelegate(ConflictDelegate(self.listView))
+        self._restore_column_widths()
+        header.sectionResized.connect(self._save_column_widths)
+        self.listView.setItemDelegateForColumn(1, ConflictDelegate(self.listView))
         self.listView.installEventFilter(self)
         self.model.itemChanged.connect(self._on_item_changed)
         self.model.rowsInserted.connect(self._on_rows_inserted)
+        self.listView.header().sectionClicked.connect(self._on_header_clicked)
 
         self.applyOrder = QPushButton("Apply Sort Order")
         self.autoSort = QPushButton("Auto Sort")
@@ -233,6 +257,22 @@ class ModListPanel(QWidget):
         fg = _text_color_for_bg(self._accent_color)
         self.applyOrder.setStyleSheet(f"background-color: {self._accent_color}; color: {fg};")
         self.load_mod_list()
+
+    def _save_column_widths(self) -> None:
+        if self._restoring_widths:
+            return
+        from ..config import get_settings
+        settings = get_settings()
+        settings.setValue("modlist/header_state", self.listView.header().saveState())
+
+    def _restore_column_widths(self) -> None:
+        from ..config import get_settings
+        settings = get_settings()
+        state = settings.value("modlist/header_state")
+        if state is not None:
+            self._restoring_widths = True
+            self.listView.header().restoreState(state)
+            self._restoring_widths = False
 
     def load_mod_list(self) -> None:
         if config.mods_path == "":
@@ -275,7 +315,7 @@ class ModListPanel(QWidget):
 
         saved_folder_order = sorter.load_last_order()
         if saved_folder_order:
-            entries_by_folder = {folder: (name, folder) for name, folder in all_entries}
+            entries_by_folder = {f: (n, f, v) for n, f, v in all_entries}
             ordered_entries = []
             for folder_name in saved_folder_order:
                 if folder_name in entries_by_folder:
@@ -286,21 +326,27 @@ class ModListPanel(QWidget):
             all_entries.sort(key=lambda entry: entry[0].lower())
 
         config.loaded_mods.clear()
-        for entry_name, entry_folder in all_entries:
-            list_item = self._make_list_item()
-            list_item.setText(entry_name)
-            list_item.setData(entry_folder, Qt.ItemDataRole.UserRole)
-            list_item.setData(normalize_mod_name(entry_name), NORMALIZED_NAME_ROLE)
+        priority = 1
+        for row_index, (entry_name, entry_folder, mod_version) in enumerate(all_entries):
+            col0, col1, col2, col3 = self._make_row_items()
+            col0.setData(entry_folder, Qt.ItemDataRole.UserRole)
             if entry_folder in separator_map:
                 separator_color = separator_map[entry_folder]
-                list_item.setData(
-                    {"name": entry_name, "color": separator_color}, SEPARATOR_ROLE
-                )
-                list_item.setBackground(QColor(separator_color))
-                list_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                separator_data = {"name": entry_name, "color": separator_color}
+                col0.setData(separator_data, SEPARATOR_ROLE)
+                col0.setText(entry_name)
+                col0.setBackground(QColor(separator_color))
+                col0.setForeground(QColor(_text_color_for_bg(separator_color)))
+                col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                bg = QColor(separator_color)
+                col1.setBackground(bg)
+                col2.setBackground(bg)
+                col3.setBackground(bg)
             else:
-                config.loaded_mods.append([entry_name, entry_folder])
-                list_item.setCheckable(True)
+                display_name = normalize_mod_name(entry_name)
+                col0.setText(display_name)
+                col0.setData(display_name, NORMALIZED_NAME_ROLE)
+                col0.setCheckable(True)
                 disable_file_path = os.path.join(
                     config.mods_path, entry_folder, "disable.it"
                 )
@@ -309,10 +355,20 @@ class ModListPanel(QWidget):
                     if os.path.exists(disable_file_path)
                     else Qt.CheckState.Checked
                 )
-                list_item.setCheckState(initial_state)
-                list_item.setData(initial_state, PREV_CHECK_ROLE)
-            self.model.appendRow(list_item)
+                col0.setCheckState(initial_state)
+                col0.setData(initial_state, PREV_CHECK_ROLE)
+                if mod_version:
+                    col2.setText(mod_version)
+                config.loaded_mods.append([entry_name, entry_folder])
+                col3.setText(str(priority))
+                col3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                priority += 1
+            self.model.appendRow([col0, col1, col2, col3])
 
+        self.model.setHorizontalHeaderLabels(
+            ["Mod Name", "Flags", "Version", "Priority"]
+        )
+        self._restore_column_widths()
         self._populating = False
         if self._first_load:
             self._first_load = False
@@ -323,10 +379,10 @@ class ModListPanel(QWidget):
         self._prepopulate_cache()
         self.mods_loaded.emit()
 
-    def _make_list_item(self):
+    def _make_row_items(self):
         from PySide6.QtGui import QStandardItem
 
-        return QStandardItem()
+        return [QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem()]
 
     def _apply_item_style(self, item) -> None:
         if item is None or item.data(SEPARATOR_ROLE):
@@ -344,7 +400,22 @@ class ModListPanel(QWidget):
     def _on_rows_inserted(self, parent, first_row: int, last_row: int) -> None:
         if self._populating:
             return
+        self._renumber_priority()
         self._update_conflict_indicators()
+
+    def _renumber_priority(self) -> None:
+        priority = 1
+        for row in range(self.model.rowCount()):
+            c0 = self.model.item(row)
+            c3 = self.model.item(row, 3)
+            if c0 and c0.data(SEPARATOR_ROLE):
+                if c3:
+                    c3.setText("")
+                continue
+            if c3:
+                c3.setText(str(priority))
+                c3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                priority += 1
 
     def _update_conflict_indicators(self) -> None:
         if self._updating_conflicts:
@@ -353,60 +424,111 @@ class ModListPanel(QWidget):
         t0 = time.perf_counter()
 
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
-            if list_item is None:
+            col0 = self.model.item(row_index)
+            col1 = self.model.item(row_index, 1)
+            col2 = self.model.item(row_index, 2)
+            col3 = self.model.item(row_index, 3)
+            if col0 is None:
                 continue
-            list_item.setData(None, CONFLICT_ROLE)
-            list_item.setData(None, OVERWRITTEN_ROLE)
-            separator_data = list_item.data(SEPARATOR_ROLE)
+            col0.setData(None, CONFLICT_ROLE)
+            col0.setData(None, OVERWRITTEN_ROLE)
+            col0.setData(None, WINS_ROLE)
+            col0.setData(None, LOSSES_ROLE)
+            if col1:
+                col1.setData(None, WINS_ROLE)
+                col1.setData(None, LOSSES_ROLE)
+            separator_data = col0.data(SEPARATOR_ROLE)
             if separator_data:
-                list_item.setBackground(QColor(separator_data["color"]))
-                list_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                bg = QColor(separator_data["color"])
+                col0.setBackground(bg)
+                col0.setForeground(QColor(_text_color_for_bg(separator_data["color"])))
+                col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if col1:
+                    col1.setBackground(bg)
+                if col2:
+                    col2.setBackground(bg)
+                if col3:
+                    col3.setBackground(bg)
 
         file_to_mods: dict[str, set[int]] = {}
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
+            col0 = self.model.item(row_index)
             if (
-                list_item is None
-                or list_item.data(SEPARATOR_ROLE)
-                or list_item.checkState() != Qt.CheckState.Checked
+                col0 is None
+                or col0.data(SEPARATOR_ROLE)
+                or col0.checkState() != Qt.CheckState.Checked
             ):
                 continue
-            for f in self._scan_mod_files(list_item.data(Qt.ItemDataRole.UserRole)):
+            for f in self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole)):
                 file_to_mods.setdefault(f, set()).add(row_index)
 
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
+            col0 = self.model.item(row_index)
             if (
-                list_item is None
-                or list_item.data(SEPARATOR_ROLE)
-                or list_item.checkState() != Qt.CheckState.Checked
+                col0 is None
+                or col0.data(SEPARATOR_ROLE)
+                or col0.checkState() != Qt.CheckState.Checked
             ):
                 continue
-            for f in self._scan_mod_files(list_item.data(Qt.ItemDataRole.UserRole)):
+            for f in self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole)):
                 if len(file_to_mods.get(f, ())) > 1:
-                    list_item.setData(True, CONFLICT_ROLE)
+                    col0.setData(True, CONFLICT_ROLE)
                     break
+
+        for row_index in range(self.model.rowCount()):
+            col0 = self.model.item(row_index)
+            if (
+                col0 is None
+                or col0.data(SEPARATOR_ROLE)
+                or col0.checkState() != Qt.CheckState.Checked
+            ):
+                continue
+            wins = False
+            losses = False
+            for f in self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole)):
+                peers = file_to_mods.get(f, ())
+                if len(peers) > 1:
+                    for peer in peers:
+                        if peer < row_index:
+                            losses = True
+                        if peer > row_index:
+                            wins = True
+            if wins:
+                col0.setData(True, WINS_ROLE)
+            if losses:
+                col0.setData(True, LOSSES_ROLE)
+            col1 = self.model.item(row_index, 1)
+            if col1:
+                col1.setData(True if wins else None, WINS_ROLE)
+                col1.setData(True if losses else None, LOSSES_ROLE)
 
         running_files: set[str] = set()
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
+            col0 = self.model.item(row_index)
             if (
-                list_item is None
-                or list_item.data(SEPARATOR_ROLE)
-                or list_item.checkState() != Qt.CheckState.Checked
+                col0 is None
+                or col0.data(SEPARATOR_ROLE)
+                or col0.checkState() != Qt.CheckState.Checked
             ):
                 continue
-            mod_files = self._scan_mod_files(list_item.data(Qt.ItemDataRole.UserRole))
+            mod_files = self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole))
             if mod_files and mod_files.issubset(running_files):
-                list_item.setData(True, OVERWRITTEN_ROLE)
+                col0.setData(True, OVERWRITTEN_ROLE)
             running_files |= mod_files
 
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
-            if list_item is None or list_item.data(SEPARATOR_ROLE):
+            col0 = self.model.item(row_index)
+            if col0 is None or col0.data(SEPARATOR_ROLE):
                 continue
-            self._apply_item_style(list_item)
+            if col0.checkState() != Qt.CheckState.Checked:
+                col0.setForeground(QColor(config.disabled_mod_color))
+            elif col0.data(OVERWRITTEN_ROLE):
+                col0.setForeground(QColor(config.disabled_mod_color))
+                font = col0.font()
+                font.setItalic(True)
+                col0.setFont(font)
+            else:
+                col0.setData(None, Qt.ItemDataRole.ForegroundRole)
 
         total_ms = (time.perf_counter() - t0) * 1000
         if total_ms > 5 and config.log_level == "debug":
@@ -450,36 +572,66 @@ class ModListPanel(QWidget):
         selected_indexes = self.listView.selectedIndexes()
 
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
-            if list_item.data(SEPARATOR_ROLE):
-                separator_data = list_item.data(SEPARATOR_ROLE)
-                list_item.setBackground(QColor(separator_data["color"]))
+            col0 = self.model.item(row_index)
+            col1 = self.model.item(row_index, 1)
+            col2 = self.model.item(row_index, 2)
+            col3 = self.model.item(row_index, 3)
+            if col0 is None:
+                continue
+            if col0.data(SEPARATOR_ROLE):
+                separator_data = col0.data(SEPARATOR_ROLE)
+                bg = QColor(separator_data["color"])
+                col0.setBackground(bg)
+                col0.setForeground(QColor(_text_color_for_bg(separator_data["color"])))
+                if col1:
+                    col1.setBackground(bg)
+                if col2:
+                    col2.setBackground(bg)
+                if col3:
+                    col3.setBackground(bg)
             else:
-                list_item.setBackground(QBrush())
-                self._apply_item_style(list_item)
+                col0.setBackground(QBrush())
+                if col1:
+                    col1.setBackground(QBrush())
+                if col2:
+                    col2.setBackground(QBrush())
+                if col3:
+                    col3.setBackground(QBrush())
+                if col0.checkState() != Qt.CheckState.Checked:
+                    col0.setForeground(QColor(config.disabled_mod_color))
+                elif col0.data(OVERWRITTEN_ROLE):
+                    col0.setForeground(QColor(config.disabled_mod_color))
+                    font = col0.font()
+                    font.setItalic(True)
+                    col0.setFont(font)
+                else:
+                    col0.setData(None, Qt.ItemDataRole.ForegroundRole)
 
         if not selected_indexes:
             self.mod_selected.emit("", None, None)
             return
 
-        selected_item = self.model.itemFromIndex(selected_indexes[0])
+        first_idx = selected_indexes[0]
+        row = first_idx.row()
+        selected_col0 = self.model.item(row, 0)
 
-        separator_data = selected_item.data(SEPARATOR_ROLE)
+        separator_data = selected_col0.data(SEPARATOR_ROLE)
         if separator_data:
             self.mod_selected.emit(
                 separator_data["name"],
-                selected_item.data(Qt.ItemDataRole.UserRole),
+                selected_col0.data(Qt.ItemDataRole.UserRole),
                 None,
             )
             return
 
-        self._refresh_selection_conflicts(selected_item)
+        self._refresh_selection_conflicts(row)
 
-    def _refresh_selection_conflicts(self, selected_item) -> None:
-        mod_folder = selected_item.data(Qt.ItemDataRole.UserRole)
+    def _refresh_selection_conflicts(self, row: int) -> None:
+        col0 = self.model.item(row, 0)
+        mod_folder = col0.data(Qt.ItemDataRole.UserRole)
 
-        if selected_item.checkState() != Qt.CheckState.Checked:
-            self.mod_selected.emit(selected_item.text(), mod_folder, {})
+        if col0.checkState() != Qt.CheckState.Checked:
+            self.mod_selected.emit(col0.text(), mod_folder, {})
             return
 
         current_mod_files = self._scan_mod_files(mod_folder)
@@ -491,27 +643,28 @@ class ModListPanel(QWidget):
 
         conflict_mods = {}
         for row_index in range(self.model.rowCount()):
-            other_item = self.model.item(row_index)
-            other_mod_folder = other_item.data(Qt.ItemDataRole.UserRole)
+            other_col0 = self.model.item(row_index)
+            other_mod_folder = other_col0.data(Qt.ItemDataRole.UserRole)
             if other_mod_folder == mod_folder:
                 continue
-            if other_item.checkState() != Qt.CheckState.Checked:
+            if other_col0.checkState() != Qt.CheckState.Checked:
                 continue
             common_files = current_mod_files & self._scan_mod_files(other_mod_folder)
             if not common_files:
                 continue
-            conflict_mods[other_item.text()] = {
+            conflict_mods[other_col0.text()] = {
                 "folder": other_mod_folder,
                 "files": sorted(common_files),
                 "overwrites": row_index > current_mod_index,
             }
-            if row_index < current_mod_index:
-                other_item.setBackground(QColor("#9E4D4D"))
-            else:
-                other_item.setBackground(QColor("#65A665"))
+            bg = QColor(config.lose_color if row_index < current_mod_index else config.win_color)
+            for c in range(4):
+                item = self.model.item(row_index, c)
+                if item:
+                    item.setBackground(bg)
 
         self.mod_selected.emit(
-            selected_item.text(),
+            col0.text(),
             mod_folder,
             conflict_mods,
         )
@@ -527,6 +680,8 @@ class ModListPanel(QWidget):
         return conflict_files
 
     def _on_item_changed(self, list_item) -> None:
+        if list_item.column() != 0:
+            return
         if self._populating or self._updating_conflicts:
             return
         mod_folder = list_item.data(Qt.ItemDataRole.UserRole)
@@ -544,31 +699,63 @@ class ModListPanel(QWidget):
 
         selected_indexes = self.listView.selectedIndexes()
         if selected_indexes:
-            selected_item = self.model.itemFromIndex(selected_indexes[0])
-            if not selected_item.data(SEPARATOR_ROLE):
+            first_idx = selected_indexes[0]
+            row = first_idx.row()
+            selected_col0 = self.model.item(row, 0)
+            if selected_col0 and not selected_col0.data(SEPARATOR_ROLE):
                 for row_index in range(self.model.rowCount()):
-                    item = self.model.item(row_index)
-                    if item.data(SEPARATOR_ROLE):
-                        item.setBackground(QColor(item.data(SEPARATOR_ROLE)["color"]))
+                    c0 = self.model.item(row_index)
+                    c1 = self.model.item(row_index, 1)
+                    c2 = self.model.item(row_index, 2)
+                    c3 = self.model.item(row_index, 3)
+                    if c0 is None:
+                        continue
+                    if c0.data(SEPARATOR_ROLE):
+                        separator_data = c0.data(SEPARATOR_ROLE)
+                        bg = QColor(separator_data["color"])
+                        c0.setBackground(bg)
+                        c0.setForeground(
+                            QColor(_text_color_for_bg(separator_data["color"]))
+                        )
+                        if c1:
+                            c1.setBackground(bg)
+                        if c2:
+                            c2.setBackground(bg)
+                        if c3:
+                            c3.setBackground(bg)
                     else:
-                        item.setBackground(QBrush())
-                        self._apply_item_style(item)
+                        c0.setBackground(QBrush())
+                        if c1:
+                            c1.setBackground(QBrush())
+                        if c2:
+                            c2.setBackground(QBrush())
+                        if c3:
+                            c3.setBackground(QBrush())
+                        if c0.checkState() != Qt.CheckState.Checked:
+                            c0.setForeground(QColor(config.disabled_mod_color))
+                        elif c0.data(OVERWRITTEN_ROLE):
+                            c0.setForeground(QColor(config.disabled_mod_color))
+                            font = c0.font()
+                            font.setItalic(True)
+                            c0.setFont(font)
+                        else:
+                            c0.setData(None, Qt.ItemDataRole.ForegroundRole)
 
-                self._refresh_selection_conflicts(selected_item)
+                self._refresh_selection_conflicts(row)
 
     def apply_mod_order(self) -> None:
         self.log_message.emit("Applying sort order...", "info")
         sort_index = 1
         ordered_folders = []
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
-            mod_folder = list_item.data(Qt.ItemDataRole.UserRole)
+            col0 = self.model.item(row_index)
+            mod_folder = col0.data(Qt.ItemDataRole.UserRole)
             if mod_folder and sorter.should_preserve_name(mod_folder):
                 continue
             ordered_folders.append(mod_folder)
-            if list_item.data(SEPARATOR_ROLE):
+            if col0.data(SEPARATOR_ROLE):
                 continue
-            mod_name = list_item.text()
+            mod_name = col0.text()
             if sorted_pattern.match(mod_name):
                 new_name = f"{sort_index:03} {mod_name[4:]}"
             else:
@@ -646,13 +833,14 @@ class ModListPanel(QWidget):
         mod_data_list = []
         separators = []
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
-            separator_data = list_item.data(SEPARATOR_ROLE)
+            col0 = self.model.item(row_index)
+            col2 = self.model.item(row_index, 2)
+            separator_data = col0.data(SEPARATOR_ROLE)
             if separator_data:
                 separators.append(
                     {
-                        "name": list_item.text(),
-                        "folder": list_item.data(Qt.ItemDataRole.UserRole),
+                        "name": col0.text(),
+                        "folder": col0.data(Qt.ItemDataRole.UserRole),
                         "color": separator_data["color"],
                         "index": len(mod_data_list),
                     }
@@ -660,9 +848,10 @@ class ModListPanel(QWidget):
             else:
                 mod_data_list.append(
                     {
-                        "name": list_item.text(),
-                        "folder": list_item.data(Qt.ItemDataRole.UserRole),
-                        "checked": list_item.checkState(),
+                        "name": col0.text(),
+                        "folder": col0.data(Qt.ItemDataRole.UserRole),
+                        "checked": col0.checkState(),
+                        "version": col2.text() if col2 else "",
                     }
                 )
 
@@ -701,25 +890,46 @@ class ModListPanel(QWidget):
 
         mod_data_lookup = {mod["folder"]: mod for mod in mod_data_list}
         separator_lookup = {sep["folder"]: sep for sep in separators}
-        for entry_name, entry_folder in ordered_list:
-            list_item = self._make_list_item()
-            list_item.setText(entry_name)
-            list_item.setData(entry_folder, Qt.ItemDataRole.UserRole)
-            list_item.setData(normalize_mod_name(entry_name), NORMALIZED_NAME_ROLE)
+        priority = 1
+        for row_index, (entry_name, entry_folder) in enumerate(ordered_list):
+            col0, col1, col2, col3 = self._make_row_items()
+            col0.setData(entry_folder, Qt.ItemDataRole.UserRole)
             if entry_folder in separator_lookup:
                 separator_entry = separator_lookup[entry_folder]
-                list_item.setData(
-                    {"name": entry_name, "color": separator_entry["color"]},
-                    SEPARATOR_ROLE,
+                separator_data = {
+                    "name": entry_name,
+                    "color": separator_entry["color"],
+                }
+                col0.setData(separator_data, SEPARATOR_ROLE)
+                col0.setText(entry_name)
+                col0.setBackground(QColor(separator_entry["color"]))
+                col0.setForeground(
+                    QColor(_text_color_for_bg(separator_entry["color"]))
                 )
-                list_item.setBackground(QColor(separator_entry["color"]))
-                list_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                bg = QColor(separator_entry["color"])
+                col1.setBackground(bg)
+                col2.setBackground(bg)
+                col3.setBackground(bg)
             else:
+                display_name = normalize_mod_name(entry_name)
+                col0.setText(display_name)
+                col0.setData(display_name, NORMALIZED_NAME_ROLE)
+                col0.setCheckable(True)
                 mod_info = mod_data_lookup.get(entry_folder, {})
-                list_item.setCheckable(True)
-                list_item.setCheckState(mod_info.get("checked", Qt.CheckState.Checked))
-            self.model.appendRow(list_item)
+                col0.setCheckState(mod_info.get("checked", Qt.CheckState.Checked))
+                mod_version = mod_info.get("version", "")
+                if mod_version:
+                    col2.setText(mod_version)
+                col3.setText(str(priority))
+                col3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                priority += 1
+            self.model.appendRow([col0, col1, col2, col3])
 
+        self.model.setHorizontalHeaderLabels(
+            ["Mod Name", "Flags", "Version", "Priority"]
+        )
+        self._restore_column_widths()
         config.loaded_mods = [
             [entry_name, entry_folder]
             for entry_name, entry_folder in ordered_list
@@ -738,8 +948,9 @@ class ModListPanel(QWidget):
                 selected = self.listView.selectionModel().selectedIndexes()
                 if not selected:
                     return True
-                items = [self.model.itemFromIndex(idx) for idx in selected]
-                if all(item.data(SEPARATOR_ROLE) for item in items):
+                rows = set(idx.row() for idx in selected)
+                items = [self.model.item(row, 0) for row in rows if self.model.item(row, 0)]
+                if items and all(item.data(SEPARATOR_ROLE) for item in items):
                     self._delete_separators(items)
                 return True
         return super().eventFilter(obj, event)
@@ -751,12 +962,14 @@ class ModListPanel(QWidget):
         for item in items:
             folder = item.data(Qt.ItemDataRole.UserRole)
             folder_path = os.path.join(config.mods_path, folder)
+            c0 = self.model.item(item.row(), 0)
+            item_name = c0.text() if c0 else ""
             try:
                 shutil.rmtree(folder_path)
-                deleted.append(item.text())
+                deleted.append(item_name)
             except OSError as exc:
                 self.log_message.emit(
-                    f"Deleting separator '{item.text()}': {exc}", "error"
+                    f"Deleting separator '{item_name}': {exc}", "error"
                 )
         if deleted:
             self.log_message.emit(
@@ -766,15 +979,15 @@ class ModListPanel(QWidget):
             self.load_mod_list()
 
     def _on_item_double_clicked(self, index) -> None:
-        list_item = self.model.itemFromIndex(index)
-        if list_item.data(SEPARATOR_ROLE):
-            self._edit_separator(list_item)
+        col0 = self.model.item(index.row(), 0)
+        if col0.data(SEPARATOR_ROLE):
+            self._edit_separator(col0)
             return
         ctrl_held = (
             QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
         )
         if ctrl_held:
-            mod_folder = list_item.data(Qt.ItemDataRole.UserRole)
+            mod_folder = col0.data(Qt.ItemDataRole.UserRole)
             if not mod_folder:
                 return
             folder_path = os.path.join(config.mods_path, mod_folder)
@@ -786,9 +999,9 @@ class ModListPanel(QWidget):
             if not open_path(folder_path):
                 self.log_message.emit(f"Failed to open folder: {folder_path}", "error")
 
-    def _edit_separator(self, list_item) -> None:
-        separator_data = list_item.data(SEPARATOR_ROLE)
-        old_separator_folder = list_item.data(Qt.ItemDataRole.UserRole)
+    def _edit_separator(self, col0) -> None:
+        separator_data = col0.data(SEPARATOR_ROLE)
+        old_separator_folder = col0.data(Qt.ItemDataRole.UserRole)
         dialog = SeparatorDialog(
             "Edit Separator",
             name=separator_data["name"],
@@ -831,23 +1044,23 @@ class ModListPanel(QWidget):
         index = self.listView.indexAt(position)
         if not index or not index.isValid():
             return
-        list_item = self.model.itemFromIndex(index)
-        if not list_item.data(SEPARATOR_ROLE):
+        col0 = self.model.item(index.row(), 0)
+        if not col0 or not col0.data(SEPARATOR_ROLE):
             return
         context_menu = QMenu(self)
-        context_menu.setStyleSheet("QMenu { border: 1px solid palette(mid); }")
-        context_menu.addAction("Edit", lambda: self._edit_separator(list_item))
-        context_menu.addAction("Delete", lambda: self._delete_separator(list_item))
+        context_menu.addAction("Edit", lambda: self._edit_separator(col0))
+        context_menu.addAction("Delete", lambda: self._delete_separator(col0))
         context_menu.exec(self.listView.viewport().mapToGlobal(position))
 
-    def _delete_separator(self, list_item) -> None:
+    def _delete_separator(self, col0) -> None:
         import shutil
 
-        separator_folder = list_item.data(Qt.ItemDataRole.UserRole)
+        separator_folder = col0.data(Qt.ItemDataRole.UserRole)
         folder_path = os.path.join(config.mods_path, separator_folder)
+        item_name = col0.text() if col0 else ""
         try:
             shutil.rmtree(folder_path)
-            self.log_message.emit(f"Deleted separator '{list_item.text()}'", "info")
+            self.log_message.emit(f"Deleted separator '{item_name}'", "info")
             self._save_current_order()
             self.load_mod_list()
         except OSError as exception:
@@ -890,10 +1103,10 @@ class ModListPanel(QWidget):
             return
         items = []
         for row_index in range(self.model.rowCount()):
-            list_item = self.model.item(row_index)
-            if list_item.data(SEPARATOR_ROLE):
+            col0 = self.model.item(row_index)
+            if col0.data(SEPARATOR_ROLE):
                 continue
-            items.append((list_item.data(Qt.ItemDataRole.UserRole), list_item.text()))
+            items.append((col0.data(Qt.ItemDataRole.UserRole), col0.text() if col0 else ""))
         try:
             count = export_modlist_csv(file_path, items)
             self.log_message.emit(f"Exported {count} mods to {file_path}", "info")
@@ -911,11 +1124,11 @@ class ModListPanel(QWidget):
         try:
             known_mods = {}
             for row_index in range(self.model.rowCount()):
-                list_item = self.model.item(row_index)
-                if list_item.data(SEPARATOR_ROLE):
+                col0 = self.model.item(row_index)
+                if col0.data(SEPARATOR_ROLE):
                     continue
-                folder = list_item.data(Qt.ItemDataRole.UserRole)
-                known_mods[folder] = (list_item.text(), folder)
+                folder = col0.data(Qt.ItemDataRole.UserRole)
+                known_mods[folder] = (col0.text() if col0 else "", folder)
 
             ordered_folders = import_modlist_csv(file_path, known_mods)
             if ordered_folders:
@@ -933,10 +1146,65 @@ class ModListPanel(QWidget):
             )
         sorter.save_last_order(ordered_folders)
 
+    def _on_header_clicked(self, section: int) -> None:
+        if not hasattr(self, "_sort_ascending"):
+            self._sort_ascending = {}
+        current = self._sort_ascending.get(section, True)
+        self._sort_ascending[section] = not current
+        asc = current
+
+        def sort_key(row_idx):
+            c0 = self.model.item(row_idx)
+            if section == 0:
+                t = c0.text().lower() if c0 else ""
+                return t
+            elif section == 1:
+                if not c0:
+                    return 3
+                w = c0.data(WINS_ROLE) or False
+                l = c0.data(LOSSES_ROLE) or False
+                v = 3
+                if w and l: v = 0
+                elif w: v = 1
+                elif l: v = 2
+                return v if asc else (3 - v)
+            elif section == 2:
+                c2 = self.model.item(row_idx, 2)
+                t = c2.text().lower() if c2 else ""
+                return t
+            else:
+                return row_idx if asc else -row_idx
+
+        self._populating = True
+        rows_data = [
+            ([self.model.item(r, c) for c in range(4)], sort_key(r))
+            for r in range(self.model.rowCount())
+        ]
+        rows_data.sort(key=lambda x: x[1])
+        self.model.clear()
+        self.model.setHorizontalHeaderLabels(
+            ["Mod Name", "Flags", "Version", "Priority"]
+        )
+        self._restore_column_widths()
+        priority = 1
+        for i, (items, _) in enumerate(rows_data):
+            if items[0]:
+                items[0].setData(None, Qt.ItemDataRole.ForegroundRole)
+            if items[3]:
+                if items[0] and items[0].data(SEPARATOR_ROLE):
+                    items[3].setText("")
+                else:
+                    items[3].setText(str(priority))
+                    items[3].setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    priority += 1
+            self.model.appendRow(items)
+        self._populating = False
+        self._update_conflict_indicators()
+
     def update_accent_color(self, color: str) -> None:
         self._accent_color = color
         self.listView.setStyleSheet(
-            f"QListView::item:selected {{ background-color: {color}; }}"
+            f"QTreeView::item:selected {{ background-color: {color}; }}"
         )
         fg = _text_color_for_bg(color)
         self.applyOrder.setStyleSheet(f"background-color: {color}; color: {fg};")
@@ -998,17 +1266,17 @@ class ModListPanel(QWidget):
     def _controller_a(self) -> None:
         if self._move_mode:
             self._move_mode = False
-            item = self.model.item(self._move_index)
-            if item:
-                font = item.font()
+            c0 = self.model.item(self._move_index, 0)
+            if c0:
+                font = c0.font()
                 font.setBold(False)
-                item.setFont(font)
+                c0.setFont(font)
             self._move_index = -1
             self._move_original_row = -1
             return
         idx = self.listView.currentIndex()
         if idx.isValid():
-            item = self.model.itemFromIndex(idx)
+            item = self.model.item(idx.row(), 0)
             if item and not item.data(SEPARATOR_ROLE):
                 item.setCheckState(
                     Qt.CheckState.Unchecked
@@ -1019,18 +1287,18 @@ class ModListPanel(QWidget):
     def _controller_b(self) -> None:
         if self._move_mode:
             self._move_mode = False
-            item = self.model.item(self._move_index)
-            if item:
-                font = item.font()
+            c0 = self.model.item(self._move_index, 0)
+            if c0:
+                font = c0.font()
                 font.setBold(False)
-                item.setFont(font)
+                c0.setFont(font)
             if self._move_original_row >= 0:
-                folder = item.data(Qt.ItemDataRole.UserRole)
+                items = self.model.takeRow(self._move_index)
                 self._populating = True
-                self.model.takeRow(self._move_index)
-                self.model.insertRow(self._move_original_row, item)
-                self.listView.setCurrentIndex(self.model.indexFromItem(item))
+                self.model.insertRow(self._move_original_row, items)
+                self.listView.setCurrentIndex(self.model.index(self._move_original_row, 0))
                 self._populating = False
+                self._renumber_priority()
                 self._save_current_order()
                 self._update_conflict_indicators()
             self._move_index = -1
@@ -1040,22 +1308,24 @@ class ModListPanel(QWidget):
         idx = self.listView.currentIndex()
         if not idx.isValid():
             return
-        item = self.model.itemFromIndex(idx)
-        if not item or item.data(SEPARATOR_ROLE):
+        col0 = self.model.item(idx.row(), 0)
+        if not col0 or col0.data(SEPARATOR_ROLE):
             return
         self._move_mode = not self._move_mode
         if self._move_mode:
             self._move_index = idx.row()
             self._move_original_row = idx.row()
-            font = item.font()
-            font.setBold(True)
-            item.setFont(font)
+            c0 = self.model.item(idx.row(), 0)
+            if c0:
+                font = c0.font()
+                font.setBold(True)
+                c0.setFont(font)
         else:
-            item = self.model.item(self._move_index)
-            if item:
-                font = item.font()
+            c0 = self.model.item(self._move_index, 0) if self._move_index >= 0 else None
+            if c0:
+                font = c0.font()
                 font.setBold(False)
-                item.setFont(font)
+                c0.setFont(font)
             self._move_index = -1
             self._move_original_row = -1
 
@@ -1097,6 +1367,7 @@ class ModListPanel(QWidget):
         self._move_index = new_idx
         self.model.insertRow(self._move_index, items)
         self.listView.setCurrentIndex(self.model.index(self._move_index, 0))
+        self._renumber_priority()
         self._save_current_order()
         self._update_conflict_indicators()
 
@@ -1105,5 +1376,3 @@ class ModListPanel(QWidget):
         row = (idx.row() + direction) if idx.isValid() else 0
         if 0 <= row < self.model.rowCount():
             self.listView.setCurrentIndex(self.model.index(row, 0))
-
-

@@ -113,12 +113,7 @@ class ModInfoPanel(QWidget):
         self._details_queue_timer.setSingleShot(True)
         self._details_queue_timer.timeout.connect(self._process_details_queue)
         self.destroyed.connect(self._cleanup_threads)
-        self._placeholder = QPixmap(
-            os.path.join(paths.BASE_DIR, "assets", "ui", "no_image.png")
-        )
-        self._folder_icon = QIcon(
-            os.path.join(paths.BASE_DIR, "assets", "ui", "folder-yellow.png")
-        )
+        self._init_icons()
         modinfo_label = QLabel("<b>Mod Info</b>")
         modinfo_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
@@ -128,7 +123,7 @@ class ModInfoPanel(QWidget):
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(128, 128)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet("border: 1px solid gray;")
+        self.icon_label.setStyleSheet(f"border: 1px solid {config.icon_border_color};")
 
         self.tags_box = QListWidget()
         self.tags_box.setMaximumHeight(128)
@@ -137,9 +132,6 @@ class ModInfoPanel(QWidget):
         self.tags_box.setFlow(QListWidget.LeftToRight)
         self.tags_box.setWrapping(True)
         self.tags_box.setSpacing(4)
-        self.tags_box.setStyleSheet(
-            "QListWidget { border: none; background: transparent; }"
-        )
 
         self.workshop_button = QPushButton("Steam Workshop")
         self.workshop_button.clicked.connect(self._open_workshop)
@@ -187,7 +179,7 @@ class ModInfoPanel(QWidget):
         self._left_dpad_icon = QLabel("\u25C0")
         self._left_dpad_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
         self._left_dpad_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._left_dpad_icon.setStyleSheet("color: #888; font-size: 14px;")
+        self._left_dpad_icon.setStyleSheet(f"color: {config.dpad_color}; font-size: 14px;")
         self._left_dpad_icon.hide()
         self.tabs.setCornerWidget(self._left_dpad_icon, Qt.Corner.TopLeftCorner)
         self._controller_dpad_icons.append(self._left_dpad_icon)
@@ -195,7 +187,7 @@ class ModInfoPanel(QWidget):
         self._right_dpad_icon = QLabel("\u25B6")
         self._right_dpad_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)
         self._right_dpad_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._right_dpad_icon.setStyleSheet("color: #888; font-size: 14px;")
+        self._right_dpad_icon.setStyleSheet(f"color: {config.dpad_color}; font-size: 14px;")
         self._right_dpad_icon.hide()
         self.tabs.setCornerWidget(self._right_dpad_icon, Qt.Corner.TopRightCorner)
         self._controller_dpad_icons.append(self._right_dpad_icon)
@@ -265,7 +257,7 @@ class ModInfoPanel(QWidget):
         self.folder_label = QPushButton()
         self.folder_label.setFlat(True)
         self.folder_label.setStyleSheet(
-            "QPushButton { color: gray; font-size: 10px; text-align: left; border: none; }"
+            f"QPushButton {{ color: {config.folder_label_color}; font-size: 10px; text-align: left; border: none; }}"
         )
         self.folder_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.folder_label.clicked.connect(self._open_folder)
@@ -273,6 +265,30 @@ class ModInfoPanel(QWidget):
         layout.addWidget(self._top_container)
         layout.addWidget(self.tabs)
         layout.addWidget(self.folder_label)
+
+    def _init_icons(self) -> None:
+        if config.use_system_icons:
+            self._folder_icon = QIcon.fromTheme("folder")
+            self._placeholder = QIcon.fromTheme("image-x-generic").pixmap(128, 128)
+        else:
+            self._placeholder = QPixmap(
+                os.path.join(paths.BASE_DIR, "assets", "ui", "no_image.png")
+            )
+            self._folder_icon = QIcon(
+                os.path.join(paths.BASE_DIR, "assets", "ui", "folder-yellow.png")
+            )
+
+    def refresh_icons(self) -> None:
+        self._init_icons()
+        self._update_tree_icons(self.files_tree.invisibleRootItem())
+        self._show_placeholder()
+
+    def _update_tree_icons(self, parent: QTreeWidgetItem) -> None:
+        for i in range(parent.childCount()):
+            item = parent.child(i)
+            if item.childCount():
+                item.setIcon(0, self._folder_icon)
+                self._update_tree_icons(item)
 
     def show_mod_info(
         self,
@@ -349,7 +365,7 @@ class ModInfoPanel(QWidget):
             for conflict_mod_name, conflict_data in sorted(conflicts.items()):
                 conflict_folder = conflict_data["folder"]
                 overwrite_color = (
-                    "#65A665" if conflict_data["overwrites"] else "#9E4D4D"
+                    config.win_color if conflict_data["overwrites"] else config.lose_color
                 )
                 mod_tree_item = QTreeWidgetItem([conflict_mod_name, ""])
                 mod_tree_item.setForeground(0, QColor(overwrite_color))
@@ -396,8 +412,8 @@ class ModInfoPanel(QWidget):
                 if not tag_id:
                     continue
                 tag_item = QListWidgetItem(tag_id)
-                tag_item.setBackground(QColor("#9BB7D4"))
-                tag_item.setForeground(QColor("#111111"))
+                tag_item.setBackground(QColor(config.tag_bg))
+                tag_item.setForeground(QColor(config.tag_fg))
                 self.tags_box.addItem(tag_item)
 
         except Exception as exc:
@@ -546,32 +562,32 @@ class ModInfoPanel(QWidget):
 
         if ts_created is None and ts_updated is None:
             self.created_label.setText("Created: —")
-            self.created_label.setStyleSheet("color: gray;")
+            self.created_label.setStyleSheet(f"color: {config.folder_label_color};")
             self.updated_label.setText(
-                "<span style='color:#FF4444;'>Not found on Steam Workshop</span>"
+                f"<span style='color:{config.workshop_missing_color};'>Not found on Steam Workshop</span>"
             )
             return
 
         created_str = _format_date(ts_created)
         self.created_label.setText(f"Created: {created_str}")
-        self.created_label.setStyleSheet("color: gray;")
+        self.created_label.setStyleSheet(f"color: {config.folder_label_color};")
 
         updated_str = _format_date(ts_updated) if ts_updated else "Never"
 
         badge_date = ts_updated or ts_created
         latest_game, previous_major = game_versions.get_outdated_thresholds()
         badge = ""
-        color = "white"
+        color = config.workshop_badge_default
         if latest_game is not None and badge_date:
             try:
                 badge_dt = datetime.fromtimestamp(badge_date).date()
                 if badge_dt >= latest_game:
-                    color = "#55C755"
+                    color = config.workshop_badge_current
                 elif previous_major is None or badge_dt >= previous_major:
-                    color = "#FFA500"
+                    color = config.workshop_badge_possible
                     badge = " (Possibly outdated)"
                 else:
-                    color = "#FF4444"
+                    color = config.workshop_badge_outdated
                     badge = " (OUTDATED)"
             except (OSError, ValueError):
                 pass

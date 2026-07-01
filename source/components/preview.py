@@ -232,7 +232,7 @@ class PreviewWidget(QLabel):
         super().__init__(
             parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
         )
-        self.setStyleSheet("border: 1px solid #888; background: #fff; padding: 2px;")
+        self.setStyleSheet(f"border: 1px solid {config.preview_border}; background: {config.preview_bg}; padding: 2px;")
         self.hide()
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)

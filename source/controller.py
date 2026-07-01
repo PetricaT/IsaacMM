@@ -170,9 +170,12 @@ class ControllerManager(QObject):
             if event.type == sdl3.SDL_EVENT_GAMEPAD_ADDED:
                 self._open_controller(event.gdevice.which)
             elif event.type == sdl3.SDL_EVENT_GAMEPAD_REMOVED:
+                should_close = False
                 with self._lock:
                     if self._instance_id is not None and event.gdevice.which == self._instance_id:
-                        self._close_controller()
+                        should_close = True
+                if should_close:
+                    self._close_controller()
             elif event.type == sdl3.SDL_EVENT_GAMEPAD_BUTTON_DOWN:
                 btn = int(event.gbutton.button)
                 with self._lock:

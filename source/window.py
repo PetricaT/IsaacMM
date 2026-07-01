@@ -7,7 +7,7 @@ from typing import Optional
 
 from PySide6.QtCore import QEvent, QSize, QTimer, Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QLabel, QSplitter, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
 from . import config, game_versions, paths, sorter
 from .backup import backup_all, get_backup_root
@@ -33,6 +33,20 @@ from .components.controller_ui import ControllerRouter, FocusOverlay, ICON_SIZE
 
 class DragApp(QWidget):
     loaded_mods = config.loaded_mods
+    FOCUS_QSS = """
+QComboBox:focus, QSpinBox:focus, QLineEdit:focus {
+    border: 2px solid palette(highlight);
+}
+QCheckBox:focus {
+    outline: 2px solid palette(highlight);
+}
+QSlider:focus {
+    border: 1px solid palette(highlight);
+}
+QPushButton:focus {
+    border: 2px solid palette(highlight);
+}
+"""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -58,6 +72,7 @@ class DragApp(QWidget):
         self.initUi()
         self._refresh_masterlist_background()
         self._refresh_game_versions_background()
+        self._load_base_qss()
         self._init_controller()
 
     def closeEvent(self, close_event) -> None:
@@ -340,6 +355,21 @@ class DragApp(QWidget):
         except Exception as exc:
             self.log(f"Controller support unavailable: {exc}", "warning")
 
+    def _load_base_qss(self) -> None:
+        qss_path = os.path.join(paths.BASE_DIR, "assets", "styles.qss")
+        if os.path.exists(qss_path):
+            with open(qss_path) as f:
+                self._base_qss = f.read()
+        else:
+            self._base_qss = ""
+        QApplication.instance().setStyleSheet(self._base_qss)
+
+    def _apply_focus_qss(self, active: bool) -> None:
+        if active:
+            QApplication.instance().setStyleSheet(self._base_qss + self.FOCUS_QSS)
+        else:
+            QApplication.instance().setStyleSheet(self._base_qss)
+
     def _on_controller_connected(self, name: str, gp_type: int) -> None:
         self.log(f"Controller connected: {name}", "info")
         self.mod_list_panel.set_controller_type(gp_type)
@@ -347,12 +377,14 @@ class DragApp(QWidget):
 
     def _on_controller_disconnected(self) -> None:
         self.log("Controller disconnected", "warning")
+        self._apply_focus_qss(False)
         self.mod_list_panel.set_controller_active(False)
         self.modInfoPanel.set_controller_active(False)
 
     def _on_controller_activity(self, active: bool) -> None:
         self.mod_list_panel.set_controller_active(active)
         self.modInfoPanel.set_controller_active(active)
+        self._apply_focus_qss(active)
         if active:
             self._reposition_shoulder_indicators()
             for lbl, _ in self._shoulder_indicators:

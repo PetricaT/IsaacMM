@@ -16,7 +16,6 @@ _save_lock = threading.Lock()
 _last_save: float = 0.0
 SAVE_DEBOUNCE: float = 2.0
 
-
 @dataclass
 class _Config:
     mods_path: str = ""
@@ -25,6 +24,8 @@ class _Config:
     theme: str = "fusion"
     accent_color: str = "#3daee9"
     disabled_mod_color: str = "#808080"
+    win_color: str = "#65A665"
+    lose_color: str = "#9E4D4D"
     download_icons: bool = False
     animate_icons: bool = True
     preview_images: bool = True
@@ -35,22 +36,39 @@ class _Config:
     log_level: str = "info"
     date_format: str = ""
     ignored_items: list = field(default_factory=lambda: [
-        ".git",
-        "__pycache__",
-        "metadata.xml",
-        "disable.it",
-        ".DS_Store",
-        "Thumbs.db",
-        "desktop.ini",
-        ".Trashes",
-        ".Spotlight-V100",
-        "$RECYCLE.BIN",
-        ".directory",
-        "~",
+        ".git", "__pycache__", "metadata.xml", "disable.it",
+        ".DS_Store", "Thumbs.db", "desktop.ini", ".Trashes",
+        ".Spotlight-V100", "$RECYCLE.BIN", ".directory", "~",
     ])
     controller_enabled: bool = True
     controller_deadzone: int = 8000
     controller_simple_icons: bool = False
+    use_system_icons: bool = False
+    theme_preset: str = "default"
+    # Widget colors
+    dpad_color: str = "#888888"
+    tag_bg: str = "#9BB7D4"
+    tag_fg: str = "#111111"
+    folder_label_color: str = "#808080"
+    icon_border_color: str = "#808080"
+    workshop_missing_color: str = "#FF4444"
+    workshop_badge_current: str = "#55C755"
+    workshop_badge_possible: str = "#FFA500"
+    workshop_badge_outdated: str = "#FF4444"
+    workshop_badge_default: str = "#ffffff"
+    # Console colors
+    console_bg: str = "#1e1e1e"
+    console_fg: str = "#d4d4d4"
+    console_border: str = "#333333"
+    rate_bar_bg: str = "#252526"
+    log_info_color: str = "#d4d4d4"
+    log_warn_color: str = "#ffa500"
+    log_error_color: str = "#ff4444"
+    # Modlist colors
+    separator_color: str = "#888888"
+    # Preview colors
+    preview_border: str = "#888888"
+    preview_bg: str = "#ffffff"
     _native_style: str = ""
 
 
@@ -63,6 +81,62 @@ def __getattr__(name: str):
 
 def __setattr__(name: str, value) -> None:
     setattr(_cfg, name, value)
+
+
+THEME_PRESETS: dict[str, dict[str, str]] = {
+    "default": {
+        "accent_color": "#3daee9",
+        "disabled_mod_color": "#808080",
+        "win_color": "#65A665",
+        "lose_color": "#9E4D4D",
+        "dpad_color": "#888888",
+        "tag_bg": "#9BB7D4",
+        "tag_fg": "#111111",
+        "folder_label_color": "#808080",
+        "icon_border_color": "#808080",
+        "workshop_missing_color": "#FF4444",
+        "workshop_badge_current": "#55C755",
+        "workshop_badge_possible": "#FFA500",
+        "workshop_badge_outdated": "#FF4444",
+        "workshop_badge_default": "#ffffff",
+        "console_bg": "#1e1e1e",
+        "console_fg": "#d4d4d4",
+        "console_border": "#333333",
+        "rate_bar_bg": "#252526",
+        "log_info_color": "#d4d4d4",
+        "log_warn_color": "#ffa500",
+        "log_error_color": "#ff4444",
+        "separator_color": "#888888",
+        "preview_border": "#888888",
+        "preview_bg": "#ffffff",
+    },
+    "high_contrast": {
+        "accent_color": "#000080",
+        "disabled_mod_color": "#808080",
+        "dpad_color": "#000000",
+        "tag_bg": "#000080",
+        "tag_fg": "#ffffff",
+        "folder_label_color": "#000000",
+        "icon_border_color": "#000000",
+        "workshop_missing_color": "#CC0000",
+        "workshop_badge_current": "#006600",
+        "workshop_badge_possible": "#996600",
+        "workshop_badge_outdated": "#CC0000",
+        "workshop_badge_default": "#000000",
+        "console_bg": "#ffffff",
+        "console_fg": "#000000",
+        "console_border": "#000000",
+        "rate_bar_bg": "#f0f0f0",
+        "log_info_color": "#000000",
+        "log_warn_color": "#996600",
+        "log_error_color": "#CC0000",
+        "separator_color": "#000000",
+        "preview_border": "#000000",
+        "preview_bg": "#ffffff",
+        "win_color": "#006600",
+        "lose_color": "#CC0000",
+    },
+}
 
 
 def get_settings() -> QSettings:
@@ -108,8 +182,32 @@ def load() -> None:
         _cfg.controller_deadzone = settings_section.get("controller_deadzone", 8000)
         _cfg.controller_simple_icons = settings_section.get("controller_simple_icons", False)
         theme_section = config_data.get("theme", {})
+        _cfg.use_system_icons = theme_section.get("use_system_icons", False)
+        _cfg.theme_preset = theme_section.get("theme_preset", "default")
         _cfg.accent_color = theme_section.get("accent", "#3daee9")
         _cfg.disabled_mod_color = theme_section.get("disabled_mod", "#808080")
+        _cfg.win_color = theme_section.get("win", "#65A665")
+        _cfg.lose_color = theme_section.get("lose", "#9E4D4D")
+        _cfg.dpad_color = theme_section.get("dpad", "#888888")
+        _cfg.tag_bg = theme_section.get("tag_bg", "#9BB7D4")
+        _cfg.tag_fg = theme_section.get("tag_fg", "#111111")
+        _cfg.folder_label_color = theme_section.get("folder_label", "#808080")
+        _cfg.icon_border_color = theme_section.get("icon_border", "#808080")
+        _cfg.workshop_missing_color = theme_section.get("workshop_missing", "#FF4444")
+        _cfg.workshop_badge_current = theme_section.get("workshop_current", "#55C755")
+        _cfg.workshop_badge_possible = theme_section.get("workshop_possible", "#FFA500")
+        _cfg.workshop_badge_outdated = theme_section.get("workshop_outdated", "#FF4444")
+        _cfg.workshop_badge_default = theme_section.get("workshop_default", "#ffffff")
+        _cfg.console_bg = theme_section.get("console_bg", "#1e1e1e")
+        _cfg.console_fg = theme_section.get("console_fg", "#d4d4d4")
+        _cfg.console_border = theme_section.get("console_border", "#333333")
+        _cfg.rate_bar_bg = theme_section.get("rate_bar_bg", "#252526")
+        _cfg.log_info_color = theme_section.get("log_info", "#d4d4d4")
+        _cfg.log_warn_color = theme_section.get("log_warn", "#ffa500")
+        _cfg.log_error_color = theme_section.get("log_error", "#ff4444")
+        _cfg.separator_color = theme_section.get("separator", "#888888")
+        _cfg.preview_border = theme_section.get("preview_border", "#888888")
+        _cfg.preview_bg = theme_section.get("preview_bg", "#ffffff")
         workshop_section = config_data.get("workshop", {})
         _cfg.workshop_timestamps = workshop_section.get("timestamps", [])
         _cfg.dead_workshop_ids = settings_section.get("dead_workshop_ids", [])
@@ -119,6 +217,13 @@ def load() -> None:
         _cfg.mods_path = detected_path or ""
         sorter.fetch_initial()
         save()
+
+
+def apply_preset(preset_name: str) -> None:
+    _cfg.theme_preset = preset_name
+    overrides = THEME_PRESETS.get(preset_name, {})
+    for key, value in overrides.items():
+        setattr(_cfg, key, value)
 
 
 def flush() -> None:
@@ -159,6 +264,44 @@ def _do_save() -> None:
             "theme": {
                 "accent": _cfg.accent_color,
                 "disabled_mod": _cfg.disabled_mod_color,
+                "backup_enabled": _cfg.backup_enabled,
+                "backup_path": _cfg.backup_path,
+                "theme": _cfg.theme,
+                "animate_icons": _cfg.animate_icons,
+                "animate_anm2_preview": _cfg.animate_anm2_preview,
+                "preview_images": _cfg.preview_images,
+                "download_icons": _cfg.download_icons,
+                "log_level": _cfg.log_level,
+                "date_format": _cfg.date_format,
+                "dead_workshop_ids": _cfg.dead_workshop_ids,
+                "ignored_items": _cfg.ignored_items,
+                "controller_enabled": _cfg.controller_enabled,
+                "controller_deadzone": _cfg.controller_deadzone,
+                "controller_simple_icons": _cfg.controller_simple_icons,
+                "use_system_icons": _cfg.use_system_icons,
+                "theme_preset": _cfg.theme_preset,
+                "win": _cfg.win_color,
+                "lose": _cfg.lose_color,
+                "dpad": _cfg.dpad_color,
+                "tag_bg": _cfg.tag_bg,
+                "tag_fg": _cfg.tag_fg,
+                "folder_label": _cfg.folder_label_color,
+                "icon_border": _cfg.icon_border_color,
+                "workshop_missing": _cfg.workshop_missing_color,
+                "workshop_current": _cfg.workshop_badge_current,
+                "workshop_possible": _cfg.workshop_badge_possible,
+                "workshop_outdated": _cfg.workshop_badge_outdated,
+                "console_bg": _cfg.console_bg,
+                "console_fg": _cfg.console_fg,
+                "console_border": _cfg.console_border,
+                "rate_bar_bg": _cfg.rate_bar_bg,
+                "log_info": _cfg.log_info_color,
+                "log_warn": _cfg.log_warn_color,
+                "log_error": _cfg.log_error_color,
+                "separator": _cfg.separator_color,
+                "preview_border": _cfg.preview_border,
+                "preview_bg": _cfg.preview_bg,
+                "workshop_default": _cfg.workshop_badge_default,
             },
             "workshop": {
                 "timestamps": _cfg.workshop_timestamps,

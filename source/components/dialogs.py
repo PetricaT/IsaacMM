@@ -6,8 +6,8 @@ import os
 from datetime import datetime
 from typing import Optional, Protocol, Any
 
-from PySide6.QtCore import QDateTime, QLocale, Qt, Signal
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtCore import QDateTime, QLocale, QRect, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -18,11 +18,13 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QStyledItemDelegate,
@@ -46,6 +48,9 @@ class SettingsPanelOwner(Protocol):
     mod_list_panel: Any
     modInfoPanel: Any
     _backup_thread: Any
+    
+def _btn_qss(color: str) -> str:
+    return f"background-color: {color};"
 
 try:
     from ..controller import GamepadType
@@ -59,33 +64,46 @@ SEPARATOR_ROLE = Qt.ItemDataRole.UserRole + 2  # 258
 PREV_CHECK_ROLE = Qt.ItemDataRole.UserRole + 3  # 259
 OVERWRITTEN_ROLE = Qt.ItemDataRole.UserRole + 4  # 260
 NORMALIZED_NAME_ROLE = Qt.ItemDataRole.UserRole + 5  # 261
+WINS_ROLE = Qt.ItemDataRole.UserRole + 6  # 262
+LOSSES_ROLE = Qt.ItemDataRole.UserRole + 7  # 263
 
 
 class ConflictDelegate(QStyledItemDelegate):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
-        super().__init__(parent)
-        warning_pixmap = QPixmap(os.path.join(paths.BASE_DIR, "assets", "ui", "warning.png"))
-        self._warning = (
-            warning_pixmap.scaled(
-                16,
-                16,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            if not warning_pixmap.isNull()
-            else None
-        )
-
     def paint(self, painter, option, index) -> None:
         super().paint(painter, option, index)
-        if self._warning is None:
+        wins = index.data(WINS_ROLE)
+        losses = index.data(LOSSES_ROLE)
+        if not wins and not losses:
             return
-        if not index.data(CONFLICT_ROLE):
-            return
+        from .. import config
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        font = QFont()
+        font.setPixelSize(14)
+        font.setBold(True)
+        painter.setFont(font)
         item_rect = option.rect
-        icon_x = item_rect.right() - self._warning.width() - 4
-        icon_y = item_rect.top() + (item_rect.height() - self._warning.height()) // 2
-        painter.drawPixmap(icon_x, icon_y, self._warning)
+        size = 16
+        gap = 2
+        if wins and not losses:
+            painter.setPen(QColor(config.win_color))
+            x = item_rect.right() - size - 4
+            y = item_rect.top() + (item_rect.height() - size) // 2
+            painter.drawText(QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "+")
+        elif losses and not wins:
+            painter.setPen(QColor(config.lose_color))
+            x = item_rect.right() - size - 4
+            y = item_rect.top() + (item_rect.height() - size) // 2
+            painter.drawText(QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "\u2212")
+        else:
+            total_w = size * 2 + gap
+            x = item_rect.right() - total_w - 4
+            y = item_rect.top() + (item_rect.height() - size) // 2
+            painter.setPen(QColor(config.lose_color))
+            painter.drawText(QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "\u2212")
+            painter.setPen(QColor(config.win_color))
+            painter.drawText(QRect(x + size + gap, y, size, size), Qt.AlignmentFlag.AlignCenter, "+")
+        painter.restore()
 
 
 class SeparatorDialog(QDialog):
@@ -93,19 +111,19 @@ class SeparatorDialog(QDialog):
         self,
         title: str,
         name: str = "",
-        color: str = "#888888",
+        color: str = "",
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
-        self._color = color
+        self._color = color or config.separator_color
         form_layout = QFormLayout(self)
 
         self.name_edit = QLineEdit(name)
 
         self.color_btn = QPushButton()
         self.color_btn.setStyleSheet(
-            f"background-color: {color}; min-height: 24px; min-width: 60px;"
+            f"background-color: {self._color}; min-height: 24px; min-width: 60px;"
         )
         self.color_btn.clicked.connect(self._pick_color)
 
@@ -321,7 +339,13 @@ class SettingsPanel(QWidget):
         tabs.addTab(behavior_tab, "Behavior")
 
         theme_tab = QWidget()
-        theme_layout = QFormLayout(theme_tab)
+        theme_main_layout = QVBoxLayout(theme_tab)
+        theme_main_layout.setContentsMargins(0, 0, 0, 0)
+
+        top_widget = QWidget()
+        theme_layout = QFormLayout(top_widget)
+        theme_layout.setVerticalSpacing(4)
+        theme_layout.setContentsMargins(9, 9, 9, 4)
 
         self.theme_combo = QComboBox()
         self.theme_combo.addItem("Fusion", "fusion")
@@ -335,13 +359,101 @@ class SettingsPanel(QWidget):
             self.theme_combo.setCurrentIndex(index)
         self.theme_combo.currentIndexChanged.connect(self._save_settings)
 
+        self.preset_combo = QComboBox()
+        for name in config.THEME_PRESETS:
+            label = name.replace("_", " ").title()
+            self.preset_combo.addItem(label, name)
+        idx = self.preset_combo.findData(config.theme_preset)
+        if idx >= 0:
+            self.preset_combo.setCurrentIndex(idx)
+        self.preset_combo.currentIndexChanged.connect(self._apply_preset)
+
+        theme_layout.addRow("Qt Style:", self.theme_combo)
+        theme_layout.addRow("Preset:", self.preset_combo)
+
+        self.system_icons_check = QCheckBox("Use system icons (KDE/desktop theme)")
+        self.system_icons_check.setChecked(config.use_system_icons)
+        self.system_icons_check.toggled.connect(self._save_settings)
+        theme_layout.addRow(self.system_icons_check)
+
+        theme_main_layout.addWidget(top_widget)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_inner = QWidget()
+        scroll_layout = QFormLayout(scroll_inner)
+        scroll_layout.setVerticalSpacing(6)
+        scroll_layout.setContentsMargins(12, 6, 12, 12)
+
         self.accent_btn = QPushButton()
         self.accent_btn.setFixedWidth(60)
-        self.accent_btn.setStyleSheet(f"background-color: {config.accent_color};")
+        self.accent_btn.setStyleSheet(_btn_qss(config.accent_color))
         self.accent_btn.clicked.connect(self._pick_accent)
+        scroll_layout.addRow("Accent color:", self.accent_btn)
 
-        theme_layout.addRow("Theme:", self.theme_combo)
-        theme_layout.addRow("Accent color:", self.accent_btn)
+        self.disabled_mod_btn = QPushButton()
+        self.disabled_mod_btn.setFixedWidth(60)
+        self.disabled_mod_btn.setStyleSheet(
+            _btn_qss(config.disabled_mod_color))
+        self.disabled_mod_btn.clicked.connect(self._pick_disabled_mod_color)
+        scroll_layout.addRow("Disabled mod color:", self.disabled_mod_btn)
+
+        self.win_btn = QPushButton()
+        self.win_btn.setFixedWidth(60)
+        self.win_btn.setStyleSheet(_btn_qss(config.win_color))
+        self.win_btn.clicked.connect(self._pick_win_color)
+        scroll_layout.addRow("Win (conflict +):", self.win_btn)
+
+        self.lose_btn = QPushButton()
+        self.lose_btn.setFixedWidth(60)
+        self.lose_btn.setStyleSheet(_btn_qss(config.lose_color))
+        self.lose_btn.clicked.connect(self._pick_lose_color)
+        scroll_layout.addRow("Lose (conflict \u2212):", self.lose_btn)
+
+        sep_label = QLabel("<b>\u2014 Mod List \u2014</b>")
+        scroll_layout.addRow(sep_label)
+        self._add_colors(scroll_layout, [
+            ("Separator color:", "separator_color"),
+        ])
+
+        mi_label = QLabel("<b>\u2014 Mod Info \u2014</b>")
+        scroll_layout.addRow(mi_label)
+        self._add_colors(scroll_layout, [
+            ("Folder label:", "folder_label_color"),
+            ("Icon border:", "icon_border_color"),
+            ("Tag background:", "tag_bg"),
+            ("Tag text:", "tag_fg"),
+            ("Dpad indicators:", "dpad_color"),
+            ("Workshop missing:", "workshop_missing_color"),
+            ("Workshop current:", "workshop_badge_current"),
+            ("Workshop possible:", "workshop_badge_possible"),
+            ("Workshop outdated:", "workshop_badge_outdated"),
+            ("Workshop default:", "workshop_badge_default"),
+        ])
+
+        c_label = QLabel("<b>\u2014 Console \u2014</b>")
+        scroll_layout.addRow(c_label)
+        self._add_colors(scroll_layout, [
+            ("Background:", "console_bg"),
+            ("Text:", "console_fg"),
+            ("Border:", "console_border"),
+            ("Rate bar bg:", "rate_bar_bg"),
+            ("Log info:", "log_info_color"),
+            ("Log warn:", "log_warn_color"),
+            ("Log error:", "log_error_color"),
+        ])
+
+        p_label = QLabel("<b>\u2014 Preview \u2014</b>")
+        scroll_layout.addRow(p_label)
+        self._add_colors(scroll_layout, [
+            ("Border:", "preview_border"),
+            ("Background:", "preview_bg"),
+        ])
+
+        scroll_layout.addRow(QLabel(""))  # bottom spacer
+        scroll.setWidget(scroll_inner)
+        theme_main_layout.addWidget(scroll, 1)
         tabs.addTab(theme_tab, "Theme")
 
         controller_tab = QWidget()
@@ -517,16 +629,79 @@ class SettingsPanel(QWidget):
             self.ctrl_name_label.setText("Not connected")
             self.ctrl_type_label.setText("-")
 
+    def _add_colors(self, layout: QFormLayout, pairs: list[tuple[str, str]]) -> None:
+        for label, attr in pairs:
+            btn = QPushButton()
+            btn.setFixedWidth(60)
+            current = getattr(config, attr)
+            btn.setStyleSheet(_btn_qss(current))
+            btn.clicked.connect(lambda checked, a=attr, b=btn: self._pick_color(a, b))
+            setattr(self, f"_theme_{attr}", btn)
+            layout.addRow(label, btn)
+
+    def _pick_color(self, attr: str, btn: QPushButton) -> None:
+        current = getattr(config, attr)
+        color = QColorDialog.getColor(QColor(current), self)
+        if color.isValid():
+            setattr(config, attr, color.name())
+            btn.setStyleSheet(_btn_qss(color.name()))
+            self._save_settings()
+
+    def _apply_preset(self) -> None:
+        name = self.preset_combo.currentData()
+        config.apply_preset(name)
+        self._sync_theme_buttons()
+        self._save_settings()
+
+    def _sync_theme_buttons(self) -> None:
+        btn_map = {
+            "accent_color": "accent_btn",
+            "disabled_mod_color": "disabled_mod_btn",
+            "win_color": "win_btn",
+            "lose_color": "lose_btn",
+        }
+        for attr, btn_name in btn_map.items():
+            btn = getattr(self, btn_name, None)
+            if btn:
+                btn.setStyleSheet(_btn_qss(getattr(config, attr)))
+        for attr in dir(self):
+            if attr.startswith("_theme_"):
+                btn = getattr(self, attr)
+                config_attr = attr[len("_theme_"):]
+                btn.setStyleSheet(_btn_qss(getattr(config, config_attr)))
+
     def _pick_accent(self) -> None:
         color = QColorDialog.getColor(QColor(config.accent_color), self)
         if color.isValid():
             config.accent_color = color.name()
-            self.accent_btn.setStyleSheet(f"background-color: {config.accent_color};")
+            self.accent_btn.setStyleSheet(_btn_qss(config.accent_color))
             self._save_settings()
             if self._owner is not None:
                 update_style = getattr(self._owner, "update_accent_style", None)
                 if callable(update_style):
                     update_style(color.name())
+
+    def _pick_disabled_mod_color(self) -> None:
+        color = QColorDialog.getColor(QColor(config.disabled_mod_color), self)
+        if color.isValid():
+            config.disabled_mod_color = color.name()
+            self.disabled_mod_btn.setStyleSheet(
+                _btn_qss(config.disabled_mod_color))
+            self._save_settings()
+
+    def _pick_win_color(self) -> None:
+        color = QColorDialog.getColor(QColor(config.win_color), self)
+        if color.isValid():
+            config.win_color = color.name()
+            self.win_btn.setStyleSheet(_btn_qss(config.win_color))
+            self._save_settings()
+
+    def _pick_lose_color(self) -> None:
+        color = QColorDialog.getColor(QColor(config.lose_color), self)
+        if color.isValid():
+            config.lose_color = color.name()
+            self.lose_btn.setStyleSheet(_btn_qss(config.lose_color))
+            self._save_settings()
 
     def _pick_mods_path(self) -> None:
         starting = (
@@ -609,6 +784,8 @@ class SettingsPanel(QWidget):
         config.controller_enabled = self.ctrl_enable_check.isChecked()
         config.controller_deadzone = self.ctrl_deadzone_slider.value()
         config.controller_simple_icons = self.simple_icons_check.isChecked()
+        config.use_system_icons = self.system_icons_check.isChecked()
+        config.theme_preset = self.preset_combo.currentData()
         self._update_date_preview()
         mods_text = self.mods_path_edit.text().strip()
         if mods_text:
@@ -640,6 +817,10 @@ class SettingsPanel(QWidget):
                 self._owner.mod_list_panel.set_simple_icons(config.controller_simple_icons)
             if hasattr(self._owner, 'modInfoPanel'):
                 self._owner.modInfoPanel.set_simple_icons(config.controller_simple_icons)
+        if config.use_system_icons != getattr(self, '_prev_system_icons', False):
+            self._prev_system_icons = config.use_system_icons
+            if hasattr(self._owner, 'modInfoPanel'):
+                self._owner.modInfoPanel.refresh_icons()
         self._update_open_buttons()
         self._update_controller_info()
         config.save()
@@ -661,12 +842,12 @@ class SettingsPanel(QWidget):
             if old:
                 segments.append((old[:i], None))
                 if old[i:]:
-                    segments.append((old[i:], "#9E4D4D"))
+                    segments.append((old[i:], config.lose_color))
             segments.append((" \u2192 ", None))
             if new:
                 segments.append((new[:i], None))
                 if new[i:]:
-                    segments.append((new[i:], "#65A665"))
+                    segments.append((new[i:], config.win_color))
             return segments
 
         def _on_finished(results: list[tuple[str, str, str]]) -> None:
@@ -674,7 +855,7 @@ class SettingsPanel(QWidget):
                 if old_ver == "?":
                     log_colored = getattr(self._owner, "log_colored", None)
                     if log_colored:
-                        log_colored([("Added: ", None), (mod_name, "#65A665")])
+                        log_colored([("Added: ", None), (mod_name, config.win_color)])
                     continue
                 if old_ver == new_ver:
                     continue

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import logger
+from .. import config, logger
 from .workshop import (
     _workshop_limiter_state,
     _workshop_queue_length,
@@ -36,24 +36,24 @@ class ConsoleWidget(QWidget):
         self.console.setFont(QFont("Courier New", 9))
         self.console.setFixedHeight(100)
         self.console.setStyleSheet(
-            "background-color: #1e1e1e; color: #d4d4d4; border: 1px solid #333;"
+            f"background-color: {config.console_bg}; color: {config.console_fg}; border: 1px solid {config.console_border};"
         )
         logger.set_handler(lambda lvl, msg: self._write_console(msg, lvl))
 
         self.rate_bar = QFrame(self)
         self.rate_bar.setFixedHeight(24)
         self.rate_bar.setStyleSheet(
-            "background-color: #252526; border: 1px solid #333; border-top: none;"
+            f"background-color: {config.rate_bar_bg}; border: 1px solid {config.console_border}; border-top: none;"
         )
         rate_layout = QHBoxLayout(self.rate_bar)
         rate_layout.setContentsMargins(8, 0, 8, 0)
         rate_layout.setSpacing(0)
         self.rate_label = QLabel(f"Workshop: 0/{WORKSHOP_RATE_LIMIT}")
-        self.rate_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+        self.rate_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
         self.queue_label = QLabel("Queued: 0")
-        self.queue_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+        self.queue_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
         self.rate_timer_label = QLabel("—")
-        self.rate_timer_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+        self.rate_timer_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
         rate_layout.addWidget(self.rate_label)
         rate_layout.addWidget(self.queue_label)
         rate_layout.addStretch()
@@ -79,8 +79,8 @@ class ConsoleWidget(QWidget):
             "error": "[ERR]",
         }
         prefix = level_prefixes.get(level, "[INF]")
-        level_colors = {"info": "#d4d4d4", "warning": "#ffa500", "error": "#ff4444"}
-        log_color = level_colors.get(level, "#d4d4d4")
+        level_colors = {"info": config.log_info_color, "warning": config.log_warn_color, "error": config.log_error_color}
+        log_color = level_colors.get(level, config.log_info_color)
         text_cursor = self.console.textCursor()
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
         char_format = QTextCharFormat()
@@ -94,13 +94,13 @@ class ConsoleWidget(QWidget):
         text_cursor = self.console.textCursor()
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
         char_format = QTextCharFormat()
-        char_format.setForeground(QColor("#d4d4d4"))
+        char_format.setForeground(QColor(config.log_info_color))
         text_cursor.insertText(f"[INF] [{timestamp}] ", char_format)
         for text, color in segments:
             if color:
                 char_format.setForeground(QColor(color))
             else:
-                char_format.setForeground(QColor("#d4d4d4"))
+                char_format.setForeground(QColor(config.log_info_color))
             text_cursor.insertText(text, char_format)
         text_cursor.insertText("\n", char_format)
         self.console.setTextCursor(text_cursor)
@@ -115,10 +115,10 @@ class ConsoleWidget(QWidget):
             if remaining > 0:
                 mins, secs = divmod(remaining, 60)
                 self.rate_timer_label.setText(f"Cooldown: {mins}m {secs}s")
-                self.rate_timer_label.setStyleSheet("color: #ffa500; font-size: 11px;")
+                self.rate_timer_label.setStyleSheet(f"color: {config.log_warn_color}; font-size: 11px;")
             else:
-                self.rate_timer_label.setText("—")
-                self.rate_timer_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+                self.rate_timer_label.setText("-")
+                self.rate_timer_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
         else:
-            self.rate_timer_label.setText("—")
-            self.rate_timer_label.setStyleSheet("color: #d4d4d4; font-size: 11px;")
+            self.rate_timer_label.setText("-")
+            self.rate_timer_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
