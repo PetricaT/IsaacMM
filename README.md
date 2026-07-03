@@ -133,3 +133,12 @@ Create a pull request with your changes and I will approve them.
 
 > [!NOTE]
 > The build scripts assume you have "[uv](https://docs.astral.sh/uv/)" installed, if you don't have it, do yourself a favour and install it.
+
+
+## Known issues & TODO
+
+- [ ] Add config file versioning & migration
+- [ ] Add update checker & notification
+- [ ] Add auto-updater (If possible on all 3 platforms)
+- [ ] Add launch game button
+- [ ] Add UI locking on active game
