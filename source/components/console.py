@@ -84,7 +84,8 @@ class ConsoleWidget(QWidget):
         text_cursor = self.console.textCursor()
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
         char_format = QTextCharFormat()
-        char_format.setForeground(QColor(log_color))
+        if log_color:
+            char_format.setForeground(QColor(log_color))
         text_cursor.insertText(f"{prefix} [{timestamp}] {message}\n", char_format)
         self.console.setTextCursor(text_cursor)
         self.console.ensureCursorVisible()
@@ -94,12 +95,13 @@ class ConsoleWidget(QWidget):
         text_cursor = self.console.textCursor()
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
         char_format = QTextCharFormat()
-        char_format.setForeground(QColor(config.log_info_color))
+        if config.log_info_color:
+            char_format.setForeground(QColor(config.log_info_color))
         text_cursor.insertText(f"[INF] [{timestamp}] ", char_format)
         for text, color in segments:
             if color:
                 char_format.setForeground(QColor(color))
-            else:
+            elif config.log_info_color:
                 char_format.setForeground(QColor(config.log_info_color))
             text_cursor.insertText(text, char_format)
         text_cursor.insertText("\n", char_format)

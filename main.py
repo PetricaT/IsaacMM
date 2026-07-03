@@ -1,5 +1,4 @@
 import faulthandler
-import os
 import sys
 import traceback
 
@@ -37,11 +36,6 @@ if __name__ == "__main__":
     config._native_style = application.style().name()
     if config.theme != "native":
         application.setStyle(config.theme)
-
-    qss_path = os.path.join(os.path.dirname(__file__), "assets", "styles.qss")
-    if os.path.exists(qss_path):
-        with open(qss_path) as f:
-            application.setStyleSheet(f.read())
 
     if sys.platform == "win32":
         application.setWindowIcon(QIcon("assets/icon.ico"))

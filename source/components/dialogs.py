@@ -373,8 +373,8 @@ class SettingsPanel(QWidget):
         theme_layout.setContentsMargins(9, 9, 9, 4)
 
         self.theme_combo = QComboBox()
-        self.theme_combo.addItem("Fusion", "fusion")
         self.theme_combo.addItem("Native (platform default)", "native")
+        self.theme_combo.addItem("Fusion (cross-platform)", "fusion")
         for style_key in QStyleFactory.keys():
             lower = style_key.lower()
             if lower not in ("fusion",):
@@ -832,18 +832,15 @@ class SettingsPanel(QWidget):
         new_theme = self.theme_combo.currentData()
         if new_theme != config.theme:
             config.theme = new_theme
-            app = QApplication.instance()
-            if app:
-                style_name = (
-                    getattr(config, "_native_style", None)
-                    if new_theme == "native"
-                    else new_theme
-                )
-                if style_name:
-                    app.setStyle(style_name)
-                    qss = app.styleSheet()
-                    app.setStyleSheet("")
-                    app.setStyleSheet(qss)
+            style_name = (
+                getattr(config, "_native_style", None)
+                if new_theme == "native"
+                else new_theme
+            )
+            if style_name:
+                apply_fn = getattr(self._owner, "apply_qt_theme", None)
+                if callable(apply_fn):
+                    apply_fn(style_name)
         if config.mods_path != prev_mods:
             get_mod_list = getattr(self._owner, "getModList", None)
             if callable(get_mod_list):

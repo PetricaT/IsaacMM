@@ -75,15 +75,29 @@ QPushButton:focus {
         self._load_base_qss()
         self._init_controller()
 
-    def changeEvent(self, event) -> None:
-        if event.type() == QEvent.PaletteChange:
-            self._load_base_qss()
+    def apply_qt_theme(self, style_name: str) -> None:
+        if getattr(self, '_applying_theme', False):
+            return
+        self._applying_theme = True
+        try:
             app = QApplication.instance()
-            if app:
-                for w in app.topLevelWidgets():
-                    w.style().unpolish(w)
-                    w.style().polish(w)
-        super().changeEvent(event)
+            if not app:
+                return
+            app.setStyle(style_name)
+            qss = self._base_qss
+            if self._controller and self._controller.is_active:
+                qss = qss + self.FOCUS_QSS
+            app.setStyleSheet("")
+            app.setStyleSheet(qss)
+            for widget in app.allWidgets():
+                if type(widget) is QWidget:
+                    widget.setAutoFillBackground(True)
+            for widget in app.allWidgets():
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+                widget.update()
+        finally:
+            self._applying_theme = False
 
     def closeEvent(self, close_event) -> None:
         s = config.get_settings()
@@ -299,7 +313,10 @@ QPushButton:focus {
         return super().eventFilter(obj, event)
 
     def changeEvent(self, event) -> None:
-        if event.type() == QEvent.ActivationChange and not self.isActiveWindow():
+        if event.type() == QEvent.PaletteChange:
+            self._load_base_qss()
+            self.apply_qt_theme(QApplication.instance().style().name())
+        elif event.type() == QEvent.ActivationChange and not self.isActiveWindow():
             self.modInfoPanel.stop_preview()
         super().changeEvent(event)
 

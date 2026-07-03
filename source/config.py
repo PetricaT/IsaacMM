@@ -21,7 +21,7 @@ class _Config:
     mods_path: str = ""
     backup_enabled: bool = False
     backup_path: Optional[str] = None
-    theme: str = "fusion"
+    theme: str = "native"
     accent_color: str = ""
     disabled_mod_color: str = ""
     win_color: str = "#65A665"
@@ -180,7 +180,7 @@ def load() -> None:
         settings_section = config_data.get("settings", {})
         _cfg.backup_enabled = settings_section.get("backup_enabled", False)
         _cfg.backup_path = settings_section.get("backup_path") or None
-        _cfg.theme = settings_section.get("theme", "fusion")
+        _cfg.theme = settings_section.get("theme", "native")
         _cfg.animate_icons = settings_section.get("animate_icons", True)
         _cfg.animate_anm2_preview = settings_section.get("animate_anm2_preview", True)
         _cfg.preview_images = settings_section.get("preview_images", True)
@@ -290,20 +290,6 @@ def _do_save() -> None:
             "theme": {
                 "accent": _cfg.accent_color,
                 "disabled_mod": _cfg.disabled_mod_color,
-                "backup_enabled": _cfg.backup_enabled,
-                "backup_path": _cfg.backup_path,
-                "theme": _cfg.theme,
-                "animate_icons": _cfg.animate_icons,
-                "animate_anm2_preview": _cfg.animate_anm2_preview,
-                "preview_images": _cfg.preview_images,
-                "download_icons": _cfg.download_icons,
-                "log_level": _cfg.log_level,
-                "date_format": _cfg.date_format,
-                "dead_workshop_ids": _cfg.dead_workshop_ids,
-                "ignored_items": _cfg.ignored_items,
-                "controller_enabled": _cfg.controller_enabled,
-                "controller_deadzone": _cfg.controller_deadzone,
-                "controller_simple_icons": _cfg.controller_simple_icons,
                 "use_system_icons": _cfg.use_system_icons,
                 "theme_preset": _cfg.theme_preset,
                 "win": _cfg.win_color,
@@ -317,6 +303,7 @@ def _do_save() -> None:
                 "workshop_current": _cfg.workshop_badge_current,
                 "workshop_possible": _cfg.workshop_badge_possible,
                 "workshop_outdated": _cfg.workshop_badge_outdated,
+                "workshop_default": _cfg.workshop_badge_default,
                 "console_bg": _cfg.console_bg,
                 "console_fg": _cfg.console_fg,
                 "console_border": _cfg.console_border,
@@ -327,7 +314,6 @@ def _do_save() -> None:
                 "separator": _cfg.separator_color,
                 "preview_border": _cfg.preview_border,
                 "preview_bg": _cfg.preview_bg,
-                "workshop_default": _cfg.workshop_badge_default,
             },
             "workshop": {
                 "timestamps": _cfg.workshop_timestamps,
