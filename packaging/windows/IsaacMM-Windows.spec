@@ -1,7 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import sys
 from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files
 
+
+openssl_dlls = []
+for f in os.listdir(os.path.join(sys.base_prefix, "DLLs")):
+    if f.startswith(("libcrypto-", "libssl-")):
+        openssl_dlls.append((os.path.join(sys.base_prefix, "DLLs", f), "."))
 
 sdl3_bins = collect_dynamic_libs("sdl3")
 sdl3_data = collect_data_files("sdl3")
@@ -9,7 +16,7 @@ sdl3_data = collect_data_files("sdl3")
 a = Analysis(
     ["../../main.py"],
     pathex=["../.."],
-    binaries=sdl3_bins + sdl3_data,
+    binaries=openssl_dlls + sdl3_bins + sdl3_data,
     datas=[
         ("../../masterlist.yaml", "."),
         ("../../pyproject.toml", "."),
@@ -31,6 +38,7 @@ a = Analysis(
         "toml",
         "yaml",
         "sdl3",
+        "_ssl",
     ],
     hookspath=[],
     hooksconfig={},
