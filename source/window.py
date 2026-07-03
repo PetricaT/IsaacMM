@@ -75,6 +75,16 @@ QPushButton:focus {
         self._load_base_qss()
         self._init_controller()
 
+    def changeEvent(self, event) -> None:
+        if event.type() == QEvent.PaletteChange:
+            self._load_base_qss()
+            app = QApplication.instance()
+            if app:
+                for w in app.topLevelWidgets():
+                    w.style().unpolish(w)
+                    w.style().polish(w)
+        super().changeEvent(event)
+
     def closeEvent(self, close_event) -> None:
         s = config.get_settings()
         s.setValue("ui/window_geometry", self.saveGeometry())

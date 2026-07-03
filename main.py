@@ -14,16 +14,18 @@ if __name__ == "__main__":
     trace_mode = "--trace" in sys.argv
     if trace_mode:
         sys.argv.remove("--trace")
-        faulthandler.enable()
+        if sys.stderr is not None:
+            faulthandler.enable(sys.stderr)
 
         def _excepthook(etype, val, tb):
             traceback.print_exception(etype, val, tb)
-            sys.stderr.flush()
+            if sys.stderr is not None:
+                sys.stderr.flush()
 
         sys.excepthook = _excepthook
 
         def _qt_msg_handler(msg_type, context, message):
-            if msg_type >= 3:
+            if msg_type >= 3 and sys.stderr is not None:
                 sys.stderr.write(f"[Qt {msg_type}] {message}\n")
                 sys.stderr.flush()
 

@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QPalette
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -185,9 +185,10 @@ class ModListPanel(QWidget):
         layout.addLayout(modlist_header_layout)
 
         self.listView = QTreeView(self)
-        self.listView.setStyleSheet(
-            f"QTreeView::item:selected {{ background-color: {self._accent_color}; }}"
-        )
+        if self._accent_color:
+            self.listView.setStyleSheet(
+                f"QTreeView::item:selected {{ background-color: {self._accent_color}; }}"
+            )
         self.listView.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.listView.setDragEnabled(True)
         self.listView.setAcceptDrops(True)
@@ -197,15 +198,6 @@ class ModListPanel(QWidget):
         self.listView.setAlternatingRowColors(True)
         self.listView.setRootIsDecorated(False)
         self.listView.setSelectionBehavior(QAbstractItemView.SelectRows)
-        current_palette = self.listView.palette()
-        base_color = current_palette.color(QPalette.Base)
-        alternate_color = (
-            base_color.lighter(120)
-            if base_color.lightness() < 128
-            else base_color.darker(108)
-        )
-        current_palette.setColor(QPalette.AlternateBase, alternate_color)
-        self.listView.setPalette(current_palette)
 
         header = self.listView.header()
         header.setStretchLastSection(False)
@@ -255,8 +247,9 @@ class ModListPanel(QWidget):
         self.restoreOrder.clicked.connect(self.restore_last_order)
         self.listView.selectionModel().selectionChanged.connect(self._on_mod_selected)
 
-        fg = _text_color_for_bg(self._accent_color)
-        self.applyOrder.setStyleSheet(f"background-color: {self._accent_color}; color: {fg};")
+        if self._accent_color:
+            fg = _text_color_for_bg(self._accent_color)
+            self.applyOrder.setStyleSheet(f"background-color: {self._accent_color}; color: {fg};")
         self.load_mod_list()
 
     def _save_column_widths(self) -> None:
@@ -389,9 +382,11 @@ class ModListPanel(QWidget):
         if item is None or item.data(SEPARATOR_ROLE):
             return
         if item.checkState() != Qt.CheckState.Checked:
-            item.setForeground(QColor(config.disabled_mod_color))
+            if config.disabled_mod_color:
+                item.setForeground(QColor(config.disabled_mod_color))
         elif item.data(OVERWRITTEN_ROLE):
-            item.setForeground(QColor(config.disabled_mod_color))
+            if config.disabled_mod_color:
+                item.setForeground(QColor(config.disabled_mod_color))
             font = item.font()
             font.setItalic(True)
             item.setFont(font)
@@ -526,9 +521,11 @@ class ModListPanel(QWidget):
             if col0 is None or col0.data(SEPARATOR_ROLE):
                 continue
             if col0.checkState() != Qt.CheckState.Checked:
-                col0.setForeground(QColor(config.disabled_mod_color))
+                if config.disabled_mod_color:
+                    col0.setForeground(QColor(config.disabled_mod_color))
             elif col0.data(OVERWRITTEN_ROLE):
-                col0.setForeground(QColor(config.disabled_mod_color))
+                if config.disabled_mod_color:
+                    col0.setForeground(QColor(config.disabled_mod_color))
                 font = col0.font()
                 font.setItalic(True)
                 col0.setFont(font)
@@ -603,9 +600,11 @@ class ModListPanel(QWidget):
                 if col3:
                     col3.setBackground(QBrush())
                 if col0.checkState() != Qt.CheckState.Checked:
-                    col0.setForeground(QColor(config.disabled_mod_color))
+                    if config.disabled_mod_color:
+                        col0.setForeground(QColor(config.disabled_mod_color))
                 elif col0.data(OVERWRITTEN_ROLE):
-                    col0.setForeground(QColor(config.disabled_mod_color))
+                    if config.disabled_mod_color:
+                        col0.setForeground(QColor(config.disabled_mod_color))
                     font = col0.font()
                     font.setItalic(True)
                     col0.setFont(font)
@@ -737,9 +736,11 @@ class ModListPanel(QWidget):
                         if c3:
                             c3.setBackground(QBrush())
                         if c0.checkState() != Qt.CheckState.Checked:
-                            c0.setForeground(QColor(config.disabled_mod_color))
+                            if config.disabled_mod_color:
+                                c0.setForeground(QColor(config.disabled_mod_color))
                         elif c0.data(OVERWRITTEN_ROLE):
-                            c0.setForeground(QColor(config.disabled_mod_color))
+                            if config.disabled_mod_color:
+                                c0.setForeground(QColor(config.disabled_mod_color))
                             font = c0.font()
                             font.setItalic(True)
                             c0.setFont(font)
@@ -1208,11 +1209,12 @@ class ModListPanel(QWidget):
 
     def update_accent_color(self, color: str) -> None:
         self._accent_color = color
-        self.listView.setStyleSheet(
-            f"QTreeView::item:selected {{ background-color: {color}; }}"
-        )
-        fg = _text_color_for_bg(color)
-        self.applyOrder.setStyleSheet(f"background-color: {color}; color: {fg};")
+        if color:
+            self.listView.setStyleSheet(
+                f"QTreeView::item:selected {{ background-color: {color}; }}"
+            )
+            fg = _text_color_for_bg(color)
+            self.applyOrder.setStyleSheet(f"background-color: {color}; color: {fg};")
 
     def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
         self._controller_mgr = controller_mgr

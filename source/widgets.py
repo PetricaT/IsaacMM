@@ -15,7 +15,6 @@ from PySide6.QtGui import (
     QIcon,
     QImageReader,
     QMovie,
-    QPalette,
     QPixmap,
 )
 from PySide6.QtWidgets import (
@@ -123,7 +122,7 @@ class ModInfoPanel(QWidget):
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(128, 128)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet(f"border: 1px solid {config.icon_border_color};")
+        self.icon_label.setStyleSheet(f"border: 1px solid {config.icon_border_color or 'palette(mid)'};")
 
         self.tags_box = QListWidget()
         self.tags_box.setMaximumHeight(128)
@@ -202,15 +201,6 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.setHeaderLabels(["Mod", "File"])
         self.conflicts_tree.setRootIsDecorated(True)
         self.conflicts_tree.setAlternatingRowColors(True)
-        current_palette = self.conflicts_tree.palette()
-        base_color = current_palette.color(QPalette.Base)
-        alternate_color = (
-            base_color.lighter(120)
-            if base_color.lightness() < 128
-            else base_color.darker(108)
-        )
-        current_palette.setColor(QPalette.AlternateBase, alternate_color)
-        self.conflicts_tree.setPalette(current_palette)
         self.conflicts_tree.header().setStretchLastSection(False)
         self.conflicts_tree.header().resizeSection(1, 350)
         self.conflicts_tree.setHorizontalScrollBarPolicy(
@@ -234,15 +224,6 @@ class ModInfoPanel(QWidget):
         self.files_tree.setHeaderLabels(["Name"])
         self.files_tree.setRootIsDecorated(True)
         self.files_tree.setAlternatingRowColors(True)
-        current_palette = self.files_tree.palette()
-        base_color = current_palette.color(QPalette.Base)
-        alternate_color = (
-            base_color.lighter(120)
-            if base_color.lightness() < 128
-            else base_color.darker(108)
-        )
-        current_palette.setColor(QPalette.AlternateBase, alternate_color)
-        self.files_tree.setPalette(current_palette)
         self.files_tree.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
@@ -257,7 +238,7 @@ class ModInfoPanel(QWidget):
         self.folder_label = QPushButton()
         self.folder_label.setFlat(True)
         self.folder_label.setStyleSheet(
-            f"QPushButton {{ color: {config.folder_label_color}; font-size: 10px; text-align: left; border: none; }}"
+            f"QPushButton {{ color: {config.folder_label_color or 'palette(text)'}; font-size: 10px; text-align: left; border: none; }}"
         )
         self.folder_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.folder_label.clicked.connect(self._open_folder)
@@ -412,8 +393,10 @@ class ModInfoPanel(QWidget):
                 if not tag_id:
                     continue
                 tag_item = QListWidgetItem(tag_id)
-                tag_item.setBackground(QColor(config.tag_bg))
-                tag_item.setForeground(QColor(config.tag_fg))
+                if config.tag_bg:
+                    tag_item.setBackground(QColor(config.tag_bg))
+                if config.tag_fg:
+                    tag_item.setForeground(QColor(config.tag_fg))
                 self.tags_box.addItem(tag_item)
 
         except Exception as exc:
@@ -562,7 +545,7 @@ class ModInfoPanel(QWidget):
 
         if ts_created is None and ts_updated is None:
             self.created_label.setText("Created: —")
-            self.created_label.setStyleSheet(f"color: {config.folder_label_color};")
+            self.created_label.setStyleSheet(f"color: {config.folder_label_color or 'palette(text)'};")
             self.updated_label.setText(
                 f"<span style='color:{config.workshop_missing_color};'>Not found on Steam Workshop</span>"
             )
@@ -570,7 +553,7 @@ class ModInfoPanel(QWidget):
 
         created_str = _format_date(ts_created)
         self.created_label.setText(f"Created: {created_str}")
-        self.created_label.setStyleSheet(f"color: {config.folder_label_color};")
+        self.created_label.setStyleSheet(f"color: {config.folder_label_color or 'palette(text)'};")
 
         updated_str = _format_date(ts_updated) if ts_updated else "Never"
 

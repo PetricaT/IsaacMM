@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, Protocol, Any
 
 from PySide6.QtCore import QDateTime, QLocale, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFont, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -326,7 +326,7 @@ class SettingsPanel(QWidget):
         self.date_format_combo.currentIndexChanged.connect(self._save_settings)
         date_format_layout.addWidget(self.date_format_combo)
         self.date_preview_label = QLabel()
-        self.date_preview_label.setStyleSheet("color: gray;")
+        self.date_preview_label.setStyleSheet(f"color: {config.folder_label_color};")
         date_format_layout.addWidget(self.date_preview_label)
         date_format_layout.addStretch()
         display_layout.addRow("Date format:", date_format_layout)
@@ -659,13 +659,16 @@ class SettingsPanel(QWidget):
             btn = QPushButton()
             btn.setFixedWidth(60)
             current = getattr(config, attr)
-            btn.setStyleSheet(_btn_qss(current))
+            if current:
+                btn.setStyleSheet(_btn_qss(current))
             btn.clicked.connect(lambda checked, a=attr, b=btn: self._pick_color(a, b))
             setattr(self, f"_theme_{attr}", btn)
             layout.addRow(label, btn)
 
     def _pick_color(self, attr: str, btn: QPushButton) -> None:
         current = getattr(config, attr)
+        if not current:
+            current = self.palette().color(QPalette.ButtonText).name()
         color = QColorDialog.getColor(QColor(current), self)
         if color.isValid():
             setattr(config, attr, color.name())
@@ -688,15 +691,22 @@ class SettingsPanel(QWidget):
         for attr, btn_name in btn_map.items():
             btn = getattr(self, btn_name, None)
             if btn:
-                btn.setStyleSheet(_btn_qss(getattr(config, attr)))
+                c = getattr(config, attr)
+                if c:
+                    btn.setStyleSheet(_btn_qss(c))
         for attr in dir(self):
             if attr.startswith("_theme_"):
                 btn = getattr(self, attr)
                 config_attr = attr[len("_theme_"):]
-                btn.setStyleSheet(_btn_qss(getattr(config, config_attr)))
+                c = getattr(config, config_attr)
+                if c:
+                    btn.setStyleSheet(_btn_qss(c))
 
     def _pick_accent(self) -> None:
-        color = QColorDialog.getColor(QColor(config.accent_color), self)
+        current = config.accent_color
+        if not current:
+            current = self.palette().color(QPalette.Highlight).name()
+        color = QColorDialog.getColor(QColor(current), self)
         if color.isValid():
             config.accent_color = color.name()
             self.accent_btn.setStyleSheet(_btn_qss(config.accent_color))
@@ -707,7 +717,8 @@ class SettingsPanel(QWidget):
                     update_style(color.name())
 
     def _pick_disabled_mod_color(self) -> None:
-        color = QColorDialog.getColor(QColor(config.disabled_mod_color), self)
+        current = config.disabled_mod_color or self.palette().color(QPalette.Disabled, QPalette.Text).name()
+        color = QColorDialog.getColor(QColor(current), self)
         if color.isValid():
             config.disabled_mod_color = color.name()
             self.disabled_mod_btn.setStyleSheet(
@@ -830,6 +841,9 @@ class SettingsPanel(QWidget):
                 )
                 if style_name:
                     app.setStyle(style_name)
+                    qss = app.styleSheet()
+                    app.setStyleSheet("")
+                    app.setStyleSheet(qss)
         if config.mods_path != prev_mods:
             get_mod_list = getattr(self._owner, "getModList", None)
             if callable(get_mod_list):

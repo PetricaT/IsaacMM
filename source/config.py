@@ -22,8 +22,8 @@ class _Config:
     backup_enabled: bool = False
     backup_path: Optional[str] = None
     theme: str = "fusion"
-    accent_color: str = "#3daee9"
-    disabled_mod_color: str = "#808080"
+    accent_color: str = ""
+    disabled_mod_color: str = ""
     win_color: str = "#65A665"
     lose_color: str = "#9E4D4D"
     download_icons: bool = False
@@ -44,31 +44,31 @@ class _Config:
     controller_deadzone: int = 8000
     controller_simple_icons: bool = False
     use_system_icons: bool = False
-    theme_preset: str = "default"
+    theme_preset: str = ""
     # Widget colors
-    dpad_color: str = "#888888"
-    tag_bg: str = "#9BB7D4"
-    tag_fg: str = "#111111"
-    folder_label_color: str = "#808080"
-    icon_border_color: str = "#808080"
+    dpad_color: str = ""
+    tag_bg: str = ""
+    tag_fg: str = ""
+    folder_label_color: str = ""
+    icon_border_color: str = ""
     workshop_missing_color: str = "#FF4444"
     workshop_badge_current: str = "#55C755"
     workshop_badge_possible: str = "#FFA500"
     workshop_badge_outdated: str = "#FF4444"
-    workshop_badge_default: str = "#ffffff"
+    workshop_badge_default: str = ""
     # Console colors
-    console_bg: str = "#1e1e1e"
-    console_fg: str = "#d4d4d4"
-    console_border: str = "#333333"
-    rate_bar_bg: str = "#252526"
-    log_info_color: str = "#d4d4d4"
+    console_bg: str = ""
+    console_fg: str = ""
+    console_border: str = ""
+    rate_bar_bg: str = ""
+    log_info_color: str = ""
     log_warn_color: str = "#ffa500"
     log_error_color: str = "#ff4444"
     # Modlist colors
-    separator_color: str = "#888888"
+    separator_color: str = ""
     # Preview colors
-    preview_border: str = "#888888"
-    preview_bg: str = "#ffffff"
+    preview_border: str = ""
+    preview_bg: str = ""
     _native_style: str = ""
 
 
@@ -84,6 +84,32 @@ def __setattr__(name: str, value) -> None:
 
 
 THEME_PRESETS: dict[str, dict[str, str]] = {
+    "light": {
+        "accent_color": "#3daee9",
+        "disabled_mod_color": "#a0a0a0",
+        "win_color": "#2d7d2d",
+        "lose_color": "#b33b3b",
+        "dpad_color": "#555555",
+        "tag_bg": "#c9dde8",
+        "tag_fg": "#111111",
+        "folder_label_color": "#666666",
+        "icon_border_color": "#a0a0a0",
+        "workshop_missing_color": "#cc3333",
+        "workshop_badge_current": "#3d9e3d",
+        "workshop_badge_possible": "#cc8400",
+        "workshop_badge_outdated": "#cc3333",
+        "workshop_badge_default": "#333333",
+        "console_bg": "#f5f5f5",
+        "console_fg": "#1e1e1e",
+        "console_border": "#cccccc",
+        "rate_bar_bg": "#e8e8e8",
+        "log_info_color": "#1e1e1e",
+        "log_warn_color": "#cc8400",
+        "log_error_color": "#cc3333",
+        "separator_color": "#cccccc",
+        "preview_border": "#cccccc",
+        "preview_bg": "#ffffff",
+    },
     "default": {
         "accent_color": "#3daee9",
         "disabled_mod_color": "#808080",
@@ -183,31 +209,31 @@ def load() -> None:
         _cfg.controller_simple_icons = settings_section.get("controller_simple_icons", False)
         theme_section = config_data.get("theme", {})
         _cfg.use_system_icons = theme_section.get("use_system_icons", False)
-        _cfg.theme_preset = theme_section.get("theme_preset", "default")
-        _cfg.accent_color = theme_section.get("accent", "#3daee9")
-        _cfg.disabled_mod_color = theme_section.get("disabled_mod", "#808080")
+        _cfg.theme_preset = theme_section.get("theme_preset", "")
+        _cfg.accent_color = theme_section.get("accent", "")
+        _cfg.disabled_mod_color = theme_section.get("disabled_mod", "")
         _cfg.win_color = theme_section.get("win", "#65A665")
         _cfg.lose_color = theme_section.get("lose", "#9E4D4D")
-        _cfg.dpad_color = theme_section.get("dpad", "#888888")
-        _cfg.tag_bg = theme_section.get("tag_bg", "#9BB7D4")
-        _cfg.tag_fg = theme_section.get("tag_fg", "#111111")
-        _cfg.folder_label_color = theme_section.get("folder_label", "#808080")
-        _cfg.icon_border_color = theme_section.get("icon_border", "#808080")
+        _cfg.dpad_color = theme_section.get("dpad", "")
+        _cfg.tag_bg = theme_section.get("tag_bg", "")
+        _cfg.tag_fg = theme_section.get("tag_fg", "")
+        _cfg.folder_label_color = theme_section.get("folder_label", "")
+        _cfg.icon_border_color = theme_section.get("icon_border", "")
         _cfg.workshop_missing_color = theme_section.get("workshop_missing", "#FF4444")
         _cfg.workshop_badge_current = theme_section.get("workshop_current", "#55C755")
         _cfg.workshop_badge_possible = theme_section.get("workshop_possible", "#FFA500")
         _cfg.workshop_badge_outdated = theme_section.get("workshop_outdated", "#FF4444")
-        _cfg.workshop_badge_default = theme_section.get("workshop_default", "#ffffff")
-        _cfg.console_bg = theme_section.get("console_bg", "#1e1e1e")
-        _cfg.console_fg = theme_section.get("console_fg", "#d4d4d4")
-        _cfg.console_border = theme_section.get("console_border", "#333333")
-        _cfg.rate_bar_bg = theme_section.get("rate_bar_bg", "#252526")
-        _cfg.log_info_color = theme_section.get("log_info", "#d4d4d4")
+        _cfg.workshop_badge_default = theme_section.get("workshop_default", "")
+        _cfg.console_bg = theme_section.get("console_bg", "")
+        _cfg.console_fg = theme_section.get("console_fg", "")
+        _cfg.console_border = theme_section.get("console_border", "")
+        _cfg.rate_bar_bg = theme_section.get("rate_bar_bg", "")
+        _cfg.log_info_color = theme_section.get("log_info", "")
         _cfg.log_warn_color = theme_section.get("log_warn", "#ffa500")
         _cfg.log_error_color = theme_section.get("log_error", "#ff4444")
-        _cfg.separator_color = theme_section.get("separator", "#888888")
-        _cfg.preview_border = theme_section.get("preview_border", "#888888")
-        _cfg.preview_bg = theme_section.get("preview_bg", "#ffffff")
+        _cfg.separator_color = theme_section.get("separator", "")
+        _cfg.preview_border = theme_section.get("preview_border", "")
+        _cfg.preview_bg = theme_section.get("preview_bg", "")
         workshop_section = config_data.get("workshop", {})
         _cfg.workshop_timestamps = workshop_section.get("timestamps", [])
         _cfg.dead_workshop_ids = settings_section.get("dead_workshop_ids", [])

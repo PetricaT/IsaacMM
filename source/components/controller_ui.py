@@ -6,7 +6,7 @@ import time
 from typing import Optional
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from .. import config, paths
@@ -182,7 +182,9 @@ class ControllerRouter:
 class FocusOverlay(QWidget):
     def __init__(self, target: QWidget) -> None:
         super().__init__(target)
-        self._color = QColor(0, 0, 0, 80)
+        base = target.palette().color(QPalette.WindowText)
+        base.setAlpha(30)
+        self._color = base
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_NoSystemBackground, False)
         target.installEventFilter(self)

@@ -36,24 +36,24 @@ class ConsoleWidget(QWidget):
         self.console.setFont(QFont("Courier New", 9))
         self.console.setFixedHeight(100)
         self.console.setStyleSheet(
-            f"background-color: {config.console_bg}; color: {config.console_fg}; border: 1px solid {config.console_border};"
+            f"background-color: {config.console_bg or 'palette(base)'}; color: {config.console_fg or 'palette(text)'}; border: 1px solid {config.console_border or 'palette(mid)'};"
         )
         logger.set_handler(lambda lvl, msg: self._write_console(msg, lvl))
 
         self.rate_bar = QFrame(self)
         self.rate_bar.setFixedHeight(24)
         self.rate_bar.setStyleSheet(
-            f"background-color: {config.rate_bar_bg}; border: 1px solid {config.console_border}; border-top: none;"
+            f"background-color: {config.rate_bar_bg or 'palette(window)'}; border: 1px solid {config.console_border or 'palette(mid)'}; border-top: none;"
         )
         rate_layout = QHBoxLayout(self.rate_bar)
         rate_layout.setContentsMargins(8, 0, 8, 0)
         rate_layout.setSpacing(0)
         self.rate_label = QLabel(f"Workshop: 0/{WORKSHOP_RATE_LIMIT}")
-        self.rate_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
+        self.rate_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
         self.queue_label = QLabel("Queued: 0")
-        self.queue_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
+        self.queue_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
         self.rate_timer_label = QLabel("—")
-        self.rate_timer_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
+        self.rate_timer_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
         rate_layout.addWidget(self.rate_label)
         rate_layout.addWidget(self.queue_label)
         rate_layout.addStretch()
@@ -115,10 +115,10 @@ class ConsoleWidget(QWidget):
             if remaining > 0:
                 mins, secs = divmod(remaining, 60)
                 self.rate_timer_label.setText(f"Cooldown: {mins}m {secs}s")
-                self.rate_timer_label.setStyleSheet(f"color: {config.log_warn_color}; font-size: 11px;")
+                self.rate_timer_label.setStyleSheet(f"color: {config.log_warn_color or 'palette(text)'}; font-size: 11px;")
             else:
                 self.rate_timer_label.setText("-")
-                self.rate_timer_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
+                self.rate_timer_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
         else:
             self.rate_timer_label.setText("-")
-            self.rate_timer_label.setStyleSheet(f"color: {config.console_fg}; font-size: 11px;")
+            self.rate_timer_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
