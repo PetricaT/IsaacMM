@@ -527,8 +527,6 @@ class ModInfoPanel(QWidget):
         _mark_pending(ws_id)
         thread.finished.connect(on_done)
         thread.error.connect(on_error)
-        thread.finished.connect(thread.deleteLater)
-        thread.error.connect(thread.deleteLater)
         thread.start()
         self._icon_thread = thread
 
@@ -611,20 +609,24 @@ class ModInfoPanel(QWidget):
         thread = WorkerThread(_fetch_workshop_details, ws_id)
         thread.finished.connect(on_done)
         thread.error.connect(on_error)
-        thread.finished.connect(thread.deleteLater)
-        thread.error.connect(thread.deleteLater)
         thread.start()
         self._details_thread = thread
 
     def _cleanup_threads(self) -> None:
         from PySide6.QtCore import QTimer
         if self._icon_thread is not None:
-            self._icon_thread.quit()
-            self._icon_thread.wait(5000)
+            try:
+                self._icon_thread.quit()
+                self._icon_thread.wait(5000)
+            except RuntimeError:
+                pass
             self._icon_thread = None
         if self._details_thread is not None:
-            self._details_thread.quit()
-            self._details_thread.wait(5000)
+            try:
+                self._details_thread.quit()
+                self._details_thread.wait(5000)
+            except RuntimeError:
+                pass
             self._details_thread = None
 
     def _open_link(self, url: QUrl) -> None:

@@ -23,5 +23,12 @@ class WorkerThread(QThread):
             self.error.emit(str(exc))
 
     def __del__(self) -> None:
-        if self.isRunning():
-            self.wait(5000)
+        try:
+            running = self.isRunning()
+        except RuntimeError:
+            return
+        if running:
+            try:
+                self.wait(5000)
+            except RuntimeError:
+                pass

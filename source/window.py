@@ -125,7 +125,10 @@ QPushButton:focus {
             lbl.setParent(None)
         for t in (self._backup_thread, self._masterlist_thread, self._game_versions_thread):
             if t is not None:
-                t.wait(5000)
+                try:
+                    t.wait(5000)
+                except RuntimeError:
+                    pass
         super().closeEvent(close_event)
 
     def initUi(self) -> None:
@@ -218,10 +221,8 @@ QPushButton:focus {
             list(config.loaded_mods),
         )
         thread.finished.connect(lambda: self.log("Backup complete"))
-        thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_backup_thread", None)))
         thread.error.connect(lambda msg: self.log(f"Backup failed: {msg}", "error"))
-        thread.error.connect(thread.deleteLater)
         thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_backup_thread", None)))
         self._backup_thread = thread
         thread.start()
@@ -245,12 +246,10 @@ QPushButton:focus {
             if result is True
             else None
         )
-        thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_game_versions_thread", None)))
         thread.error.connect(
             lambda msg: self.log(f"Game versions fetch failed: {msg}", "warning")
         )
-        thread.error.connect(thread.deleteLater)
         thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_game_versions_thread", None)))
         self._game_versions_thread = thread
         thread.start()
@@ -284,12 +283,10 @@ QPushButton:focus {
             if result is True
             else None
         )
-        thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_masterlist_thread", None)))
         thread.error.connect(
             lambda msg: self.log(f"Masterlist fetch failed: {msg}", "warning")
         )
-        thread.error.connect(thread.deleteLater)
         thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_masterlist_thread", None)))
         self._masterlist_thread = thread
         thread.start()

@@ -322,8 +322,6 @@ class PreviewWidget(QLabel):
             lambda result: self._on_preview_ready(req_id, result, global_pos)
         )
         worker.error.connect(lambda err: None)
-        worker.finished.connect(worker.deleteLater)
-        worker.error.connect(worker.deleteLater)
         self._worker = worker
         worker.start()
 

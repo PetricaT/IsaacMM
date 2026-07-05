@@ -917,8 +917,6 @@ class SettingsPanel(QWidget):
         )
         thread.finished.connect(_on_finished)
         thread.error.connect(_on_error)
-        thread.finished.connect(thread.deleteLater)
-        thread.error.connect(thread.deleteLater)
         owner = self._owner
         if owner is not None:
             thread.finished.connect(
