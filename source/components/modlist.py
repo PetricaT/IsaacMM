@@ -275,6 +275,12 @@ class ModListPanel(QWidget):
             )
             return
 
+        try:
+            if self._load_thread is not None and self._load_thread.isRunning():
+                return
+        except RuntimeError:
+            pass
+
         self._populating = True
         self.model.clear()
         self.pending_toggles.clear()
@@ -835,6 +841,12 @@ class ModListPanel(QWidget):
         self.load_mod_list()
 
     def auto_sort_mods(self) -> None:
+        try:
+            if self._sort_thread is not None and self._sort_thread.isRunning():
+                return
+        except RuntimeError:
+            pass
+
         self.log_message.emit("Running auto-sort...", "info")
         mod_data_list = []
         separators = []

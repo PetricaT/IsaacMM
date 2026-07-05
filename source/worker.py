@@ -21,3 +21,7 @@ class WorkerThread(QThread):
             self.finished.emit(result)
         except Exception as exc:
             self.error.emit(str(exc))
+
+    def __del__(self) -> None:
+        if self.isRunning():
+            self.wait(5000)
