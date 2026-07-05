@@ -617,11 +617,14 @@ class ModInfoPanel(QWidget):
         self._details_thread = thread
 
     def _cleanup_threads(self) -> None:
+        from PySide6.QtCore import QTimer
         if self._icon_thread is not None:
             self._icon_thread.quit()
+            self._icon_thread.wait(5000)
             self._icon_thread = None
         if self._details_thread is not None:
             self._details_thread.quit()
+            self._details_thread.wait(5000)
             self._details_thread = None
 
     def _open_link(self, url: QUrl) -> None:

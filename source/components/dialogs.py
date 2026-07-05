@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from typing import Optional, Protocol, Any
 
-from PySide6.QtCore import QDateTime, QLocale, QRect, Qt, Signal
+from PySide6.QtCore import QDateTime, QLocale, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -922,10 +922,10 @@ class SettingsPanel(QWidget):
         owner = self._owner
         if owner is not None:
             thread.finished.connect(
-                lambda: setattr(owner, "_backup_thread", None)
+                lambda: QTimer.singleShot(0, lambda: setattr(owner, "_backup_thread", None))
             )
             thread.error.connect(
-                lambda: setattr(owner, "_backup_thread", None)
+                lambda: QTimer.singleShot(0, lambda: setattr(owner, "_backup_thread", None))
             )
             setattr(owner, "_backup_thread", thread)
         thread.start()

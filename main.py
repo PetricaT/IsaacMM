@@ -3,8 +3,11 @@ import sys
 import traceback
 
 if sys.stderr is None:
-    import io
-    sys.stderr = io.StringIO()
+    try:
+        sys.stderr = open("crash.log", "w", 1)
+    except Exception:
+        import io
+        sys.stderr = io.StringIO()
 
 from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QIcon
@@ -30,7 +33,7 @@ if __name__ == "__main__":
         sys.excepthook = _excepthook
 
         def _qt_msg_handler(msg_type, context, message):
-            if msg_type >= 3 and sys.stderr is not None:
+            if sys.stderr is not None:
                 sys.stderr.write(f"[Qt {msg_type}] {message}\n")
                 sys.stderr.flush()
 

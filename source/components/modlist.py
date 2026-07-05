@@ -286,12 +286,12 @@ class ModListPanel(QWidget):
         )
         thread.finished.connect(self._on_mods_scanned)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: setattr(self, "_load_thread", None))
+        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_load_thread", None)))
         thread.error.connect(
             lambda msg: self.log_message.emit(f"Failed to load mods: {msg}", "error")
         )
         thread.error.connect(thread.deleteLater)
-        thread.error.connect(lambda: setattr(self, "_load_thread", None))
+        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_load_thread", None)))
         self._load_thread = thread
         thread.start()
 
@@ -559,7 +559,7 @@ class ModListPanel(QWidget):
         thread = WorkerThread(_run_cache_warmup)
         thread.finished.connect(self._on_cache_warmed)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: setattr(self, "_scan_thread", None))
+        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_scan_thread", None)))
         self._scan_thread = thread
         thread.start()
 
@@ -871,12 +871,12 @@ class ModListPanel(QWidget):
         self._sort_thread = thread
         thread.finished.connect(lambda result: self._on_sort_done(result, mod_data_list, separators))
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: setattr(self, "_sort_thread", None))
+        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_sort_thread", None)))
         thread.error.connect(
             lambda msg: self.log_message.emit(f"Auto-sort failed: {msg}", "error")
         )
         thread.error.connect(thread.deleteLater)
-        thread.error.connect(lambda: setattr(self, "_sort_thread", None))
+        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_sort_thread", None)))
         thread.start()
 
     def _on_sort_done(self, auto_sorted_mods: list, mod_data_list: list, separators: list) -> None:
