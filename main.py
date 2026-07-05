@@ -17,8 +17,10 @@ if __name__ == "__main__":
     trace_mode = "--trace" in sys.argv
     if trace_mode:
         sys.argv.remove("--trace")
-        if sys.stderr is not None:
+        try:
             faulthandler.enable(sys.stderr)
+        except (io.UnsupportedOperation, AttributeError):
+            pass
 
         def _excepthook(etype, val, tb):
             traceback.print_exception(etype, val, tb)
