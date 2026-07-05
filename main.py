@@ -2,6 +2,10 @@ import faulthandler
 import sys
 import traceback
 
+if sys.stderr is None:
+    import io
+    sys.stderr = io.StringIO()
+
 from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
