@@ -909,15 +909,23 @@ class SettingsPanel(QWidget):
             if callable(log):
                 log(f"Backup failed: {error_msg}", "error")
 
+        owner = self._owner
+        if owner is not None:
+            try:
+                bt = getattr(owner, "_backup_thread", None)
+                if bt is not None and bt.isRunning():
+                    return
+            except RuntimeError:
+                pass
         thread = WorkerThread(
             backup_all,
             config.mods_path,
             get_backup_root(config.mods_path),
             list(config.loaded_mods),
+            name="Backup",
         )
         thread.finished.connect(_on_finished)
         thread.error.connect(_on_error)
-        owner = self._owner
         if owner is not None:
             thread.finished.connect(
                 lambda: QTimer.singleShot(0, lambda: setattr(owner, "_backup_thread", None))

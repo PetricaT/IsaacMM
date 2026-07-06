@@ -9,7 +9,7 @@ from PySide6.QtCore import QEvent, QSize, QTimer, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QLabel, QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
-from . import config, game_versions, paths, sorter
+from . import config, game_versions, logger, paths, sorter
 from .backup import backup_all, get_backup_root
 from .components.console import ConsoleWidget
 from .components.dialogs import SEPARATOR_ROLE, SettingsPanel
@@ -123,10 +123,17 @@ QPushButton:focus {
         for lbl, _ in getattr(self, '_shoulder_indicators', []):
             lbl.hide()
             lbl.setParent(None)
-        for t in (self._backup_thread, self._masterlist_thread, self._game_versions_thread):
+        for t_name, t in (("Backup", self._backup_thread),
+                          ("Masterlist", self._masterlist_thread),
+                          ("GameVersions", self._game_versions_thread)):
             if t is not None:
                 try:
+                    if not t.isRunning():
+                        continue
                     t.wait(5000)
+                    if t.isRunning():
+                        logger.log("warning",
+                                   f"Thread '{t_name}' still running after 5s wait")
                 except RuntimeError:
                     pass
         super().closeEvent(close_event)
@@ -210,8 +217,12 @@ QPushButton:focus {
     def _maybe_backup(self) -> None:
         if not config.backup_enabled or not config.mods_path:
             return
-        if self._backup_thread:
-            return
+        if self._backup_thread is not None:
+            try:
+                if self._backup_thread.isRunning():
+                    return
+            except RuntimeError:
+                pass
         self.log("Backing up modified mods...")
 
         thread = WorkerThread(
@@ -219,6 +230,7 @@ QPushButton:focus {
             config.mods_path,
             get_backup_root(config.mods_path),
             list(config.loaded_mods),
+            name="Backup",
         )
         thread.finished.connect(lambda: self.log("Backup complete"))
         thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_backup_thread", None)))
@@ -240,7 +252,13 @@ QPushButton:focus {
         self._game_versions_timer.start(3600000)
 
     def _fetch_game_versions(self) -> None:
-        thread = WorkerThread(game_versions.fetch_background)
+        if self._game_versions_thread is not None:
+            try:
+                if self._game_versions_thread.isRunning():
+                    return
+            except RuntimeError:
+                pass
+        thread = WorkerThread(game_versions.fetch_background, name="GameVersions")
         thread.finished.connect(
             lambda result: self.log("Game versions updated to latest")
             if result is True
@@ -277,7 +295,13 @@ QPushButton:focus {
             self.modInfoPanel._process_details_queue()
 
     def _fetch_masterlist(self) -> None:
-        thread = WorkerThread(sorter.fetch_background)
+        if self._masterlist_thread is not None:
+            try:
+                if self._masterlist_thread.isRunning():
+                    return
+            except RuntimeError:
+                pass
+        thread = WorkerThread(sorter.fetch_background, name="Masterlist")
         thread.finished.connect(
             lambda result: self.log("Masterlist updated to latest version")
             if result is True

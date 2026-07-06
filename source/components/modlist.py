@@ -288,7 +288,8 @@ class ModListPanel(QWidget):
         config.loaded_mods.clear()
 
         thread = WorkerThread(
-            _scan_mods_directory, config.mods_path, config.ignored_items
+            _scan_mods_directory, config.mods_path, config.ignored_items,
+            name="ModScan",
         )
         thread.finished.connect(self._on_mods_scanned)
         thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_load_thread", None)))
@@ -560,9 +561,16 @@ class ModListPanel(QWidget):
                 )
             return cache
 
-        thread = WorkerThread(_run_cache_warmup)
+        if self._scan_thread is not None:
+            try:
+                if self._scan_thread.isRunning():
+                    return
+            except RuntimeError:
+                pass
+        thread = WorkerThread(_run_cache_warmup, name="CacheWarmup")
         thread.finished.connect(self._on_cache_warmed)
         thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_scan_thread", None)))
+        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_scan_thread", None)))
         self._scan_thread = thread
         thread.start()
 
@@ -876,7 +884,7 @@ class ModListPanel(QWidget):
         def _run_sort() -> list:
             return sorter.auto_sort(sort_input, mods_path)
 
-        thread = WorkerThread(_run_sort)
+        thread = WorkerThread(_run_sort, name="AutoSort")
         self._sort_thread = thread
         thread.finished.connect(lambda result: self._on_sort_done(result, mod_data_list, separators))
         thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_sort_thread", None)))

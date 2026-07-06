@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -267,56 +268,65 @@ def save() -> None:
     _do_save()
 
 
+def _get_cfg(name: str):
+    """Read a config value via the module-level accessor.
+    This resolves both values set directly on _cfg (by load())
+    and those set via config.xxx = value (which creates a module __dict__ entry)."""
+    mod = sys.modules[__name__]
+    return getattr(mod, name)
+
+
 def _do_save() -> None:
+    _v = _get_cfg
     with _save_lock:
         config_data = {
-            "paths": {"mods": _cfg.mods_path},
+            "paths": {"mods": _v("mods_path")},
             "settings": {
-                "backup_enabled": _cfg.backup_enabled,
-                "backup_path": _cfg.backup_path,
-                "theme": _cfg.theme,
-                "animate_icons": _cfg.animate_icons,
-                "animate_anm2_preview": _cfg.animate_anm2_preview,
-                "preview_images": _cfg.preview_images,
-                "download_icons": _cfg.download_icons,
-                "log_level": _cfg.log_level,
-                "date_format": _cfg.date_format,
-                "dead_workshop_ids": _cfg.dead_workshop_ids,
-                "ignored_items": _cfg.ignored_items,
-                "controller_enabled": _cfg.controller_enabled,
-                "controller_deadzone": _cfg.controller_deadzone,
-                "controller_simple_icons": _cfg.controller_simple_icons,
+                "backup_enabled": _v("backup_enabled"),
+                "backup_path": _v("backup_path"),
+                "theme": _v("theme"),
+                "animate_icons": _v("animate_icons"),
+                "animate_anm2_preview": _v("animate_anm2_preview"),
+                "preview_images": _v("preview_images"),
+                "download_icons": _v("download_icons"),
+                "log_level": _v("log_level"),
+                "date_format": _v("date_format"),
+                "dead_workshop_ids": _v("dead_workshop_ids"),
+                "ignored_items": _v("ignored_items"),
+                "controller_enabled": _v("controller_enabled"),
+                "controller_deadzone": _v("controller_deadzone"),
+                "controller_simple_icons": _v("controller_simple_icons"),
             },
             "theme": {
-                "accent": _cfg.accent_color,
-                "disabled_mod": _cfg.disabled_mod_color,
-                "use_system_icons": _cfg.use_system_icons,
-                "theme_preset": _cfg.theme_preset,
-                "win": _cfg.win_color,
-                "lose": _cfg.lose_color,
-                "dpad": _cfg.dpad_color,
-                "tag_bg": _cfg.tag_bg,
-                "tag_fg": _cfg.tag_fg,
-                "folder_label": _cfg.folder_label_color,
-                "icon_border": _cfg.icon_border_color,
-                "workshop_missing": _cfg.workshop_missing_color,
-                "workshop_current": _cfg.workshop_badge_current,
-                "workshop_possible": _cfg.workshop_badge_possible,
-                "workshop_outdated": _cfg.workshop_badge_outdated,
-                "workshop_default": _cfg.workshop_badge_default,
-                "console_bg": _cfg.console_bg,
-                "console_fg": _cfg.console_fg,
-                "console_border": _cfg.console_border,
-                "rate_bar_bg": _cfg.rate_bar_bg,
-                "log_info": _cfg.log_info_color,
-                "log_warn": _cfg.log_warn_color,
-                "log_error": _cfg.log_error_color,
-                "separator": _cfg.separator_color,
-                "preview_border": _cfg.preview_border,
-                "preview_bg": _cfg.preview_bg,
+                "accent": _v("accent_color"),
+                "disabled_mod": _v("disabled_mod_color"),
+                "use_system_icons": _v("use_system_icons"),
+                "theme_preset": _v("theme_preset"),
+                "win": _v("win_color"),
+                "lose": _v("lose_color"),
+                "dpad": _v("dpad_color"),
+                "tag_bg": _v("tag_bg"),
+                "tag_fg": _v("tag_fg"),
+                "folder_label": _v("folder_label_color"),
+                "icon_border": _v("icon_border_color"),
+                "workshop_missing": _v("workshop_missing_color"),
+                "workshop_current": _v("workshop_badge_current"),
+                "workshop_possible": _v("workshop_badge_possible"),
+                "workshop_outdated": _v("workshop_badge_outdated"),
+                "workshop_default": _v("workshop_badge_default"),
+                "console_bg": _v("console_bg"),
+                "console_fg": _v("console_fg"),
+                "console_border": _v("console_border"),
+                "rate_bar_bg": _v("rate_bar_bg"),
+                "log_info": _v("log_info_color"),
+                "log_warn": _v("log_warn_color"),
+                "log_error": _v("log_error_color"),
+                "separator": _v("separator_color"),
+                "preview_border": _v("preview_border"),
+                "preview_bg": _v("preview_bg"),
             },
             "workshop": {
-                "timestamps": _cfg.workshop_timestamps,
+                "timestamps": _v("workshop_timestamps"),
             },
         }
         os.makedirs(paths.config_dir, exist_ok=True)

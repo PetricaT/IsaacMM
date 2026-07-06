@@ -468,7 +468,11 @@ class ModInfoPanel(QWidget):
 
     def _process_icon_queue(self) -> None:
         if self._icon_thread is not None:
-            return
+            try:
+                if self._icon_thread.isRunning():
+                    return
+            except RuntimeError:
+                pass
 
         item = _dequeue_workshop()
         if item is None:
@@ -512,7 +516,7 @@ class ModInfoPanel(QWidget):
                 img_loaded = True
             if not img_loaded:
                 self._show_placeholder()
-            self._icon_thread = None
+            QTimer.singleShot(0, lambda: setattr(self, "_icon_thread", None))
             self._icon_queue_timer.start(2000)
 
         def on_error(msg: str):
@@ -520,10 +524,10 @@ class ModInfoPanel(QWidget):
             _record_failure(ws_id, time.time())
             self.log_message.emit(msg, "warning")
             self._show_placeholder()
-            self._icon_thread = None
+            QTimer.singleShot(0, lambda: setattr(self, "_icon_thread", None))
             self._icon_queue_timer.start(2000)
 
-        thread = WorkerThread(_download_workshop_icon, ws_id, cached_path)
+        thread = WorkerThread(_download_workshop_icon, ws_id, cached_path, name="IconDownload")
         _mark_pending(ws_id)
         thread.finished.connect(on_done)
         thread.error.connect(on_error)
@@ -579,7 +583,11 @@ class ModInfoPanel(QWidget):
 
     def _process_details_queue(self) -> None:
         if self._details_thread is not None:
-            return
+            try:
+                if self._details_thread.isRunning():
+                    return
+            except RuntimeError:
+                pass
 
         ws_id = _dequeue_details()
         if ws_id is None:
@@ -597,34 +605,35 @@ class ModInfoPanel(QWidget):
             _set_details_in_cache(ws_id, result)
             if self._workshop_id_str == ws_id:
                 self._update_workshop_dates(ws_id)
-            self._details_thread = None
+            QTimer.singleShot(0, lambda: setattr(self, "_details_thread", None))
             self._details_queue_timer.start(2000)
 
         def on_error(msg: str):
             _unmark_details_pending(ws_id)
             self.log_message.emit(msg, "warning")
-            self._details_thread = None
+            QTimer.singleShot(0, lambda: setattr(self, "_details_thread", None))
             self._details_queue_timer.start(10000)
 
-        thread = WorkerThread(_fetch_workshop_details, ws_id)
+        thread = WorkerThread(_fetch_workshop_details, ws_id, name="WorkshopDetails")
         thread.finished.connect(on_done)
         thread.error.connect(on_error)
         thread.start()
         self._details_thread = thread
 
     def _cleanup_threads(self) -> None:
-        from PySide6.QtCore import QTimer
         if self._icon_thread is not None:
             try:
-                self._icon_thread.quit()
-                self._icon_thread.wait(5000)
+                if self._icon_thread.isRunning():
+                    self._icon_thread.quit()
+                    self._icon_thread.wait(5000)
             except RuntimeError:
                 pass
             self._icon_thread = None
         if self._details_thread is not None:
             try:
-                self._details_thread.quit()
-                self._details_thread.wait(5000)
+                if self._details_thread.isRunning():
+                    self._details_thread.quit()
+                    self._details_thread.wait(5000)
             except RuntimeError:
                 pass
             self._details_thread = None

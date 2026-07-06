@@ -317,7 +317,7 @@ class PreviewWidget(QLabel):
         self._cancel_worker()
         self._path = file_path
         req_id = self._request_id
-        worker = WorkerThread(_load_preview_data, file_path)
+        worker = WorkerThread(_load_preview_data, file_path, name="Preview")
         worker.finished.connect(
             lambda result: self._on_preview_ready(req_id, result, global_pos)
         )
@@ -330,7 +330,7 @@ class PreviewWidget(QLabel):
     ) -> None:
         if req_id != self._request_id:
             return
-        self._worker = None
+        QTimer.singleShot(0, lambda: setattr(self, "_worker", None))
 
         if result is None:
             return
