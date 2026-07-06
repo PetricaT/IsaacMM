@@ -333,7 +333,7 @@ class ModInfoPanel(QWidget):
                             128,
                             128,
                             Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.SmoothTransformation,
+                            Qt.TransformationMode.FastTransformation,
                         )
                     )
                 else:
@@ -429,7 +429,7 @@ class ModInfoPanel(QWidget):
                 128,
                 128,
                 Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
+                Qt.TransformationMode.FastTransformation,
             )
         )
 
@@ -453,7 +453,7 @@ class ModInfoPanel(QWidget):
                         128,
                         128,
                         Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
+                        Qt.TransformationMode.FastTransformation,
                     )
                 )
                 return True
@@ -520,7 +520,7 @@ class ModInfoPanel(QWidget):
                     128,
                     128,
                     Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
+                    Qt.TransformationMode.FastTransformation,
                 )
             )
             img_loaded = True
@@ -865,7 +865,7 @@ class ModInfoPanel(QWidget):
             path = os.path.join(base, f"{name}.png")
             pm = QPixmap(path)
             if not pm.isNull():
-                scaled = pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                scaled = pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation)
                 lbl.setPixmap(scaled)
             else:
                 lbl.clear()

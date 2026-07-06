@@ -324,7 +324,7 @@ class PreviewWidget(QLabel):
                 return
             self.setPixmap(pix)
             self.adjustSize()
-            self.move(global_pos + QPoint(15, 15))
+            self.move(self._preview_pos + QPoint(15, 15))
             self.show()
         elif kind == "anm2":
             frames_qimage, delays = result[1], result[2]
@@ -343,7 +343,7 @@ class PreviewWidget(QLabel):
             self.adjustSize()
             if len(self._anm2_frames) > 1:
                 self._anm2_timer.start(self._anm2_delays[0])
-            self.move(global_pos + QPoint(15, 15))
+            self.move(self._preview_pos + QPoint(15, 15))
             self.show()
 
     def _anm2_next_frame(self) -> None:
