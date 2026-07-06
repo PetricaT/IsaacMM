@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from .. import config, logger, paths, sorter
 from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
-from ..worker import WorkerThread
+from ..worker import ManagedWorker
 from ..controller import Button
 from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .dialogs import (
@@ -151,9 +151,14 @@ class ModListPanel(QWidget):
         self._updating_conflicts: bool = False
         self._first_load: bool = True
         self._accent_color = config.accent_color
-        self._load_thread = None
-        self._sort_thread = None
-        self._scan_thread = None
+        self._load_worker = ManagedWorker(parent=self)
+        self._sort_worker = ManagedWorker(parent=self)
+        self._scan_worker = ManagedWorker(parent=self)
+        self._load_worker.finished.connect(self._on_mods_scanned)
+        self._load_worker.error.connect(lambda m: self.log_message.emit(f"Failed to load mods: {m}", "error"))
+        self._sort_worker.finished.connect(self._on_sort_done)
+        self._sort_worker.error.connect(lambda m: self.log_message.emit(f"Auto-sort failed: {m}", "error"))
+        self._scan_worker.finished.connect(self._on_cache_warmed)
         self._controller_mgr = None
         self._controller_icons = []
         self._move_mode = False
@@ -275,11 +280,8 @@ class ModListPanel(QWidget):
             )
             return
 
-        try:
-            if self._load_thread is not None and self._load_thread.isRunning():
-                return
-        except RuntimeError:
-            pass
+        if self._load_worker.is_running:
+            return
 
         self._populating = True
         self.model.clear()
@@ -287,18 +289,10 @@ class ModListPanel(QWidget):
         self._mod_files_cache.clear()
         config.loaded_mods.clear()
 
-        thread = WorkerThread(
+        self._load_worker.start(
             _scan_mods_directory, config.mods_path, config.ignored_items,
             name="ModScan",
         )
-        thread.finished.connect(self._on_mods_scanned)
-        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_load_thread", None)))
-        thread.error.connect(
-            lambda msg: self.log_message.emit(f"Failed to load mods: {msg}", "error")
-        )
-        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_load_thread", None)))
-        self._load_thread = thread
-        thread.start()
 
     def _on_mods_scanned(self, scan_result: dict) -> None:
         if "error" in scan_result:
@@ -546,6 +540,9 @@ class ModListPanel(QWidget):
         self._updating_conflicts = False
 
     def _prepopulate_cache(self) -> None:
+        if self._scan_worker.is_running:
+            return
+
         mod_folders = []
         for row_index in range(self.model.rowCount()):
             list_item = self.model.item(row_index)
@@ -561,18 +558,7 @@ class ModListPanel(QWidget):
                 )
             return cache
 
-        if self._scan_thread is not None:
-            try:
-                if self._scan_thread.isRunning():
-                    return
-            except RuntimeError:
-                pass
-        thread = WorkerThread(_run_cache_warmup, name="CacheWarmup")
-        thread.finished.connect(self._on_cache_warmed)
-        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_scan_thread", None)))
-        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_scan_thread", None)))
-        self._scan_thread = thread
-        thread.start()
+        self._scan_worker.start(_run_cache_warmup, name="CacheWarmup")
 
     def _on_cache_warmed(self, cache: dict) -> None:
         self._mod_files_cache.update(cache)
@@ -846,11 +832,8 @@ class ModListPanel(QWidget):
         self.load_mod_list()
 
     def auto_sort_mods(self) -> None:
-        try:
-            if self._sort_thread is not None and self._sort_thread.isRunning():
-                return
-        except RuntimeError:
-            pass
+        if self._sort_worker.is_running:
+            return
 
         self.log_message.emit("Running auto-sort...", "info")
         mod_data_list = []
@@ -884,17 +867,13 @@ class ModListPanel(QWidget):
         def _run_sort() -> list:
             return sorter.auto_sort(sort_input, mods_path)
 
-        thread = WorkerThread(_run_sort, name="AutoSort")
-        self._sort_thread = thread
-        thread.finished.connect(lambda result: self._on_sort_done(result, mod_data_list, separators))
-        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_sort_thread", None)))
-        thread.error.connect(
-            lambda msg: self.log_message.emit(f"Auto-sort failed: {msg}", "error")
-        )
-        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_sort_thread", None)))
-        thread.start()
+        self._sort_mod_data = mod_data_list
+        self._sort_separators = separators
+        self._sort_worker.start(_run_sort, name="AutoSort")
 
-    def _on_sort_done(self, auto_sorted_mods: list, mod_data_list: list, separators: list) -> None:
+    def _on_sort_done(self, auto_sorted_mods: list) -> None:
+        mod_data_list = getattr(self, '_sort_mod_data', [])
+        separators = getattr(self, '_sort_separators', [])
         self._populating = True
         self.model.clear()
         self._mod_files_cache.clear()

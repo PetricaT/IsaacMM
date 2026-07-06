@@ -36,9 +36,26 @@ from PySide6.QtWidgets import (
 
 from .. import config, logger, paths
 from ..backup import backup_all, get_backup_root
-from ..worker import WorkerThread
+from ..worker import ManagedWorker
 from .file_utils import open_path
 from .controller_ui import ICON_SIZE, BUTTON_SIZE
+
+
+def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
+    i = 0
+    while i < len(old) and i < len(new) and old[i] == new[i]:
+        i += 1
+    segments: list[tuple[str, Optional[str]]] = []
+    if old:
+        segments.append((old[:i], None))
+        if old[i:]:
+            segments.append((old[i:], config.lose_color))
+    segments.append((" \u2192 ", None))
+    if new:
+        segments.append((new[:i], None))
+        if new[i:]:
+            segments.append((new[i:], config.win_color))
+    return segments
 
 
 class SettingsPanelOwner(Protocol):
@@ -864,74 +881,23 @@ class SettingsPanel(QWidget):
     def _run_backup(self) -> None:
         if not config.mods_path:
             return
-        if getattr(self._owner, "_backup_thread", None):
+        owner = self._owner
+        if owner is None:
             return
-        log = getattr(self._owner, "log", None)
+
+        bw = getattr(owner, "_backup_worker", None)
+        if bw is None or bw.is_running:
+            return
+
+        log = getattr(owner, "log", None)
         if callable(log):
             log("Running manual backup...")
 
-        def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
-            i = 0
-            while i < len(old) and i < len(new) and old[i] == new[i]:
-                i += 1
-            segments: list[tuple[str, Optional[str]]] = []
-            if old:
-                segments.append((old[:i], None))
-                if old[i:]:
-                    segments.append((old[i:], config.lose_color))
-            segments.append((" \u2192 ", None))
-            if new:
-                segments.append((new[:i], None))
-                if new[i:]:
-                    segments.append((new[i:], config.win_color))
-            return segments
-
-        def _on_finished(results: list[tuple[str, str, str]]) -> None:
-            for mod_name, old_ver, new_ver in results:
-                if old_ver == "?":
-                    log_colored = getattr(self._owner, "log_colored", None)
-                    if log_colored:
-                        log_colored([("Added: ", None), (mod_name, config.win_color)])
-                    continue
-                if old_ver == new_ver:
-                    continue
-                segments = [(f"{mod_name}: ", None)]
-                segments.extend(_colorize(old_ver, new_ver))
-                log_colored = getattr(self._owner, "log_colored", None)
-                if log_colored:
-                    log_colored(segments)
-            log = getattr(self._owner, "log", None)
-            if callable(log):
-                log("Manual backup complete")
-
-        def _on_error(error_msg: str) -> None:
-            log = getattr(self._owner, "log", None)
-            if callable(log):
-                log(f"Backup failed: {error_msg}", "error")
-
-        owner = self._owner
-        if owner is not None:
-            try:
-                bt = getattr(owner, "_backup_thread", None)
-                if bt is not None and bt.isRunning():
-                    return
-            except RuntimeError:
-                pass
-        thread = WorkerThread(
+        owner._manual_backup = True
+        bw.start(
             backup_all,
             config.mods_path,
             get_backup_root(config.mods_path),
             list(config.loaded_mods),
             name="Backup",
         )
-        thread.finished.connect(_on_finished)
-        thread.error.connect(_on_error)
-        if owner is not None:
-            thread.finished.connect(
-                lambda: QTimer.singleShot(0, lambda: setattr(owner, "_backup_thread", None))
-            )
-            thread.error.connect(
-                lambda: QTimer.singleShot(0, lambda: setattr(owner, "_backup_thread", None))
-            )
-            setattr(owner, "_backup_thread", thread)
-        thread.start()

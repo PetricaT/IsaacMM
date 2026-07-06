@@ -51,7 +51,7 @@ class RemoteCache:
                 raw = resp.read().decode("utf-8")
             data = self._parse_fn(raw)
             os.makedirs(os.path.dirname(self._cache_path), exist_ok=True)
-            with open(self._cache_path, "w") as f:
+            with open(self._cache_path, "w", encoding="utf-8") as f:
                 f.write(raw)
             return data
         except HTTPError as exc:
@@ -67,14 +67,14 @@ class RemoteCache:
 
     def _try_cache(self) -> Optional[Any]:
         try:
-            with open(self._cache_path) as f:
+            with open(self._cache_path, encoding="utf-8") as f:
                 return self._parse_fn(f.read())
         except (OSError, ValueError):
             return None
 
     def _try_bundled(self) -> Optional[Any]:
         try:
-            with open(self._bundled_path) as f:
+            with open(self._bundled_path, encoding="utf-8") as f:
                 return self._parse_fn(f.read())
         except (OSError, ValueError):
             return None

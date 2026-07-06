@@ -9,10 +9,10 @@ from PySide6.QtCore import QEvent, QSize, QTimer, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QLabel, QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
-from . import config, game_versions, logger, paths, sorter
+from . import config, game_versions, paths, sorter
 from .backup import backup_all, get_backup_root
 from .components.console import ConsoleWidget
-from .components.dialogs import SEPARATOR_ROLE, SettingsPanel
+from .components.dialogs import SEPARATOR_ROLE, SettingsPanel, _colorize
 from .components.modlist import SEPARATOR_SUFFIX, ModListPanel
 from .components.workshop import (
     _enqueue_details,
@@ -23,7 +23,7 @@ from .components.workshop import (
     _sync_workshop_limiter,
 )
 from .widgets import ModInfoPanel
-from .worker import WorkerThread
+from .worker import ManagedWorker
 from .controller import (
     ControllerManager,
     Button,
@@ -51,9 +51,20 @@ QPushButton:focus {
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.installEventFilter(self)
-        self._backup_thread = None
-        self._masterlist_thread = None
-        self._game_versions_thread = None
+        self._backup_worker = ManagedWorker(parent=self)
+        self._masterlist_worker = ManagedWorker(parent=self)
+        self._game_versions_worker = ManagedWorker(parent=self)
+        self._manual_backup = False
+        self._backup_worker.finished.connect(self._on_backup_finished)
+        self._backup_worker.error.connect(lambda m: self.log(f"Backup failed: {m}", "error"))
+        self._masterlist_worker.finished.connect(
+            lambda r: self.log("Masterlist updated to latest version") if r is True else None
+        )
+        self._masterlist_worker.error.connect(lambda m: self.log(f"Masterlist fetch failed: {m}", "warning"))
+        self._game_versions_worker.finished.connect(
+            lambda r: self.log("Game versions updated to latest") if r is True else None
+        )
+        self._game_versions_worker.error.connect(lambda m: self.log(f"Game versions fetch failed: {m}", "warning"))
         self._controller = None
         self._router = None
 
@@ -123,19 +134,16 @@ QPushButton:focus {
         for lbl, _ in getattr(self, '_shoulder_indicators', []):
             lbl.hide()
             lbl.setParent(None)
-        for t_name, t in (("Backup", self._backup_thread),
-                          ("Masterlist", self._masterlist_thread),
-                          ("GameVersions", self._game_versions_thread)):
-            if t is not None:
-                try:
-                    if not t.isRunning():
-                        continue
-                    t.wait(5000)
-                    if t.isRunning():
-                        logger.log("warning",
-                                   f"Thread '{t_name}' still running after 5s wait")
-                except RuntimeError:
-                    pass
+        self._backup_worker.wait(15000)
+        self._masterlist_worker.wait(5000)
+        self._game_versions_worker.wait(5000)
+        if hasattr(self, 'mod_list_panel'):
+            self.mod_list_panel._load_worker.wait(5000)
+            self.mod_list_panel._sort_worker.wait(5000)
+            self.mod_list_panel._scan_worker.wait(5000)
+        if hasattr(self, 'modInfoPanel'):
+            self.modInfoPanel._icon_worker.wait(5000)
+            self.modInfoPanel._details_worker.wait(5000)
         super().closeEvent(close_event)
 
     def initUi(self) -> None:
@@ -217,27 +225,29 @@ QPushButton:focus {
     def _maybe_backup(self) -> None:
         if not config.backup_enabled or not config.mods_path:
             return
-        if self._backup_thread is not None:
-            try:
-                if self._backup_thread.isRunning():
-                    return
-            except RuntimeError:
-                pass
         self.log("Backing up modified mods...")
-
-        thread = WorkerThread(
+        self._backup_worker.start(
             backup_all,
             config.mods_path,
             get_backup_root(config.mods_path),
             list(config.loaded_mods),
             name="Backup",
         )
-        thread.finished.connect(lambda: self.log("Backup complete"))
-        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_backup_thread", None)))
-        thread.error.connect(lambda msg: self.log(f"Backup failed: {msg}", "error"))
-        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_backup_thread", None)))
-        self._backup_thread = thread
-        thread.start()
+
+    def _on_backup_finished(self, results: list[tuple[str, str, str]]) -> None:
+        self.log("Backup complete")
+        if not self._manual_backup:
+            return
+        self._manual_backup = False
+        for mod_name, old_ver, new_ver in results:
+            if old_ver == "?":
+                self.log_colored([("Added: ", None), (mod_name, config.win_color)])
+                continue
+            if old_ver == new_ver:
+                continue
+            segments = [(f"{mod_name}: ", None)]
+            segments.extend(_colorize(old_ver, new_ver))
+            self.log_colored(segments)
 
     def _refresh_masterlist_background(self) -> None:
         self._fetch_masterlist()
@@ -252,25 +262,7 @@ QPushButton:focus {
         self._game_versions_timer.start(3600000)
 
     def _fetch_game_versions(self) -> None:
-        if self._game_versions_thread is not None:
-            try:
-                if self._game_versions_thread.isRunning():
-                    return
-            except RuntimeError:
-                pass
-        thread = WorkerThread(game_versions.fetch_background, name="GameVersions")
-        thread.finished.connect(
-            lambda result: self.log("Game versions updated to latest")
-            if result is True
-            else None
-        )
-        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_game_versions_thread", None)))
-        thread.error.connect(
-            lambda msg: self.log(f"Game versions fetch failed: {msg}", "warning")
-        )
-        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_game_versions_thread", None)))
-        self._game_versions_thread = thread
-        thread.start()
+        self._game_versions_worker.start(game_versions.fetch_background, name="GameVersions")
 
     def _batch_fetch_details(self) -> None:
         enqueued = 0
@@ -295,25 +287,7 @@ QPushButton:focus {
             self.modInfoPanel._process_details_queue()
 
     def _fetch_masterlist(self) -> None:
-        if self._masterlist_thread is not None:
-            try:
-                if self._masterlist_thread.isRunning():
-                    return
-            except RuntimeError:
-                pass
-        thread = WorkerThread(sorter.fetch_background, name="Masterlist")
-        thread.finished.connect(
-            lambda result: self.log("Masterlist updated to latest version")
-            if result is True
-            else None
-        )
-        thread.finished.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_masterlist_thread", None)))
-        thread.error.connect(
-            lambda msg: self.log(f"Masterlist fetch failed: {msg}", "warning")
-        )
-        thread.error.connect(lambda: QTimer.singleShot(0, lambda: setattr(self, "_masterlist_thread", None)))
-        self._masterlist_thread = thread
-        thread.start()
+        self._masterlist_worker.start(sorter.fetch_background, name="Masterlist")
 
     def getModList(self) -> None:
         self.mod_list_panel.load_mod_list()
@@ -325,7 +299,8 @@ QPushButton:focus {
         self.console_widget.log_colored(segments)
 
     def eventFilter(self, obj, event) -> bool:
-        if self._controller and self._controller.is_connected:
+        controller = getattr(self, '_controller', None)
+        if controller and controller.is_connected:
             etype = event.type()
             if etype in (QEvent.MouseButtonPress, QEvent.KeyPress, QEvent.Wheel):
                 self._controller.set_active(False)

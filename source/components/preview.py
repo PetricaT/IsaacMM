@@ -9,7 +9,7 @@ from PySide6.QtGui import QAction, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QLabel, QMenu
 
 from .. import config
-from ..worker import WorkerThread
+from ..worker import ManagedWorker
 
 
 def _resolve_spritesheet(anm2_dir: str, ss_path: str) -> str | None:
@@ -248,10 +248,11 @@ class PreviewWidget(QLabel):
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.timeout.connect(self._on_debounce_fire)
-        self._worker: WorkerThread | None = None
+        self._worker = ManagedWorker(parent=self)
+        self._worker.finished.connect(self._on_preview_ready_impl)
+        self._worker.error.connect(lambda err: None)
         self._pending_path: str | None = None
         self._pending_pos: QPoint | None = None
-        self._zombie_workers: list[WorkerThread] = []
 
     def stop(self) -> None:
         self._request_id += 1
@@ -266,20 +267,7 @@ class PreviewWidget(QLabel):
         self.hide()
 
     def _cancel_worker(self) -> None:
-        if self._worker is not None:
-            self._zombie_workers.append(self._worker)
-            self._worker = None
-        self._sweep_zombies()
-
-    def _sweep_zombies(self) -> None:
-        alive = []
-        for w in self._zombie_workers:
-            try:
-                if w.isRunning():
-                    alive.append(w)
-            except RuntimeError:
-                pass
-        self._zombie_workers = alive
+        pass
 
     def _on_debounce_fire(self) -> None:
         if self._pending_path is not None and self._pending_pos is not None:
@@ -314,23 +302,16 @@ class PreviewWidget(QLabel):
         return True
 
     def _start_worker(self, file_path: str, global_pos: QPoint) -> None:
-        self._cancel_worker()
         self._path = file_path
-        req_id = self._request_id
-        worker = WorkerThread(_load_preview_data, file_path, name="Preview")
-        worker.finished.connect(
-            lambda result: self._on_preview_ready(req_id, result, global_pos)
+        self._preview_req_id = self._request_id
+        self._preview_pos = global_pos
+        self._worker.start(
+            _load_preview_data, file_path, name="Preview", cancel_running=True,
         )
-        worker.error.connect(lambda err: None)
-        self._worker = worker
-        worker.start()
 
-    def _on_preview_ready(
-        self, req_id: int, result, global_pos: QPoint
-    ) -> None:
-        if req_id != self._request_id:
+    def _on_preview_ready_impl(self, result) -> None:
+        if self._preview_req_id != self._request_id:
             return
-        QTimer.singleShot(0, lambda: setattr(self, "_worker", None))
 
         if result is None:
             return

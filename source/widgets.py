@@ -61,7 +61,7 @@ from .components.workshop import (
     _unmark_details_pending,
     _unmark_pending,
 )
-from .worker import WorkerThread
+from .worker import ManagedWorker
 
 
 def _format_date(ts: Optional[float]) -> str:
@@ -103,15 +103,18 @@ class ModInfoPanel(QWidget):
         self._movie.setScaledSize(QSize(128, 128))
         self._mod_path: Optional[str] = None
         self._workshop_id_str: Optional[str] = None
-        self._icon_thread = None
+        self._icon_worker = ManagedWorker(parent=self)
+        self._icon_worker.finished.connect(self._on_icon_done)
+        self._icon_worker.error.connect(self._on_icon_error)
         self._icon_queue_timer = QTimer(self)
         self._icon_queue_timer.setSingleShot(True)
         self._icon_queue_timer.timeout.connect(self._process_icon_queue)
-        self._details_thread = None
+        self._details_worker = ManagedWorker(parent=self)
+        self._details_worker.finished.connect(self._on_details_done)
+        self._details_worker.error.connect(self._on_details_error)
         self._details_queue_timer = QTimer(self)
         self._details_queue_timer.setSingleShot(True)
         self._details_queue_timer.timeout.connect(self._process_details_queue)
-        self.destroyed.connect(self._cleanup_threads)
         self._init_icons()
         modinfo_label = QLabel("<b>Mod Info</b>")
         modinfo_label.setAlignment(
@@ -467,12 +470,8 @@ class ModInfoPanel(QWidget):
         return False
 
     def _process_icon_queue(self) -> None:
-        if self._icon_thread is not None:
-            try:
-                if self._icon_thread.isRunning():
-                    return
-            except RuntimeError:
-                pass
+        if self._icon_worker.is_running:
+            return
 
         item = _dequeue_workshop()
         if item is None:
@@ -490,49 +489,51 @@ class ModInfoPanel(QWidget):
 
         cache_dir = os.path.join(paths.cache_dir, "icons")
         cached_path = os.path.join(cache_dir, f"{ws_id}.png")
-
-        def on_done(actual_path: str):
-            _unmark_pending(ws_id)
-            img_loaded = False
-            if actual_path and actual_path != cached_path:
-                reader = QImageReader(actual_path)
-                img = reader.read()
-                if not img.isNull():
-                    img.save(cached_path, "PNG")
-                    try:
-                        os.remove(actual_path)
-                    except OSError:
-                        pass
-            loaded = QPixmap(cached_path)
-            if not loaded.isNull():
-                self.icon_label.setPixmap(
-                    loaded.scaled(
-                        128,
-                        128,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-                )
-                img_loaded = True
-            if not img_loaded:
-                self._show_placeholder()
-            QTimer.singleShot(0, lambda: setattr(self, "_icon_thread", None))
-            self._icon_queue_timer.start(2000)
-
-        def on_error(msg: str):
-            _unmark_pending(ws_id)
-            _record_failure(ws_id, time.time())
-            self.log_message.emit(msg, "warning")
-            self._show_placeholder()
-            QTimer.singleShot(0, lambda: setattr(self, "_icon_thread", None))
-            self._icon_queue_timer.start(2000)
-
-        thread = WorkerThread(_download_workshop_icon, ws_id, cached_path, name="IconDownload")
+        self._icon_ws_id = ws_id
+        self._icon_cached_path = cached_path
         _mark_pending(ws_id)
-        thread.finished.connect(on_done)
-        thread.error.connect(on_error)
-        thread.start()
-        self._icon_thread = thread
+
+        if not self._icon_worker.start(
+            _download_workshop_icon, ws_id, cached_path, name="IconDownload",
+        ):
+            _unmark_pending(ws_id)
+            self._icon_queue_timer.start(2000)
+
+    def _on_icon_done(self, actual_path: str) -> None:
+        ws_id = self._icon_ws_id
+        cached_path = self._icon_cached_path
+        _unmark_pending(ws_id)
+        img_loaded = False
+        if actual_path and actual_path != cached_path:
+            reader = QImageReader(actual_path)
+            img = reader.read()
+            if not img.isNull():
+                img.save(cached_path, "PNG")
+                try:
+                    os.remove(actual_path)
+                except OSError:
+                    pass
+        loaded = QPixmap(cached_path)
+        if not loaded.isNull():
+            self.icon_label.setPixmap(
+                loaded.scaled(
+                    128,
+                    128,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+            img_loaded = True
+        if not img_loaded:
+            self._show_placeholder()
+        self._icon_queue_timer.start(2000)
+
+    def _on_icon_error(self, msg: str) -> None:
+        _unmark_pending(self._icon_ws_id)
+        _record_failure(self._icon_ws_id, time.time())
+        self.log_message.emit(msg, "warning")
+        self._show_placeholder()
+        self._icon_queue_timer.start(2000)
 
     def _update_workshop_dates(self, ws_id: str) -> None:
         cached = _get_details_from_cache(ws_id)
@@ -582,12 +583,8 @@ class ModInfoPanel(QWidget):
         )
 
     def _process_details_queue(self) -> None:
-        if self._details_thread is not None:
-            try:
-                if self._details_thread.isRunning():
-                    return
-            except RuntimeError:
-                pass
+        if self._details_worker.is_running:
+            return
 
         ws_id = _dequeue_details()
         if ws_id is None:
@@ -598,45 +595,27 @@ class ModInfoPanel(QWidget):
             self._details_queue_timer.start(5000)
             return
 
+        self._details_ws_id = ws_id
         _mark_details_pending(ws_id)
 
-        def on_done(result: dict):
+        if not self._details_worker.start(
+            _fetch_workshop_details, ws_id, name="WorkshopDetails",
+        ):
             _unmark_details_pending(ws_id)
-            _set_details_in_cache(ws_id, result)
-            if self._workshop_id_str == ws_id:
-                self._update_workshop_dates(ws_id)
-            QTimer.singleShot(0, lambda: setattr(self, "_details_thread", None))
             self._details_queue_timer.start(2000)
 
-        def on_error(msg: str):
-            _unmark_details_pending(ws_id)
-            self.log_message.emit(msg, "warning")
-            QTimer.singleShot(0, lambda: setattr(self, "_details_thread", None))
-            self._details_queue_timer.start(10000)
+    def _on_details_done(self, result: dict) -> None:
+        ws_id = self._details_ws_id
+        _unmark_details_pending(ws_id)
+        _set_details_in_cache(ws_id, result)
+        if self._workshop_id_str == ws_id:
+            self._update_workshop_dates(ws_id)
+        self._details_queue_timer.start(2000)
 
-        thread = WorkerThread(_fetch_workshop_details, ws_id, name="WorkshopDetails")
-        thread.finished.connect(on_done)
-        thread.error.connect(on_error)
-        thread.start()
-        self._details_thread = thread
-
-    def _cleanup_threads(self) -> None:
-        if self._icon_thread is not None:
-            try:
-                if self._icon_thread.isRunning():
-                    self._icon_thread.quit()
-                    self._icon_thread.wait(5000)
-            except RuntimeError:
-                pass
-            self._icon_thread = None
-        if self._details_thread is not None:
-            try:
-                if self._details_thread.isRunning():
-                    self._details_thread.quit()
-                    self._details_thread.wait(5000)
-            except RuntimeError:
-                pass
-            self._details_thread = None
+    def _on_details_error(self, msg: str) -> None:
+        _unmark_details_pending(self._details_ws_id)
+        self.log_message.emit(msg, "warning")
+        self._details_queue_timer.start(10000)
 
     def _open_link(self, url: QUrl) -> None:
         if not open_url(url.toString()):
