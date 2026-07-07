@@ -4,19 +4,23 @@ from __future__ import annotations
 import json
 import os
 import re
-import ssl
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from collections import deque
 from datetime import datetime
 from typing import Optional
 
+import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 from .. import config, logger, paths
 
-_ssl_context = ssl.create_default_context()
+
 _workshop_lock = threading.Lock()
 
 
@@ -246,18 +250,28 @@ def _check_workshop_rate_limit() -> bool:
         return True
 
 
+_HEADERS = {"User-Agent": "IsaacMM/1.0"}
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(min=1, max=10),
+    retry=retry_if_exception_type(httpx.RequestError),
+    reraise=True,
+)
 def _fetch_published_file_details(ws_id: str) -> dict:
     data = {"itemcount": 1, "publishedfileids[0]": ws_id}
-    payload = urllib.parse.urlencode(data).encode()
     try:
-        req = urllib.request.Request(
-            "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/",
-            data=payload,
-            headers={"User-Agent": "IsaacMM/1.0"},
-        )
-        with urllib.request.urlopen(req, timeout=10, context=_ssl_context) as resp:
-            result = json.loads(resp.read())
-    except (urllib.error.URLError, json.JSONDecodeError) as exc:
+        with httpx.Client(follow_redirects=True) as client:
+            resp = client.post(
+                "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/",
+                data=data,
+                headers=_HEADERS,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+    except (httpx.RequestError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"workshop {ws_id}: API request failed: {exc}")
 
     details = result.get("response", {}).get("publishedfiledetails", [])
@@ -283,13 +297,20 @@ def _fetch_workshop_preview_url(ws_id: str) -> str:
     return preview_url
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(min=1, max=10),
+    retry=retry_if_exception_type(httpx.RequestError),
+    reraise=True,
+)
 def _scrape_workshop_dates(ws_id: str) -> dict:
     url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={ws_id}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "IsaacMM/1.0"})
-        with urllib.request.urlopen(req, timeout=10, context=_ssl_context) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
-    except (urllib.error.URLError, OSError):
+        with httpx.Client(follow_redirects=True) as client:
+            resp = client.get(url, headers=_HEADERS, timeout=10)
+            resp.raise_for_status()
+            html = resp.text
+    except (httpx.RequestError, OSError):
         return {"time_created": None, "time_updated": None}
 
     vals = re.findall(
@@ -332,13 +353,10 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
     try:
         preview_url = _fetch_workshop_preview_url(ws_id)
 
-        req_img = urllib.request.Request(
-            preview_url, headers={"User-Agent": "IsaacMM/1.0"}
-        )
-        with urllib.request.urlopen(
-            req_img, timeout=10, context=_ssl_context
-        ) as resp_img:
-            img_data = resp_img.read()
+        with httpx.Client(follow_redirects=True) as client:
+            resp_img = client.get(preview_url, headers=_HEADERS, timeout=10)
+            resp_img.raise_for_status()
+            img_data = resp_img.content
             content_type = resp_img.headers.get("Content-Type", "")
 
         os.makedirs(os.path.dirname(cached_path), exist_ok=True)
@@ -355,8 +373,8 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
             config.dead_workshop_ids = sorted(_permanent_failures)
         config.save()
         raise RuntimeError(f"workshop {ws_id}: file not found (permanent)")
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429:
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
             with _workshop_lock:
                 now = time.time()
                 for _ in range(WORKSHOP_RATE_LIMIT):

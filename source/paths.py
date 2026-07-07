@@ -6,36 +6,15 @@ import re
 import sys
 from typing import Optional
 
+from platformdirs import PlatformDirs
+
 STEAM_APPID: int = 250900
 WORKSHOP_ID_RE: re.Pattern = re.compile(r"_(\d+)$")
 
-appdata: str = ""
-config_dir: str = ""
-cache_dir: str = ""
-if sys.platform == "win32":
-    appdata = os.path.expanduser("~") + "/AppData/Local/IsaacMM"
-    config_dir = appdata
-    cache_dir = os.path.join(appdata, "cache")
-elif sys.platform == "darwin":
-    appdata = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
-    config_dir = appdata
-    cache_dir = os.path.join(appdata, "cache")
-else:
-    xdg_data = os.environ.get("XDG_DATA_HOME")
-    xdg_config = os.environ.get("XDG_CONFIG_HOME")
-    xdg_cache = os.environ.get("XDG_CACHE_HOME")
-    if xdg_data or xdg_config or xdg_cache:
-        appdata = os.path.join(
-            xdg_data or os.path.expanduser("~/.local/share"), "IsaacMM"
-        )
-        config_dir = os.path.join(
-            xdg_config or os.path.expanduser("~/.config"), "IsaacMM"
-        )
-        cache_dir = os.path.join(xdg_cache or os.path.expanduser("~/.cache"), "IsaacMM")
-    else:
-        appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
-        config_dir = appdata
-        cache_dir = os.path.join(appdata, "cache")
+_dirs = PlatformDirs("IsaacMM", "PetricaT")
+appdata: str = _dirs.user_data_dir
+config_dir: str = _dirs.user_config_dir
+cache_dir: str = _dirs.user_cache_dir
 
 
 def _ensure_symlink(target: str, link: str) -> None:
@@ -47,8 +26,24 @@ def _ensure_symlink(target: str, link: str) -> None:
         os.symlink(target, link)
 
 
+def _migrate_old_linux_config() -> None:
+    """Migrate config from old ~/.local/share/IsaacMM to ~/.config/IsaacMM on Linux."""
+    old_appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
+    if config_dir == old_appdata:
+        return
+    old_config = os.path.join(old_appdata, "config.toml")
+    if not os.path.isfile(old_config):
+        return
+    new_config = os.path.join(config_dir, "config.toml")
+    if os.path.isfile(new_config):
+        return
+    os.makedirs(config_dir, exist_ok=True)
+    os.replace(old_config, new_config)
+
+
 def setup_symlinks() -> None:
     os.makedirs(appdata, exist_ok=True)
+    _migrate_old_linux_config()
     if config_dir != appdata and os.path.isdir(config_dir):
         old_link = os.path.join(appdata, "config")
         if os.path.islink(old_link):

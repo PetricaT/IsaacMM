@@ -307,6 +307,15 @@ class SettingsPanel(QWidget):
         backup_layout.addRow(run_backup_button)
         behavior_layout.addWidget(backup_group)
 
+        updates_group = QGroupBox("Updates")
+        updates_layout = QVBoxLayout(updates_group)
+        self.update_check_btn = QPushButton("Check for Updates")
+        self.update_check_btn.clicked.connect(self._check_updates)
+        updates_layout.addWidget(self.update_check_btn)
+        self._update_status_label = QLabel(f"Current version: {paths.version}")
+        updates_layout.addWidget(self._update_status_label)
+        behavior_layout.addWidget(updates_group)
+
         display_group = QGroupBox("Display")
         display_layout = QFormLayout(display_group)
         self.animate_check = QCheckBox("Animate mod icons (GIF)")
@@ -833,6 +842,7 @@ class SettingsPanel(QWidget):
         config.preview_images = self.preview_check.isChecked()
         config.download_icons = self.download_icons_check.isChecked()
         config.log_level = self.log_level_combo.currentData()
+        logger.set_level(config.log_level)
         config.date_format = self.date_format_combo.currentData()
         config.controller_enabled = self.ctrl_enable_check.isChecked()
         config.controller_deadzone = self.ctrl_deadzone_slider.value()
@@ -901,3 +911,11 @@ class SettingsPanel(QWidget):
             list(config.loaded_mods),
             name="Backup",
         )
+
+    def _check_updates(self) -> None:
+        owner = self._owner
+        if owner is None:
+            return
+        check = getattr(owner, "_check_for_updates_interactive", None)
+        if callable(check):
+            check()

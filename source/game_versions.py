@@ -5,14 +5,16 @@ import json
 import os
 from datetime import date, timedelta
 from typing import Optional
-from urllib.error import HTTPError
+
+import httpx
 
 from . import logger, paths
 from .remote_cache import RemoteCache
 
 
-def _on_game_versions_http_error(exc: HTTPError) -> None:
-    if exc.code == 404:
+def _on_game_versions_http_error(exc: httpx.HTTPStatusError) -> None:
+    code = exc.response.status_code
+    if code == 404:
         logger.log(
             "info",
             "No game_versions.json on remote (not published yet), "
@@ -21,7 +23,7 @@ def _on_game_versions_http_error(exc: HTTPError) -> None:
     else:
         logger.log(
             "warning",
-            f"Failed to fetch game versions (HTTP {exc.code}): {exc.reason}",
+            f"Failed to fetch game versions (HTTP {code}): {exc.response.reason_phrase}",
         )
 
 

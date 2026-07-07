@@ -22,6 +22,7 @@ from .components.workshop import (
     _save_details_cache,
     _sync_workshop_limiter,
 )
+from .updater import UpdateDialog, get_download_asset, get_latest_release, is_appimage, is_newer_version
 from .widgets import ModInfoPanel
 from .worker import ManagedWorker
 from .controller import (
@@ -65,6 +66,9 @@ QPushButton:focus {
             lambda r: self.log("Game versions updated to latest") if r is True else None
         )
         self._game_versions_worker.error.connect(lambda m: self.log(f"Game versions fetch failed: {m}", "warning"))
+        self._update_worker = ManagedWorker(parent=self)
+        self._update_worker.finished.connect(self._on_update_check_done)
+        self._update_worker.error.connect(lambda m: self.log(f"Update check failed: {m}", "warning"))
         self._controller = None
         self._router = None
 
@@ -85,6 +89,7 @@ QPushButton:focus {
         self._refresh_game_versions_background()
         self._load_base_qss()
         self._init_controller()
+        QTimer.singleShot(5000, self._check_for_updates_silent)
 
     def apply_qt_theme(self, style_name: str) -> None:
         if getattr(self, '_applying_theme', False):
@@ -137,6 +142,7 @@ QPushButton:focus {
         self._backup_worker.wait(15000)
         self._masterlist_worker.wait(5000)
         self._game_versions_worker.wait(5000)
+        self._update_worker.wait(5000)
         if hasattr(self, 'mod_list_panel'):
             self.mod_list_panel._load_worker.wait(5000)
             self.mod_list_panel._sort_worker.wait(5000)
@@ -234,12 +240,12 @@ QPushButton:focus {
             name="Backup",
         )
 
-    def _on_backup_finished(self, results: list[tuple[str, str, str]]) -> None:
+    def _on_backup_finished(self, results: list[tuple[str, str, str, str]]) -> None:
         self.log("Backup complete")
         if not self._manual_backup:
             return
         self._manual_backup = False
-        for mod_name, old_ver, new_ver in results:
+        for mod_name, old_ver, new_ver, magnitude in results:
             if old_ver == "?":
                 self.log_colored([("Added: ", None), (mod_name, config.win_color)])
                 continue
@@ -249,7 +255,51 @@ QPushButton:focus {
             segments.extend(_colorize(old_ver, new_ver))
             self.log_colored(segments)
 
-    def _refresh_masterlist_background(self) -> None:
+    def _check_for_updates_silent(self) -> None:
+        if self._update_worker.is_running:
+            return
+        self._update_worker.start(get_latest_release, name="UpdateCheck")
+
+    def _check_for_updates_interactive(self) -> None:
+        if self._update_worker.is_running:
+            return
+        self.log("Checking for updates...")
+        self._interactive_update_check = True
+        self._update_worker.start(get_latest_release, name="UpdateCheck")
+
+    def _on_update_check_done(self, release: dict | None) -> None:
+        interactive = getattr(self, '_interactive_update_check', False)
+        self._interactive_update_check = False
+
+        if release is None:
+            if interactive:
+                self.log("Could not check for updates (no network or API down)", "warning")
+            return
+
+        tag = release.get("tag_name", "")
+        if not tag or not is_newer_version(tag):
+            if interactive:
+                self.log(f"You are up to date ({paths.version})")
+            return
+
+        self.log(f"Update available: {tag} (you have {paths.version})")
+
+        changelog = release.get("body", "")
+        asset = get_download_asset(release)
+        download_url = asset["browser_download_url"] if asset else ""
+
+        dialog = UpdateDialog(
+            current_version=paths.version,
+            new_version=tag,
+            changelog=changelog or "",
+            download_url=download_url,
+            parent=self,
+        )
+        dialog.exec()
+
+        dl_path = dialog.download_path()
+        if dl_path and is_appimage():
+            QTimer.singleShot(1500, QApplication.quit)
         self._fetch_masterlist()
         self._masterlist_timer = QTimer(self)
         self._masterlist_timer.timeout.connect(self._fetch_masterlist)
