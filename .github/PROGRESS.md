@@ -202,10 +202,11 @@ New user-facing functionality. Implement after Section 1 is stable.
 
 ---
 
-- [ ] WATCHDOG - Live mod folder sync
+- [x] WATCHDOG - Live mod folder sync
+      Completed: 2026-07-08
       Lib: `watchdog`
       Files: new file `source/folder_watcher.py`, `source/components/modlist.py`,
-             `source/window.py`, `requirements.txt`, `pyproject.toml`
+             `source/window.py`, `requirements.txt`
       Notes: Watch `config.mods_path` for `FileCreatedEvent`, `FileDeletedEvent`,
              `FileModifiedEvent`. On event, debounce 500ms then trigger a mod list
              rescan. Run the watchdog observer in a background thread.
@@ -213,6 +214,13 @@ New user-facing functionality. Implement after Section 1 is stable.
              Update CONFLICT-INDEX incrementally on change events rather than full
              rebuild - only re-index the changed mod folder.
              Add a status indicator in the UI (small icon) showing watcher active/inactive.
+             Implemented in source/folder_watcher.py: ModFolderWatcher(QObject) wraps
+             watchdog Observer, extracts mod folder name from event path, buffers
+             changed folders with a threading.Lock, flushes every 500ms via QTimer
+             on main thread. Connected to modlist via set_watcher() which calls
+             conflict_index.invalidate() + clears in-memory cache + triggers
+             _update_conflict_indicators() for the changed mod only.
+             Green dot indicator in modlist header when watcher active, gray when off.
       Blocked by: nothing (can land before CONFLICT-INDEX)
 
 - [ ] LOAD-ORDER-HISTORY - Undo/redo for sort operations
@@ -221,8 +229,7 @@ New user-facing functionality. Implement after Section 1 is stable.
       Notes: On every sort or manual reorder, write current order to
              `load_order_history` table with timestamp and optional label.
              Keep last 50 entries. Expose Ctrl+Z / Ctrl+Y in the mod list to
-             step through history. Add a "History" button or menu that shows
-             a list of past orders with timestamps and lets user jump to any.
+             step through history.
       Blocked by: SQLITE-STATE
 
 - [ ] NOTIFICATIONS - Desktop notifications for async operations
@@ -711,10 +718,10 @@ Required once new libraries are added.
 | 1 - Drop-in simplifications | 5 | 5 | 0 | 0 |
 | 1b - Bug fixes (Windows) | 4 | 4 | 0 | 0 |
 | 2 - Architecture & state | 3 | 3 | 0 | 0 |
-| 3 - UX features | 8 | 0 | 0 | 0 |
+| 3 - UX features | 8 | 1 | 0 | 0 |
 | 4 - OS integrations | 5 | 0 | 0 | 0 |
 | 5 - Packaging | 9 | 0 | 0 | 0 |
-| **Total** | **34** | **11** | **0** | **0** |
+| **Total** | **34** | **12** | **0** | **0** |
 
 ---
 

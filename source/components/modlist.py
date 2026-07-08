@@ -262,7 +262,8 @@ class ModListPanel(QWidget):
         if state is not None:
             self._restoring_widths = True
             self.listView.header().restoreState(state)
-            self._restoring_widths = False
+        self._restoring_widths = False
+        self._watcher = None
 
     def load_mod_list(self) -> None:
         if config.mods_path == "":
@@ -721,6 +722,19 @@ class ModListPanel(QWidget):
         conflict_files = get_cached_files(mod_folder_name)
         self._mod_files_cache[mod_folder_name] = conflict_files
         return conflict_files
+
+    def set_watcher(self, watcher) -> None:
+        self._watcher = watcher
+        if watcher is not None:
+            watcher.folder_changed.connect(self._on_mod_folder_changed)
+
+    def _on_mod_folder_changed(self, folder: str) -> None:
+        if self._populating or self._updating_conflicts:
+            return
+        from ..conflict_index import invalidate
+        invalidate(folder)
+        self._mod_files_cache.pop(folder, None)
+        self._update_conflict_indicators()
 
     def _on_item_changed(self, list_item) -> None:
         if list_item.column() != 0:

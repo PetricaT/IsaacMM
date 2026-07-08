@@ -33,6 +33,7 @@ from .controller import (
     Button,
     ControllerManager,
 )
+from .folder_watcher import ModFolderWatcher
 from .updater import (
     UpdateDialog,
     get_download_asset,
@@ -143,6 +144,7 @@ QPushButton:focus {
             self._applying_theme = False
 
     def closeEvent(self, close_event) -> None:
+        self._folder_watcher.stop()
         s = config.get_settings()
         s.setValue("ui/window_geometry", self.saveGeometry())
         s.setValue("ui/splitter_state", self._splitter.saveState())
@@ -189,6 +191,11 @@ QPushButton:focus {
         self.mod_list_panel.mods_loaded.connect(self._maybe_backup)
         self.mod_list_panel.mods_loaded.connect(self._batch_fetch_details)
 
+        self._folder_watcher = ModFolderWatcher(self)
+        self.mod_list_panel.set_watcher(self._folder_watcher)
+        self.console_widget.set_watcher(self._folder_watcher)
+        self._start_folder_watcher()
+
         self.modInfoPanel = ModInfoPanel()
         self.modInfoPanel.log_message.connect(self.console_widget.log)
 
@@ -226,6 +233,10 @@ QPushButton:focus {
         column_state = s.value("ui/column_state")
         if column_state:
             self.modInfoPanel.restore_column_state(column_state)
+
+    def _start_folder_watcher(self) -> None:
+        if config.mods_path:
+            self._folder_watcher.start(config.mods_path)
 
     def _on_mod_selected(self, mod_name: str, mod_folder: str, conflicts) -> None:
         if mod_folder and mod_folder.endswith(SEPARATOR_SUFFIX):
