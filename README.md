@@ -2,7 +2,6 @@
 
 # <img src="assets/icon.png" width="25" height="25" alt="isaac thumbs up"> The binding of Isaac - Mod Manager 
 
-[![Build release](https://github.com/PetricaT/IsaacMM/actions/workflows/release.yml/badge.svg)](https://github.com/PetricaT/IsaacMM/actions/workflows/release.yml)
 ![Downloads](https://img.shields.io/github/downloads/PetricaT/IsaacMM/latest/total)
 
 ---
