@@ -88,7 +88,7 @@ def _format_date(ts: Optional[float]) -> str:
             return datetime.fromtimestamp(ts).strftime(config.date_format)
         qdt = QDateTime.fromSecsSinceEpoch(int(ts))
         return QLocale().toString(qdt, QLocale.FormatType.ShortFormat)
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return "?"
 
 
@@ -608,7 +608,7 @@ class ModInfoPanel(QWidget):
                 else:
                     color = config.workshop_badge_outdated
                     badge = " (OUTDATED)"
-            except OSError, ValueError:
+            except (OSError, ValueError):
                 pass
 
         self.updated_label.setText(

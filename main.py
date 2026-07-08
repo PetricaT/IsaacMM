@@ -37,7 +37,7 @@ if __name__ == "__main__":
         sys.argv.remove("--trace")
         try:
             faulthandler.enable(sys.stderr)
-        except io.UnsupportedOperation, AttributeError:
+        except (io.UnsupportedOperation, AttributeError):
             pass
 
         def _excepthook(etype, val, tb):

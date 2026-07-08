@@ -118,7 +118,7 @@ def _parse_vdf_path(steam_path: str) -> Optional[str]:
                     )
                     if os.path.exists(candidate_path):
                         return game_root_path
-    except FileNotFoundError, IndexError:
+    except (FileNotFoundError, IndexError):
         pass
     return None
 
