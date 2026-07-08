@@ -1,5 +1,4 @@
 """Main mod list panel with sorting, toggling, and conflict display."""
-
 from __future__ import annotations
 
 import os
@@ -8,7 +7,7 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Optional
 
-from PySide6.QtCore import QEvent, QModelIndex, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -18,20 +17,18 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QMenu,
     QPushButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
 )
-from rapidfuzz import process as fuzzy_process
 
 from .. import config, logger, paths, sorter
-from ..controller import Button
 from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
 from ..worker import ManagedWorker
+from ..controller import Button
 from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .dialogs import (
     CONFLICT_ROLE,
@@ -89,9 +86,7 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
                 separator_name = xml_root.find("name").text
                 color_element = xml_root.find("color")
                 separator_color = (
-                    color_element.text
-                    if color_element is not None
-                    else config.separator_color
+                    color_element.text if color_element is not None else config.separator_color
                 )
             except Exception:
                 separator_name = directory_entry[: -len(SEPARATOR_SUFFIX)]
@@ -160,13 +155,9 @@ class ModListPanel(QWidget):
         self._sort_worker = ManagedWorker(parent=self)
         self._scan_worker = ManagedWorker(parent=self)
         self._load_worker.finished.connect(self._on_mods_scanned)
-        self._load_worker.error.connect(
-            lambda m: self.log_message.emit(f"Failed to load mods: {m}", "error")
-        )
+        self._load_worker.error.connect(lambda m: self.log_message.emit(f"Failed to load mods: {m}", "error"))
         self._sort_worker.finished.connect(self._on_sort_done)
-        self._sort_worker.error.connect(
-            lambda m: self.log_message.emit(f"Auto-sort failed: {m}", "error")
-        )
+        self._sort_worker.error.connect(lambda m: self.log_message.emit(f"Auto-sort failed: {m}", "error"))
         self._scan_worker.finished.connect(self._on_cache_warmed)
         self._controller_mgr = None
         self._controller_icons = []
@@ -197,11 +188,6 @@ class ModListPanel(QWidget):
         modlist_header_layout.addWidget(modlist_label, 1)
         modlist_header_layout.addWidget(menu_button)
         layout.addLayout(modlist_header_layout)
-
-        self._search_bar = QLineEdit(self)
-        self._search_bar.setPlaceholderText("Search mods (fuzzy)...")
-        self._search_bar.textChanged.connect(self._filter_mods)
-        layout.addWidget(self._search_bar)
 
         self.listView = QTreeView(self)
         if self._accent_color:
@@ -268,22 +254,18 @@ class ModListPanel(QWidget):
 
         if self._accent_color:
             fg = _text_color_for_bg(self._accent_color)
-            self.applyOrder.setStyleSheet(
-                f"background-color: {self._accent_color}; color: {fg};"
-            )
+            self.applyOrder.setStyleSheet(f"background-color: {self._accent_color}; color: {fg};")
         self.load_mod_list()
 
     def _save_column_widths(self) -> None:
         if self._restoring_widths:
             return
         from ..config import get_settings
-
         settings = get_settings()
         settings.setValue("modlist/header_state", self.listView.header().saveState())
 
     def _restore_column_widths(self) -> None:
         from ..config import get_settings
-
         settings = get_settings()
         state = settings.value("modlist/header_state")
         if state is not None:
@@ -308,9 +290,7 @@ class ModListPanel(QWidget):
         config.loaded_mods.clear()
 
         self._load_worker.start(
-            _scan_mods_directory,
-            config.mods_path,
-            config.ignored_items,
+            _scan_mods_directory, config.mods_path, config.ignored_items,
             name="ModScan",
         )
 
@@ -340,9 +320,7 @@ class ModListPanel(QWidget):
 
         config.loaded_mods.clear()
         priority = 1
-        for row_index, (entry_name, entry_folder, mod_version) in enumerate(
-            all_entries
-        ):
+        for row_index, (entry_name, entry_folder, mod_version) in enumerate(all_entries):
             col0, col1, col2, col3 = self._make_row_items()
             col0.setData(entry_folder, Qt.ItemDataRole.UserRole)
             if entry_folder in separator_map:
@@ -586,55 +564,6 @@ class ModListPanel(QWidget):
         self._mod_files_cache.update(cache)
         self._update_conflict_indicators()
 
-    def _filter_mods(self, query: str) -> None:
-        """Show only mods whose name fuzzy-matches *query*."""
-        query = query.strip()
-        if not query:
-            for r in range(self.model.rowCount()):
-                self.listView.setRowHidden(r, QModelIndex(), False)
-            return
-
-        rows: list[tuple[str, int]] = []
-        for r in range(self.model.rowCount()):
-            c0 = self.model.item(r, 0)
-            rows.append((c0.text() if c0 else "", r))
-
-        names_only = [name for name, _ in rows]
-        results = fuzzy_process.extract(query, names_only, limit=None, score_cutoff=60)
-        matched_indices = set()
-        for match, score, _ in results:
-            for name, idx in rows:
-                if name == match:
-                    matched_indices.add(idx)
-
-        # Also check the normalised name for loose prefix matches
-        for r in range(self.model.rowCount()):
-            c0 = self.model.item(r, 0)
-            if c0 is None:
-                continue
-            normalized = c0.data(NORMALIZED_NAME_ROLE)
-            if normalized and query.lower() in normalized.lower():
-                matched_indices.add(r)
-
-        for r in range(self.model.rowCount()):
-            self.listView.setRowHidden(r, QModelIndex(), r not in matched_indices)
-
-        # Scroll to the best match
-        if results:
-            best_name = results[0][0]
-            for name, idx in rows:
-                if name == best_name:
-                    self.listView.scrollTo(self.model.index(idx, 0))
-                    break
-
-        # Scroll to the best match
-        if results:
-            best_name = results[0][0]
-            for name, idx in rows:
-                if name == best_name:
-                    self.listView.scrollTo(self.model.index(idx, 0))
-                    break
-
     def _on_mod_selected(self, selected, deselected) -> None:
         if self._populating:
             return
@@ -729,9 +658,7 @@ class ModListPanel(QWidget):
                 "files": sorted(common_files),
                 "overwrites": row_index > current_mod_index,
             }
-            bg = QColor(
-                config.lose_color if row_index < current_mod_index else config.win_color
-            )
+            bg = QColor(config.lose_color if row_index < current_mod_index else config.win_color)
             for c in range(4):
                 item = self.model.item(row_index, c)
                 if item:
@@ -1053,9 +980,7 @@ class ModListPanel(QWidget):
                 if not selected:
                     return True
                 rows = set(idx.row() for idx in selected)
-                items = [
-                    self.model.item(row, 0) for row in rows if self.model.item(row, 0)
-                ]
+                items = [self.model.item(row, 0) for row in rows if self.model.item(row, 0)]
                 if items and all(item.data(SEPARATOR_ROLE) for item in items):
                     self._delete_separators(items)
                 return True
@@ -1078,7 +1003,9 @@ class ModListPanel(QWidget):
                     f"Deleting separator '{item_name}': {exc}", "error"
                 )
         if deleted:
-            self.log_message.emit(f"Deleted separators: {', '.join(deleted)}", "info")
+            self.log_message.emit(
+                f"Deleted separators: {', '.join(deleted)}", "info"
+            )
             self._save_current_order()
             self.load_mod_list()
 
@@ -1210,9 +1137,7 @@ class ModListPanel(QWidget):
             col0 = self.model.item(row_index)
             if col0.data(SEPARATOR_ROLE):
                 continue
-            items.append(
-                (col0.data(Qt.ItemDataRole.UserRole), col0.text() if col0 else "")
-            )
+            items.append((col0.data(Qt.ItemDataRole.UserRole), col0.text() if col0 else ""))
         try:
             count = export_modlist_csv(file_path, items)
             self.log_message.emit(f"Exported {count} mods to {file_path}", "info")
@@ -1270,12 +1195,9 @@ class ModListPanel(QWidget):
                 w = c0.data(WINS_ROLE) or False
                 l = c0.data(LOSSES_ROLE) or False
                 v = 3
-                if w and l:
-                    v = 0
-                elif w:
-                    v = 1
-                elif l:
-                    v = 2
+                if w and l: v = 0
+                elif w: v = 1
+                elif l: v = 2
                 return v if asc else (3 - v)
             elif section == 2:
                 c2 = self.model.item(row_idx, 2)
@@ -1406,9 +1328,7 @@ class ModListPanel(QWidget):
                 items = self.model.takeRow(self._move_index)
                 self._populating = True
                 self.model.insertRow(self._move_original_row, items)
-                self.listView.setCurrentIndex(
-                    self.model.index(self._move_original_row, 0)
-                )
+                self.listView.setCurrentIndex(self.model.index(self._move_original_row, 0))
                 self._populating = False
                 self._renumber_priority()
                 self._save_current_order()

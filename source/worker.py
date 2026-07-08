@@ -1,6 +1,6 @@
 """Generic QThread worker for background tasks."""
-
 from __future__ import annotations
+
 
 import platform
 from typing import Optional
@@ -109,14 +109,11 @@ class WorkerThread(QThread):
         try:
             if self.isRunning():
                 import logging as _logging
-
                 rss = _get_rss_mb()
                 _logging.warning(
                     "WorkerThread '%s' still running after %dms wait "
                     "(RSS: %.1f MB), leaking to prevent crash",
-                    self.objectName(),
-                    WAIT_MS,
-                    rss,
+                    self.objectName(), WAIT_MS, rss,
                 )
                 _LEAKED_THREADS.append(self)
         except RuntimeError:
@@ -142,7 +139,6 @@ class ManagedWorker(QObject):
             def reload(self):
                 self._load.start(my_fn, arg1, arg2, name="Load")
     """
-
     finished = Signal(object)
     error = Signal(str)
 
@@ -163,9 +159,7 @@ class ManagedWorker(QObject):
         except RuntimeError:
             return False
 
-    def start(
-        self, fn, *args, name: str = "Worker", cancel_running: bool = False, **kwargs
-    ) -> bool:
+    def start(self, fn, *args, name: str = "Worker", cancel_running: bool = False, **kwargs) -> bool:
         """
         Launch fn(*args, **kwargs) in a background thread.
         Returns False and does nothing if already running and cancel_running=False.

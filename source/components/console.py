@@ -1,5 +1,4 @@
 """Console widget for log output display."""
-
 from __future__ import annotations
 
 import time
@@ -19,9 +18,9 @@ from PySide6.QtWidgets import (
 
 from .. import config, logger
 from .workshop import (
-    WORKSHOP_RATE_LIMIT,
     _workshop_limiter_state,
     _workshop_queue_length,
+    WORKSHOP_RATE_LIMIT,
 )
 
 
@@ -50,17 +49,11 @@ class ConsoleWidget(QWidget):
         rate_layout.setContentsMargins(8, 0, 8, 0)
         rate_layout.setSpacing(0)
         self.rate_label = QLabel(f"Workshop: 0/{WORKSHOP_RATE_LIMIT}")
-        self.rate_label.setStyleSheet(
-            f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;"
-        )
+        self.rate_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
         self.queue_label = QLabel("Queued: 0")
-        self.queue_label.setStyleSheet(
-            f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;"
-        )
+        self.queue_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
         self.rate_timer_label = QLabel("—")
-        self.rate_timer_label.setStyleSheet(
-            f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;"
-        )
+        self.rate_timer_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
         rate_layout.addWidget(self.rate_label)
         rate_layout.addWidget(self.queue_label)
         rate_layout.addStretch()
@@ -86,11 +79,7 @@ class ConsoleWidget(QWidget):
             "error": "[ERR]",
         }
         prefix = level_prefixes.get(level, "[INF]")
-        level_colors = {
-            "info": config.log_info_color,
-            "warning": config.log_warn_color,
-            "error": config.log_error_color,
-        }
+        level_colors = {"info": config.log_info_color, "warning": config.log_warn_color, "error": config.log_error_color}
         log_color = level_colors.get(level, config.log_info_color)
         text_cursor = self.console.textCursor()
         text_cursor.movePosition(QTextCursor.MoveOperation.End)
@@ -128,16 +117,10 @@ class ConsoleWidget(QWidget):
             if remaining > 0:
                 mins, secs = divmod(remaining, 60)
                 self.rate_timer_label.setText(f"Cooldown: {mins}m {secs}s")
-                self.rate_timer_label.setStyleSheet(
-                    f"color: {config.log_warn_color or 'palette(text)'}; font-size: 11px;"
-                )
+                self.rate_timer_label.setStyleSheet(f"color: {config.log_warn_color or 'palette(text)'}; font-size: 11px;")
             else:
                 self.rate_timer_label.setText("-")
-                self.rate_timer_label.setStyleSheet(
-                    f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;"
-                )
+                self.rate_timer_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")
         else:
             self.rate_timer_label.setText("-")
-            self.rate_timer_label.setStyleSheet(
-                f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;"
-            )
+            self.rate_timer_label.setStyleSheet(f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;")

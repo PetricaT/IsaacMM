@@ -1,5 +1,4 @@
 """Image and .anm2 preview popup widgets."""
-
 from __future__ import annotations
 
 import os
@@ -51,8 +50,7 @@ def _load_preview_data(path: str):
         if img.isNull():
             return None
         img = img.scaled(
-            200,
-            200,
+            200, 200,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.FastTransformation,
         )
@@ -86,8 +84,7 @@ def _load_preview_data(path: str):
             if img.isNull():
                 return None
             img = img.scaled(
-                200,
-                200,
+                200, 200,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.FastTransformation,
             )
@@ -147,7 +144,11 @@ def _parse_anm2_frames(root, anm2_dir):
         )
 
         for i in range(max_frames):
-            rf = root_frames[min(i, len(root_frames) - 1)] if root_frames else None
+            rf = (
+                root_frames[min(i, len(root_frames) - 1)]
+                if root_frames
+                else None
+            )
             if rf is not None and rf.get("Visible", "true").lower() == "false":
                 continue
             root_x = int(rf.get("XPosition", "0")) if rf is not None else 0
@@ -231,9 +232,7 @@ class PreviewWidget(QLabel):
         super().__init__(
             parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
         )
-        self.setStyleSheet(
-            f"border: 1px solid {config.preview_border or 'palette(mid)'}; background: {config.preview_bg or 'palette(base)'}; padding: 2px;"
-        )
+        self.setStyleSheet(f"border: 1px solid {config.preview_border or 'palette(mid)'}; background: {config.preview_bg or 'palette(base)'}; padding: 2px;")
         self.hide()
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
@@ -307,10 +306,7 @@ class PreviewWidget(QLabel):
         self._preview_req_id = self._request_id
         self._preview_pos = global_pos
         self._worker.start(
-            _load_preview_data,
-            file_path,
-            name="Preview",
-            cancel_running=True,
+            _load_preview_data, file_path, name="Preview", cancel_running=True,
         )
 
     def _on_preview_ready_impl(self, result) -> None:

@@ -1,5 +1,4 @@
 """Mod sorting logic: masterlist, auto-sort, topological sort."""
-
 from __future__ import annotations
 
 import os
@@ -69,7 +68,7 @@ def load_last_order() -> Optional[list]:
         with open(LAST_ORDER_FILE) as order_file:
             yaml_data = yaml.safe_load(order_file)
             return yaml_data.get("ordered_folders") if yaml_data else None
-    except OSError, yaml.YAMLError:
+    except (OSError, yaml.YAMLError):
         return None
 
 
@@ -78,7 +77,7 @@ def _load_user_rules() -> list:
         with open(USER_RULES_FILE) as rules_file:
             yaml_data = yaml.safe_load(rules_file)
             return yaml_data.get("rules", []) if yaml_data else []
-    except OSError, yaml.YAMLError:
+    except (OSError, yaml.YAMLError):
         return []
 
 

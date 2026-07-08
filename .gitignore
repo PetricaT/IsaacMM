@@ -203,4 +203,3 @@ appimagetool
 build-dir/
 .flatpak-builder/
 *.flatpak
-.aider*

@@ -1,26 +1,19 @@
 """Generic remote data cache with fetch/cache/bundled/fallback chain."""
-
 from __future__ import annotations
 
+
 import os
+import ssl
 import threading
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
-
-import httpx
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from . import logger
 
 
 class RemoteCache:
-    _HEADERS = {"User-Agent": "IsaacMM/1.0"}
-
     def __init__(
         self,
         url: str,
@@ -29,7 +22,7 @@ class RemoteCache:
         ttl: timedelta,
         parse_fn: Callable[[str], Any],
         fallback: Any,
-        on_http_error: Optional[Callable[[httpx.HTTPStatusError], None]] = None,
+        on_http_error: Optional[Callable[[HTTPError], None]] = None,
     ) -> None:
         self._url = url
         self._cache_path = cache_path
@@ -40,6 +33,7 @@ class RemoteCache:
         self._on_http_error = on_http_error
         self._data: Optional[Any] = None
         self._lock = threading.Lock()
+        self._ssl_context = ssl.create_default_context()
 
     def _is_fresh(self) -> bool:
         try:
@@ -52,17 +46,19 @@ class RemoteCache:
 
     def _try_fetch(self) -> Optional[Any]:
         try:
-            raw = self._http_get_text(self._url)
+            req = Request(self._url, headers={"User-Agent": "IsaacMM/1.0"})
+            with urlopen(req, timeout=10, context=self._ssl_context) as resp:
+                raw = resp.read().decode("utf-8")
             data = self._parse_fn(raw)
             os.makedirs(os.path.dirname(self._cache_path), exist_ok=True)
             with open(self._cache_path, "w", encoding="utf-8") as f:
                 f.write(raw)
             return data
-        except httpx.HTTPStatusError as exc:
+        except HTTPError as exc:
             if self._on_http_error:
                 self._on_http_error(exc)
             return None
-        except httpx.RequestError:
+        except URLError:
             logger.log("warning", f"No network, cannot fetch {self._url}")
             return None
         except (OSError, ValueError) as exc:
@@ -73,14 +69,14 @@ class RemoteCache:
         try:
             with open(self._cache_path, encoding="utf-8") as f:
                 return self._parse_fn(f.read())
-        except OSError, ValueError:
+        except (OSError, ValueError):
             return None
 
     def _try_bundled(self) -> Optional[Any]:
         try:
             with open(self._bundled_path, encoding="utf-8") as f:
                 return self._parse_fn(f.read())
-        except OSError, ValueError:
+        except (OSError, ValueError):
             return None
 
     def get(self) -> Any:
@@ -108,15 +104,3 @@ class RemoteCache:
                 self._data = data
                 return True
             return False
-
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(min=1, max=10),
-        retry=retry_if_exception_type(httpx.RequestError),
-        reraise=True,
-    )
-    def _http_get_text(self, url: str) -> str:
-        with httpx.Client(follow_redirects=True) as client:
-            resp = client.get(url, headers=self._HEADERS, timeout=10)
-            resp.raise_for_status()
-            return resp.text

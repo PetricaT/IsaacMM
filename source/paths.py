@@ -1,5 +1,4 @@
 """Filesystem path resolution and symlink setup."""
-
 from __future__ import annotations
 
 import os
@@ -7,15 +6,36 @@ import re
 import sys
 from typing import Optional
 
-from platformdirs import PlatformDirs
-
 STEAM_APPID: int = 250900
 WORKSHOP_ID_RE: re.Pattern = re.compile(r"_(\d+)$")
 
-_dirs = PlatformDirs("IsaacMM", "PetricaT")
-appdata: str = _dirs.user_data_dir
-config_dir: str = _dirs.user_config_dir
-cache_dir: str = _dirs.user_cache_dir
+appdata: str = ""
+config_dir: str = ""
+cache_dir: str = ""
+if sys.platform == "win32":
+    appdata = os.path.expanduser("~") + "/AppData/Local/IsaacMM"
+    config_dir = appdata
+    cache_dir = os.path.join(appdata, "cache")
+elif sys.platform == "darwin":
+    appdata = os.path.expanduser("~") + "/Library/Application Support/IsaacMM"
+    config_dir = appdata
+    cache_dir = os.path.join(appdata, "cache")
+else:
+    xdg_data = os.environ.get("XDG_DATA_HOME")
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    if xdg_data or xdg_config or xdg_cache:
+        appdata = os.path.join(
+            xdg_data or os.path.expanduser("~/.local/share"), "IsaacMM"
+        )
+        config_dir = os.path.join(
+            xdg_config or os.path.expanduser("~/.config"), "IsaacMM"
+        )
+        cache_dir = os.path.join(xdg_cache or os.path.expanduser("~/.cache"), "IsaacMM")
+    else:
+        appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
+        config_dir = appdata
+        cache_dir = os.path.join(appdata, "cache")
 
 
 def _ensure_symlink(target: str, link: str) -> None:
@@ -27,27 +47,8 @@ def _ensure_symlink(target: str, link: str) -> None:
         os.symlink(target, link)
 
 
-def _migrate_old_linux_config() -> None:
-    """Migrate config from old ~/.local/share/IsaacMM to ~/.config/IsaacMM on Linux."""
-    old_appdata = os.path.expanduser("~") + "/.local/share/IsaacMM"
-    if config_dir == old_appdata:
-        return
-    old_config = os.path.join(old_appdata, "config.toml")
-    if not os.path.isfile(old_config):
-        return
-    new_config = os.path.join(config_dir, "config.toml")
-    if os.path.isfile(new_config):
-        return
-    os.makedirs(config_dir, exist_ok=True)
-    os.replace(old_config, new_config)
-
-
 def setup_symlinks() -> None:
-    if sys.platform == "win32":
-        return  # Windows requires admin/Developer Mode for symlinks
     os.makedirs(appdata, exist_ok=True)
-    # Disabled, low Linux usage and probably not needed anymore.
-    # _migrate_old_linux_config()
     if config_dir != appdata and os.path.isdir(config_dir):
         old_link = os.path.join(appdata, "config")
         if os.path.islink(old_link):
@@ -118,7 +119,7 @@ def _parse_vdf_path(steam_path: str) -> Optional[str]:
                     )
                     if os.path.exists(candidate_path):
                         return game_root_path
-    except FileNotFoundError, IndexError:
+    except (FileNotFoundError, IndexError):
         pass
     return None
 
@@ -127,8 +128,12 @@ def _resolve_windows_path() -> Optional[str]:
     try:
         import winreg
 
-        registry_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")  # pyright: ignore[reportAttributeAccessIssue]
-        steam_path, _ = winreg.QueryValueEx(registry_key, "SteamPath")  # pyright: ignore[reportAttributeAccessIssue]
+        registry_key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"
+        )  # pyright: ignore[reportAttributeAccessIssue]
+        steam_path, _ = winreg.QueryValueEx(
+            registry_key, "SteamPath"
+        )  # pyright: ignore[reportAttributeAccessIssue]
         winreg.CloseKey(registry_key)  # pyright: ignore[reportAttributeAccessIssue]
         steam_root = _parse_vdf_path(steam_path)
         if steam_root:

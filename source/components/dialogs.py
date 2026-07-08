@@ -1,10 +1,10 @@
 """Dialog windows: settings, separator editing, etc."""
-
 from __future__ import annotations
+
 
 import os
 from datetime import datetime
-from typing import Any, Optional, Protocol
+from typing import Optional, Protocol, Any
 
 from PySide6.QtCore import QDateTime, QLocale, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPalette, QPixmap
@@ -37,8 +37,8 @@ from PySide6.QtWidgets import (
 from .. import config, logger, paths
 from ..backup import backup_all, get_backup_root
 from ..worker import ManagedWorker
-from .controller_ui import BUTTON_SIZE, ICON_SIZE
 from .file_utils import open_path
+from .controller_ui import ICON_SIZE, BUTTON_SIZE
 
 
 def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
@@ -62,19 +62,15 @@ class SettingsPanelOwner(Protocol):
     def log(self, message: str, level: str = "info") -> None: ...
     def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None: ...
     def getModList(self) -> None: ...
-
     mod_list_panel: Any
     modInfoPanel: Any
     _backup_thread: Any
-
-
+    
 def _btn_qss(color: str) -> str:
     return f"background-color: {color};"
 
-
 try:
     from ..controller import GamepadType
-
     _HAS_SDL = True
 except ImportError:
     GamepadType = object
@@ -97,15 +93,12 @@ class ConflictDelegate(QStyledItemDelegate):
     def _get_empty_pixmap(cls) -> QPixmap | None:
         if cls._empty_pixmap is None:
             from .. import paths
-
             path = os.path.join(paths.BASE_DIR, "assets", "ui", "empty.png")
             if os.path.exists(path):
                 pm = QPixmap(path)
                 if not pm.isNull():
                     cls._empty_pixmap = pm.scaled(
-                        16,
-                        16,
-                        Qt.AspectRatioMode.KeepAspectRatio,
+                        16, 16, Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation,
                     )
         return cls._empty_pixmap
@@ -125,7 +118,6 @@ class ConflictDelegate(QStyledItemDelegate):
         if not wins and not losses:
             return
         from .. import config
-
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         font = QFont()
@@ -144,21 +136,15 @@ class ConflictDelegate(QStyledItemDelegate):
             painter.setPen(QColor(config.lose_color))
             x = item_rect.right() - size - 4
             y = item_rect.top() + (item_rect.height() - size) // 2
-            painter.drawText(
-                QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "\u2212"
-            )
+            painter.drawText(QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "\u2212")
         else:
             total_w = size * 2 + gap
             x = item_rect.right() - total_w - 4
             y = item_rect.top() + (item_rect.height() - size) // 2
             painter.setPen(QColor(config.lose_color))
-            painter.drawText(
-                QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "\u2212"
-            )
+            painter.drawText(QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "\u2212")
             painter.setPen(QColor(config.win_color))
-            painter.drawText(
-                QRect(x + size + gap, y, size, size), Qt.AlignmentFlag.AlignCenter, "+"
-            )
+            painter.drawText(QRect(x + size + gap, y, size, size), Qt.AlignmentFlag.AlignCenter, "+")
         painter.restore()
 
 
@@ -213,9 +199,7 @@ class SeparatorDialog(QDialog):
 class SettingsPanel(QWidget):
     closed = Signal()
 
-    def __init__(
-        self, owner: SettingsPanelOwner, parent: Optional[QWidget] = None
-    ) -> None:
+    def __init__(self, owner: SettingsPanelOwner, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._owner = owner
 
@@ -245,12 +229,8 @@ class SettingsPanel(QWidget):
         pm = QPixmap(os.path.join(base, "left_shoulder.png"))
         if not pm.isNull():
             self._left_tab_icon.setPixmap(
-                pm.scaled(
-                    ICON_SIZE,
-                    ICON_SIZE,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
+                pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
+                          Qt.TransformationMode.SmoothTransformation)
             )
         self._left_tab_icon.hide()
         tabs.setCornerWidget(self._left_tab_icon, Qt.Corner.TopLeftCorner)
@@ -261,12 +241,8 @@ class SettingsPanel(QWidget):
         pm = QPixmap(os.path.join(base, "right_shoulder.png"))
         if not pm.isNull():
             self._right_tab_icon.setPixmap(
-                pm.scaled(
-                    ICON_SIZE,
-                    ICON_SIZE,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
+                pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
+                          Qt.TransformationMode.SmoothTransformation)
             )
         self._right_tab_icon.hide()
         tabs.setCornerWidget(self._right_tab_icon, Qt.Corner.TopRightCorner)
@@ -331,21 +307,6 @@ class SettingsPanel(QWidget):
         backup_layout.addRow(run_backup_button)
         behavior_layout.addWidget(backup_group)
 
-        updates_group = QGroupBox("Updates")
-        updates_layout = QVBoxLayout(updates_group)
-        # AUTOUPDATER-DISABLED(2026-07-07): re-enable when replace+restart
-        # logic on Windows/macOS is stable.
-        # self.startup_check_check = QCheckBox("Check for updates on startup")
-        # self.startup_check_check.setChecked(config.check_updates_on_startup)
-        # self.startup_check_check.toggled.connect(self._save_settings)
-        # updates_layout.addWidget(self.startup_check_check)
-        # self.update_check_btn = QPushButton("Check for Updates")
-        # self.update_check_btn.clicked.connect(self._check_updates)
-        # updates_layout.addWidget(self.update_check_btn)
-        self._update_status_label = QLabel(f"Current version: {paths.version}")
-        updates_layout.addWidget(self._update_status_label)
-        behavior_layout.addWidget(updates_group)
-
         display_group = QGroupBox("Display")
         display_layout = QFormLayout(display_group)
         self.animate_check = QCheckBox("Animate mod icons (GIF)")
@@ -392,13 +353,10 @@ class SettingsPanel(QWidget):
         paths_group = QGroupBox("Paths")
         paths_layout = QHBoxLayout(paths_group)
         self.open_config_btn = QPushButton("Open Config")
-        self.open_config_btn.setEnabled(os.path.isdir(paths.config_dir))
         self.open_config_btn.clicked.connect(lambda: open_path(paths.config_dir))
         self.open_data_btn = QPushButton("Open Data")
-        self.open_data_btn.setEnabled(os.path.isdir(paths.appdata))
         self.open_data_btn.clicked.connect(lambda: open_path(paths.appdata))
         self.open_cache_btn = QPushButton("Open Cache")
-        self.open_cache_btn.setEnabled(os.path.isdir(paths.cache_dir))
         self.open_cache_btn.clicked.connect(lambda: open_path(paths.cache_dir))
         paths_layout.addWidget(self.open_config_btn)
         paths_layout.addWidget(self.open_data_btn)
@@ -478,7 +436,8 @@ class SettingsPanel(QWidget):
 
         self.disabled_mod_btn = QPushButton()
         self.disabled_mod_btn.setFixedWidth(60)
-        self.disabled_mod_btn.setStyleSheet(_btn_qss(config.disabled_mod_color))
+        self.disabled_mod_btn.setStyleSheet(
+            _btn_qss(config.disabled_mod_color))
         self.disabled_mod_btn.clicked.connect(self._pick_disabled_mod_color)
         scroll_layout.addRow("Disabled mod color:", self.disabled_mod_btn)
 
@@ -496,55 +455,43 @@ class SettingsPanel(QWidget):
 
         sep_label = QLabel("<b>\u2014 Mod List \u2014</b>")
         scroll_layout.addRow(sep_label)
-        self._add_colors(
-            scroll_layout,
-            [
-                ("Separator color:", "separator_color"),
-            ],
-        )
+        self._add_colors(scroll_layout, [
+            ("Separator color:", "separator_color"),
+        ])
 
         mi_label = QLabel("<b>\u2014 Mod Info \u2014</b>")
         scroll_layout.addRow(mi_label)
-        self._add_colors(
-            scroll_layout,
-            [
-                ("Folder label:", "folder_label_color"),
-                ("Icon border:", "icon_border_color"),
-                ("Tag background:", "tag_bg"),
-                ("Tag text:", "tag_fg"),
-                ("Dpad indicators:", "dpad_color"),
-                ("Workshop missing:", "workshop_missing_color"),
-                ("Workshop current:", "workshop_badge_current"),
-                ("Workshop possible:", "workshop_badge_possible"),
-                ("Workshop outdated:", "workshop_badge_outdated"),
-                ("Workshop default:", "workshop_badge_default"),
-            ],
-        )
+        self._add_colors(scroll_layout, [
+            ("Folder label:", "folder_label_color"),
+            ("Icon border:", "icon_border_color"),
+            ("Tag background:", "tag_bg"),
+            ("Tag text:", "tag_fg"),
+            ("Dpad indicators:", "dpad_color"),
+            ("Workshop missing:", "workshop_missing_color"),
+            ("Workshop current:", "workshop_badge_current"),
+            ("Workshop possible:", "workshop_badge_possible"),
+            ("Workshop outdated:", "workshop_badge_outdated"),
+            ("Workshop default:", "workshop_badge_default"),
+        ])
 
         c_label = QLabel("<b>\u2014 Console \u2014</b>")
         scroll_layout.addRow(c_label)
-        self._add_colors(
-            scroll_layout,
-            [
-                ("Background:", "console_bg"),
-                ("Text:", "console_fg"),
-                ("Border:", "console_border"),
-                ("Rate bar bg:", "rate_bar_bg"),
-                ("Log info:", "log_info_color"),
-                ("Log warn:", "log_warn_color"),
-                ("Log error:", "log_error_color"),
-            ],
-        )
+        self._add_colors(scroll_layout, [
+            ("Background:", "console_bg"),
+            ("Text:", "console_fg"),
+            ("Border:", "console_border"),
+            ("Rate bar bg:", "rate_bar_bg"),
+            ("Log info:", "log_info_color"),
+            ("Log warn:", "log_warn_color"),
+            ("Log error:", "log_error_color"),
+        ])
 
         p_label = QLabel("<b>\u2014 Preview \u2014</b>")
         scroll_layout.addRow(p_label)
-        self._add_colors(
-            scroll_layout,
-            [
-                ("Border:", "preview_border"),
-                ("Background:", "preview_bg"),
-            ],
-        )
+        self._add_colors(scroll_layout, [
+            ("Border:", "preview_border"),
+            ("Background:", "preview_bg"),
+        ])
 
         scroll_layout.addRow(QLabel(""))  # bottom spacer
         scroll.setWidget(scroll_inner)
@@ -616,17 +563,12 @@ class SettingsPanel(QWidget):
         if pm.isNull():
             pm = QPixmap(os.path.join(base, "select.png"))
         self._back_icon.setPixmap(
-            pm.scaled(
-                ICON_SIZE,
-                ICON_SIZE,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+            pm.scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
+                      Qt.TransformationMode.SmoothTransformation)
         )
 
     def connect_controller(self, controller_mgr) -> None:
         from ..controller import Button
-
         self._ctrl_buttons = {
             Button.LEFT_SHOULDER: self._ctrl_prev_tab,
             Button.RIGHT_SHOULDER: self._ctrl_next_tab,
@@ -638,8 +580,8 @@ class SettingsPanel(QWidget):
         }
         controller_mgr.button_down.connect(self._on_controller_button)
         controller_mgr.activity_changed.connect(self._on_controller_activity)
-        self._set_back_icon(getattr(controller_mgr, "gamepad_type", 0))
-        is_active = getattr(controller_mgr, "is_active", True)
+        self._set_back_icon(getattr(controller_mgr, 'gamepad_type', 0))
+        is_active = getattr(controller_mgr, 'is_active', True)
         self._on_controller_activity(is_active)
 
     def disconnect_controller(self, controller_mgr) -> None:
@@ -669,7 +611,7 @@ class SettingsPanel(QWidget):
             self._right_tab_icon.hide()
 
     def _on_controller_button(self, button: int) -> None:
-        handler = getattr(self, "_ctrl_buttons", {}).get(button)
+        handler = getattr(self, '_ctrl_buttons', {}).get(button)
         if handler:
             handler()
 
@@ -717,22 +659,14 @@ class SettingsPanel(QWidget):
             w.showPopup()
 
     def _update_controller_info(self) -> None:
-        ctrl = getattr(self._owner, "_controller", None)
+        ctrl = getattr(self._owner, '_controller', None)
         if ctrl and ctrl.is_connected:
             self.ctrl_name_label.setText(ctrl.gamepad_name)
             type_names = {
-                0: "Unknown",
-                1: "Standard",
-                2: "Xbox 360",
-                3: "Xbox One",
-                4: "PS3",
-                5: "PS4",
-                6: "PS5",
-                7: "Switch Pro",
+                0: "Unknown", 1: "Standard", 2: "Xbox 360", 3: "Xbox One",
+                4: "PS3", 5: "PS4", 6: "PS5", 7: "Switch Pro",
             }
-            self.ctrl_type_label.setText(
-                type_names.get(ctrl.gamepad_type, str(ctrl.gamepad_type))
-            )
+            self.ctrl_type_label.setText(type_names.get(ctrl.gamepad_type, str(ctrl.gamepad_type)))
         else:
             self.ctrl_name_label.setText("Not connected")
             self.ctrl_type_label.setText("-")
@@ -780,7 +714,7 @@ class SettingsPanel(QWidget):
         for attr in dir(self):
             if attr.startswith("_theme_"):
                 btn = getattr(self, attr)
-                config_attr = attr[len("_theme_") :]
+                config_attr = attr[len("_theme_"):]
                 c = getattr(config, config_attr)
                 if c:
                     btn.setStyleSheet(_btn_qss(c))
@@ -800,14 +734,12 @@ class SettingsPanel(QWidget):
                     update_style(color.name())
 
     def _pick_disabled_mod_color(self) -> None:
-        current = (
-            config.disabled_mod_color
-            or self.palette().color(QPalette.Disabled, QPalette.Text).name()
-        )
+        current = config.disabled_mod_color or self.palette().color(QPalette.Disabled, QPalette.Text).name()
         color = QColorDialog.getColor(QColor(current), self)
         if color.isValid():
             config.disabled_mod_color = color.name()
-            self.disabled_mod_btn.setStyleSheet(_btn_qss(config.disabled_mod_color))
+            self.disabled_mod_btn.setStyleSheet(
+                _btn_qss(config.disabled_mod_color))
             self._save_settings()
 
     def _pick_win_color(self) -> None:
@@ -900,9 +832,7 @@ class SettingsPanel(QWidget):
         config.animate_anm2_preview = self.animate_anm2_check.isChecked()
         config.preview_images = self.preview_check.isChecked()
         config.download_icons = self.download_icons_check.isChecked()
-        # AUTOUPDATER-DISABLED: config.check_updates_on_startup = self.startup_check_check.isChecked()
         config.log_level = self.log_level_combo.currentData()
-        logger.set_level(config.log_level)
         config.date_format = self.date_format_combo.currentData()
         config.controller_enabled = self.ctrl_enable_check.isChecked()
         config.controller_deadzone = self.ctrl_deadzone_slider.value()
@@ -936,17 +866,13 @@ class SettingsPanel(QWidget):
         if callable(log) and config.backup_enabled != prev_backup:
             log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
         if config.controller_simple_icons != prev_simple:
-            if hasattr(self._owner, "mod_list_panel"):
-                self._owner.mod_list_panel.set_simple_icons(
-                    config.controller_simple_icons
-                )
-            if hasattr(self._owner, "modInfoPanel"):
-                self._owner.modInfoPanel.set_simple_icons(
-                    config.controller_simple_icons
-                )
-        if config.use_system_icons != getattr(self, "_prev_system_icons", False):
+            if hasattr(self._owner, 'mod_list_panel'):
+                self._owner.mod_list_panel.set_simple_icons(config.controller_simple_icons)
+            if hasattr(self._owner, 'modInfoPanel'):
+                self._owner.modInfoPanel.set_simple_icons(config.controller_simple_icons)
+        if config.use_system_icons != getattr(self, '_prev_system_icons', False):
             self._prev_system_icons = config.use_system_icons
-            if hasattr(self._owner, "modInfoPanel"):
+            if hasattr(self._owner, 'modInfoPanel'):
                 self._owner.modInfoPanel.refresh_icons()
         self._update_open_buttons()
         self._update_controller_info()
@@ -975,11 +901,3 @@ class SettingsPanel(QWidget):
             list(config.loaded_mods),
             name="Backup",
         )
-
-    def _check_updates(self) -> None:
-        owner = self._owner
-        if owner is None:
-            return
-        check = getattr(owner, "_check_for_updates_interactive", None)
-        if callable(check):
-            check()

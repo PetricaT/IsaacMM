@@ -1,5 +1,4 @@
 """Configuration management: load, save, and provide defaults."""
-
 from __future__ import annotations
 
 import os
@@ -17,7 +16,6 @@ from . import paths, sorter
 _save_lock = threading.Lock()
 _last_save: float = 0.0
 SAVE_DEBOUNCE: float = 2.0
-
 
 @dataclass
 class _Config:
@@ -38,22 +36,11 @@ class _Config:
     dead_workshop_ids: list = field(default_factory=list)
     log_level: str = "info"
     date_format: str = ""
-    ignored_items: list = field(
-        default_factory=lambda: [
-            ".git",
-            "__pycache__",
-            "metadata.xml",
-            "disable.it",
-            ".DS_Store",
-            "Thumbs.db",
-            "desktop.ini",
-            ".Trashes",
-            ".Spotlight-V100",
-            "$RECYCLE.BIN",
-            ".directory",
-            "~",
-        ]
-    )
+    ignored_items: list = field(default_factory=lambda: [
+        ".git", "__pycache__", "metadata.xml", "disable.it",
+        ".DS_Store", "Thumbs.db", "desktop.ini", ".Trashes",
+        ".Spotlight-V100", "$RECYCLE.BIN", ".directory", "~",
+    ])
     controller_enabled: bool = True
     controller_deadzone: int = 8000
     controller_simple_icons: bool = False
@@ -70,9 +57,7 @@ class _Config:
     workshop_badge_possible: str = "#FFA500"
     workshop_badge_outdated: str = "#FF4444"
     workshop_badge_default: str = ""
-
-    check_updates_on_startup: bool = False
-
+    # Console colors
     console_bg: str = ""
     console_fg: str = ""
     console_border: str = ""
@@ -222,9 +207,7 @@ def load() -> None:
         )
         _cfg.controller_enabled = settings_section.get("controller_enabled", True)
         _cfg.controller_deadzone = settings_section.get("controller_deadzone", 8000)
-        _cfg.controller_simple_icons = settings_section.get(
-            "controller_simple_icons", False
-        )
+        _cfg.controller_simple_icons = settings_section.get("controller_simple_icons", False)
         theme_section = config_data.get("theme", {})
         _cfg.use_system_icons = theme_section.get("use_system_icons", False)
         _cfg.theme_preset = theme_section.get("theme_preset", "")
