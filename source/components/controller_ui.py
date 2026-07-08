@@ -1,4 +1,5 @@
 """Controller UI: hint icons inside buttons and action router."""
+
 from __future__ import annotations
 
 import os
@@ -11,7 +12,8 @@ from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from .. import config, paths
 from ..controller import (
-    Axis, Button,
+    Axis,
+    Button,
     is_playstation_type,
 )
 
@@ -31,9 +33,7 @@ _BUTTON_NAMES = {
 
 
 class ControllerButtonIcon:
-    def __init__(
-        self, button: QPushButton, button_enum: int, controller_mgr
-    ) -> None:
+    def __init__(self, button: QPushButton, button_enum: int, controller_mgr) -> None:
         self._button = button
         self._button_enum = button_enum
         self._controller_mgr = controller_mgr
@@ -73,7 +73,8 @@ class ControllerButtonIcon:
                 pm = QPixmap(candidate)
                 if not pm.isNull():
                     scaled = pm.scaled(
-                        ICON_SIZE, ICON_SIZE,
+                        ICON_SIZE,
+                        ICON_SIZE,
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation,
                     )
@@ -92,7 +93,9 @@ class ControllerButtonIcon:
             self._button.setIconSize(QSize(0, 0))
 
     def _on_connected(self, name: str, gp_type: int) -> None:
-        self._use_ps = is_playstation_type(gp_type) or self._controller_mgr.has_ps_labels()
+        self._use_ps = (
+            is_playstation_type(gp_type) or self._controller_mgr.has_ps_labels()
+        )
         self._load_icon()
         if self._visible:
             self._button.setIcon(self._icon)
@@ -152,7 +155,9 @@ class ControllerRouter:
     def clear_modal_override(self) -> None:
         self._modal_override = None
 
-    def register_focus_region(self, widget: QWidget, actions: dict[int, callable], order: int = 0) -> None:
+    def register_focus_region(
+        self, widget: QWidget, actions: dict[int, callable], order: int = 0
+    ) -> None:
         self._regions.append((widget, actions, order))
         self._regions.sort(key=lambda x: x[2])
 
@@ -167,7 +172,11 @@ class ControllerRouter:
 
         focused = QApplication.focusWidget()
         for widget, actions in self._registry:
-            if focused and (widget is focused or widget.isAncestorOf(focused) or focused.isAncestorOf(widget)):
+            if focused and (
+                widget is focused
+                or widget.isAncestorOf(focused)
+                or focused.isAncestorOf(widget)
+            ):
                 if button in actions:
                     actions[button]()
                     return

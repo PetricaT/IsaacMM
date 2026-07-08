@@ -1,10 +1,13 @@
 """Mod backup and restore functionality."""
+
 from __future__ import annotations
 
 import os
 import shutil
 import sys
 import xml.etree.ElementTree as ET
+
+from packaging.version import InvalidVersion, Version
 
 from . import config, paths
 
@@ -20,7 +23,27 @@ def _read_version(mod_folder: str, mods_path: str) -> str:
             if version_el is not None and version_el.text
             else "?"
         )
-    except (ET.ParseError, FileNotFoundError, AttributeError):
+    except ET.ParseError, FileNotFoundError, AttributeError:
+        return "?"
+
+
+def _versions_differ(a: str, b: str) -> bool:
+    try:
+        return Version(a) != Version(b)
+    except InvalidVersion:
+        return a != b
+
+
+def _classify_magnitude(old: str, new: str) -> str:
+    try:
+        vo = Version(old)
+        vn = Version(new)
+        if vo.major != vn.major:
+            return "major"
+        if vo.minor != vn.minor:
+            return "minor"
+        return "patch"
+    except InvalidVersion:
         return "?"
 
 
@@ -33,7 +56,7 @@ def backup_needed(mod_folder: str, mods_path: str, backup_root: str) -> bool:
     if not os.path.isdir(backup_mod_path):
         return True
     backup_version = _read_version(mod_folder, backup_root)
-    return current_version != backup_version
+    return _versions_differ(current_version, backup_version)
 
 
 def backup_mod(mod_folder: str, mods_path: str, backup_root: str) -> None:
@@ -53,15 +76,16 @@ def backup_all(
     mods_path: str,
     backup_root: str,
     mod_list: list,
-) -> list[tuple[str, str, str]]:
+) -> list[tuple[str, str, str, str]]:
     os.makedirs(backup_root, exist_ok=True)
-    results: list[tuple[str, str, str]] = []
+    results: list[tuple[str, str, str, str]] = []
     for mod_name, mod_folder in mod_list:
         if backup_needed(mod_folder, mods_path, backup_root):
             old_version = _read_version(mod_folder, backup_root)
             backup_mod(mod_folder, mods_path, backup_root)
             new_version = _read_version(mod_folder, mods_path)
-            results.append((mod_name, old_version, new_version))
+            magnitude = _classify_magnitude(old_version, new_version)
+            results.append((mod_name, old_version, new_version, magnitude))
     return results
 
 

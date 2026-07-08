@@ -1,6 +1,6 @@
 """Mod list import/export to CSV."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 import csv
 from typing import Dict, List, Tuple

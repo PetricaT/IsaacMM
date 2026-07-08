@@ -2,3 +2,9 @@ PySide6
 toml
 pyyaml
 PySDL3
+platformdirs
+loguru
+httpx
+tenacity
+packaging
+rapidfuzz
