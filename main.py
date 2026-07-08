@@ -15,6 +15,15 @@ if sys.stderr is None:
 if sys.stdout is None:
     sys.stdout = open(os.devnull, "w")
 
+# SDL3 Python binding extracts its native .so to a bin/ subdirectory next
+# to __init__.py at import time. Inside an AppImage the mount point is
+# read-only so this fails. Redirect to a writable temp dir instead.
+if os.environ.get("APPIMAGE"):
+    import tempfile
+    _sdl3_bin = os.path.join(tempfile.gettempdir(), "isaacmm_sdl3_bin")
+    os.makedirs(_sdl3_bin, exist_ok=True)
+    os.environ["SDL_BINARY_PATH"] = _sdl3_bin
+
 from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
