@@ -12,7 +12,7 @@ from typing import Optional
 import toml
 from PySide6.QtCore import QSettings
 
-from . import paths, sorter
+from . import database, paths, sorter
 
 _save_lock = threading.Lock()
 _last_save: float = 0.0
@@ -34,8 +34,6 @@ class _Config:
     preview_images: bool = True
     animate_anm2_preview: bool = True
     loaded_mods: list = field(default_factory=list)
-    workshop_timestamps: list = field(default_factory=list)
-    dead_workshop_ids: list = field(default_factory=list)
     log_level: str = "info"
     date_format: str = ""
     ignored_items: list = field(
@@ -252,14 +250,13 @@ def load() -> None:
         _cfg.separator_color = theme_section.get("separator", "")
         _cfg.preview_border = theme_section.get("preview_border", "")
         _cfg.preview_bg = theme_section.get("preview_bg", "")
-        workshop_section = config_data.get("workshop", {})
-        _cfg.workshop_timestamps = workshop_section.get("timestamps", [])
-        _cfg.dead_workshop_ids = settings_section.get("dead_workshop_ids", [])
+        database.init()
     except FileNotFoundError:
         os.makedirs(paths.config_dir, exist_ok=True)
         detected_path = paths.find_isaac_mods_folder()
         _cfg.mods_path = detected_path or ""
         sorter.fetch_initial()
+        database.init()
         save()
 
 
@@ -308,7 +305,6 @@ def _do_save() -> None:
                 "download_icons": _v("download_icons"),
                 "log_level": _v("log_level"),
                 "date_format": _v("date_format"),
-                "dead_workshop_ids": _v("dead_workshop_ids"),
                 "ignored_items": _v("ignored_items"),
                 "controller_enabled": _v("controller_enabled"),
                 "controller_deadzone": _v("controller_deadzone"),
@@ -341,9 +337,6 @@ def _do_save() -> None:
                 "separator": _v("separator_color"),
                 "preview_border": _v("preview_border"),
                 "preview_bg": _v("preview_bg"),
-            },
-            "workshop": {
-                "timestamps": _v("workshop_timestamps"),
             },
         }
         os.makedirs(paths.config_dir, exist_ok=True)

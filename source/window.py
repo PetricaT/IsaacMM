@@ -28,8 +28,6 @@ from .components.workshop import (
     _get_details_from_cache,
     _init_details_cache,
     _init_workshop_limiter,
-    _save_details_cache,
-    _sync_workshop_limiter,
 )
 from .controller import (
     Button,
@@ -151,8 +149,6 @@ QPushButton:focus {
         s.setValue(
             "ui/column_state", self.modInfoPanel.conflicts_tree.header().saveState()
         )
-        _sync_workshop_limiter()
-        _save_details_cache()
         config.flush()
         if self._controller:
             self._controller.cleanup()
