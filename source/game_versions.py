@@ -1,4 +1,5 @@
 """Game version tracking: fetch, cache, and query game update dates."""
+
 from __future__ import annotations
 
 import json
@@ -58,7 +59,7 @@ def get_latest_update_date() -> Optional[date]:
     for version_str, date_str in versions.items():
         try:
             parsed = date.fromisoformat(date_str)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
         if latest is None or parsed > latest:
             latest = parsed
@@ -71,7 +72,7 @@ def _parse_major_minor(version_str: str) -> Optional[tuple[int, int]]:
         major = int(parts[0])
         minor = int(parts[1]) if len(parts) > 1 else 0
         return (major, minor)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 
@@ -94,7 +95,7 @@ def get_outdated_thresholds() -> tuple[Optional[date], Optional[date]]:
             continue
         try:
             parsed = date.fromisoformat(date_str)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
         if mm not in era_dates or parsed > era_dates[mm]:
             era_dates[mm] = parsed
@@ -106,6 +107,3 @@ def get_outdated_thresholds() -> tuple[Optional[date], Optional[date]]:
     latest = era_dates[sorted_eras[0]]
     previous = era_dates[sorted_eras[1]] if len(sorted_eras) > 1 else None
     return (latest, previous)
-
-
-

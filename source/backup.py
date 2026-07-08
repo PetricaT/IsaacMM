@@ -1,4 +1,5 @@
 """Mod backup and restore functionality."""
+
 from __future__ import annotations
 
 import os
@@ -22,7 +23,7 @@ def _read_version(mod_folder: str, mods_path: str) -> str:
             if version_el is not None and version_el.text
             else "?"
         )
-    except (ET.ParseError, FileNotFoundError, AttributeError):
+    except ET.ParseError, FileNotFoundError, AttributeError:
         return "?"
 
 

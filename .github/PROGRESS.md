@@ -80,14 +80,58 @@ These replace existing code with no new user-facing features. Do these first.
              semver field changed. Updated `_on_backup_finished` in
              `window.py` to unpack the extra field.
 
-- [ ] RAPIDFUZZ - Fuzzy search for mod list filter
+- [x] RAPIDFUZZ - Fuzzy search for mod list filter
+      Completed: 2026-07-07
       Lib: `rapidfuzz`
       Files: `source/components/modlist.py`, `requirements.txt`, `pyproject.toml`
-      Notes: Replace current substring filter with
-             `rapidfuzz.process.extract(query, mod_names, limit=None, score_cutoff=60)`.
-             Rank results by score so closest matches appear first.
-             Fall back to exact substring if query is empty.
-             Wire into the existing search/filter input widget.
+      Notes: Added QLineEdit search bar below "Mod List" header. On text
+             change, `rapidfuzz.process.extract(query, names,
+             score_cutoff=60)` matches rows. Extra pass against
+             `NORMALIZED_NAME_ROLE` for loose prefix matches. Non-matching
+             rows hidden via `setRowHidden()`. Clears filter when query
+             empty. Scrolls to best match.
+
+---
+
+## SECTION 1b — BUG FIXES (Windows)
+
+Windows-specific defects found during testing.
+
+---
+
+- [x] SYMLINK-PERMS - Skip symlink setup on Windows
+      Files: `source/paths.py`
+      Notes: `os.symlink` on Windows requires admin rights or Developer Mode.
+             Added `if sys.platform == "win32": return` at the top of
+             `setup_symlinks()` so it is a no-op on Windows regardless of
+             caller. The `window.py` guard (`if sys.platform != "win32"`) was
+             already present but the paths module itself is now self-defending.
+
+- [x] MISSING-METHOD - `_refresh_masterlist_background` not defined
+      Files: `source/window.py`
+      Notes: `__init__` called `self._refresh_masterlist_background()` at line
+             114 but the method was never defined (only
+             `_refresh_game_versions_background` existed). Added the missing
+             method. Also removed a duplicate `_masterlist_timer` creation in
+             `_on_update_check_done` that would have created a second hourly
+             timer.
+
+- [x] OPEN-BTN-GUARD - Disable folder-open buttons if target does not exist
+      Files: `source/components/dialogs.py`
+      Notes: "Open Config", "Open Data", "Open Cache" buttons in the Settings
+             Paths group called `open_path()` unconditionally. On Windows the
+             cache dir doesn't exist until something writes to it, causing
+             `ShellExecute` error 2. Fixed by calling
+             `.setEnabled(os.path.isdir(...))` on each button at init time.
+             Buttons no longer try to create folders, they only enable when
+             the directory already exists.
+
+- [x] SEARCH-ROW-HIDDEN - Wrong `setRowHidden` signature for PySide6
+      Files: `source/components/modlist.py`
+      Notes: Called `QTreeView.setRowHidden(row, hidden)` with 2 args; PySide6
+             requires 3: `(row, parent, hidden)`. Added `QModelIndex()` as the
+             parent argument in both `_filter_mods` call sites, and imported
+             `QModelIndex`.
 
 ---
 
@@ -490,13 +534,14 @@ Required once new libraries are added.
 > Auto-update this section when items are checked off.
 
 | Section | Total | Complete | In Progress | Blocked |
-|---|---|---|---|---|---|
-| 1 - Drop-in simplifications | 5 | 4 | 0 | 0 |
+|---|---|---|---|---|---|---|
+| 1 - Drop-in simplifications | 5 | 5 | 0 | 0 |
+| 1b - Bug fixes (Windows) | 4 | 4 | 0 | 0 |
 | 2 - Architecture & state | 3 | 0 | 0 | 0 |
 | 3 - UX features | 8 | 0 | 0 | 0 |
 | 4 - OS integrations | 5 | 0 | 0 | 0 |
 | 5 - Packaging | 9 | 0 | 0 | 0 |
-| **Total** | **30** | **1** | **0** | **0** |
+| **Total** | **34** | **9** | **0** | **0** |
 
 ---
 
@@ -513,3 +558,38 @@ Required once new libraries are added.
 - Implementation order within a section is flexible unless a `Blocked by:` exists
 - All platform-specific code must be gated: `if sys.platform == "linux":` etc.
   Never import platform-specific libs at module level - import inside the gate
+
+---
+
+## PLANNING — UPDATE-CHECKER REFINEMENT
+
+Changes requested 2026-07-07 for the update-checking feature. **Not yet implemented.**
+
+- [ ] **BACKGROUND-CHECK-SILENT** — On startup, check for updates silently (no popup).
+      `_check_for_updates_silent` already exists (QTimer 5s) but currently opens
+      the `UpdateDialog` popup when a new version is found. Change it so that
+      the popup is **only** shown for interactive/forced checks. For background
+      checks, store the result and let the Settings UI reflect it.
+
+- [ ] **SETTINGS-UPDATE-UI** — When a background check finds a newer version,
+      replace the static version label in the "Updates" group with:
+      `Current version: {VERSION} -> {NEW_VERSION}`
+      Change the button text from "Check for Updates" to **"Update now"**.
+      Clicking "Update now" launches the same update flow (asset download,
+      progress bar, AppImage restart) that `UpdateDialog` does.
+
+- [ ] **CHANGELOGS-BUTTON** — Add a permanent "Changelogs" button next to
+      "Check for Updates" / "Update now" in the Settings Updates group.
+      Opens `https://github.com/PetricaT/IsaacMM/releases` in the browser
+      via `QDesktopServices.openUrl`.
+
+**Implementation sketch** (do not act on yet):
+1. `window.py`: `_check_for_updates_silent` -> do NOT open dialog on result.
+   Instead store `self._pending_update = release` and emit a signal or flag.
+2. `dialogs.py` Settings "Updates" group: expose an `update_available` signal
+   or let `window.py` push the release info. When set, swap label + button.
+3. `dialogs.py`: add QPushButton "Changelogs" permanently visible.
+4. Button logic: "Check for Updates" when idle / "Update now" when pending.
+   Both work via `window._check_for_updates_interactive` (existing) and
+   a new `window._run_update_download(release)` that bypasses the dialog
+   and directly shows the progress / restart flow.

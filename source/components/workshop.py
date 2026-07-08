@@ -1,4 +1,5 @@
 """Steam Workshop integration: download icons, rate limiting, queue, details."""
+
 from __future__ import annotations
 
 import json
@@ -19,7 +20,6 @@ from tenacity import (
 )
 
 from .. import config, logger, paths
-
 
 _workshop_lock = threading.Lock()
 
@@ -184,7 +184,7 @@ def _init_details_cache() -> None:
             if os.path.exists(DETAILS_CACHE_FILE):
                 with open(DETAILS_CACHE_FILE) as f:
                     _workshop_details_cache.update(json.load(f))
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             _workshop_details_cache.clear()
 
 
@@ -310,17 +310,15 @@ def _scrape_workshop_dates(ws_id: str) -> dict:
             resp = client.get(url, headers=_HEADERS, timeout=10)
             resp.raise_for_status()
             html = resp.text
-    except (httpx.RequestError, OSError):
+    except httpx.RequestError, OSError:
         return {"time_created": None, "time_updated": None}
 
-    vals = re.findall(
-        r'<div class="detailsStatRight">([^<]+)</div>', html
-    )
+    vals = re.findall(r'<div class="detailsStatRight">([^<]+)</div>', html)
     try:
         time_created = datetime.strptime(
             vals[1].strip(), "%d %b, %Y @ %I:%M%p"
         ).timestamp()
-    except (IndexError, ValueError):
+    except IndexError, ValueError:
         time_created = None
 
     time_updated = None
@@ -329,7 +327,7 @@ def _scrape_workshop_dates(ws_id: str) -> dict:
             time_updated = datetime.strptime(
                 vals[2].strip(), "%d %b, %Y @ %I:%M%p"
             ).timestamp()
-        except (ValueError):
+        except ValueError:
             pass
 
     return {"time_created": time_created, "time_updated": time_updated}

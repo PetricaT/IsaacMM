@@ -1,4 +1,5 @@
 """Filesystem path resolution and symlink setup."""
+
 from __future__ import annotations
 
 import os
@@ -42,8 +43,11 @@ def _migrate_old_linux_config() -> None:
 
 
 def setup_symlinks() -> None:
+    if sys.platform == "win32":
+        return  # Windows requires admin/Developer Mode for symlinks
     os.makedirs(appdata, exist_ok=True)
-    _migrate_old_linux_config()
+    # Disabled, low Linux usage and probably not needed anymore.
+    # _migrate_old_linux_config()
     if config_dir != appdata and os.path.isdir(config_dir):
         old_link = os.path.join(appdata, "config")
         if os.path.islink(old_link):
@@ -114,7 +118,7 @@ def _parse_vdf_path(steam_path: str) -> Optional[str]:
                     )
                     if os.path.exists(candidate_path):
                         return game_root_path
-    except (FileNotFoundError, IndexError):
+    except FileNotFoundError, IndexError:
         pass
     return None
 
@@ -123,12 +127,8 @@ def _resolve_windows_path() -> Optional[str]:
     try:
         import winreg
 
-        registry_key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"
-        )  # pyright: ignore[reportAttributeAccessIssue]
-        steam_path, _ = winreg.QueryValueEx(
-            registry_key, "SteamPath"
-        )  # pyright: ignore[reportAttributeAccessIssue]
+        registry_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")  # pyright: ignore[reportAttributeAccessIssue]
+        steam_path, _ = winreg.QueryValueEx(registry_key, "SteamPath")  # pyright: ignore[reportAttributeAccessIssue]
         winreg.CloseKey(registry_key)  # pyright: ignore[reportAttributeAccessIssue]
         steam_root = _parse_vdf_path(steam_path)
         if steam_root:

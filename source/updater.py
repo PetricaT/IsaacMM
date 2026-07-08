@@ -1,15 +1,17 @@
 """Self-update: GitHub release check, download, and AppImage replacement."""
+
 from __future__ import annotations
 
 import json
 import os
 import platform
+import subprocess
 import sys
 import time
 from typing import Callable, Optional
 from urllib.request import Request, urlopen
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -30,12 +32,16 @@ RELEASES_URL = f"https://github.com/{REPO}/releases"
 
 # ── helpers (thread-safe) ──────────────────────────────────────────────
 
+
 def _fetch_json(url: str, timeout: int = 10) -> Optional[dict]:
     try:
-        req = Request(url, headers={
-            "User-Agent": "IsaacMM/1.0",
-            "Accept": "application/json",
-        })
+        req = Request(
+            url,
+            headers={
+                "User-Agent": "IsaacMM/1.0",
+                "Accept": "application/json",
+            },
+        )
         with urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except Exception:
@@ -49,6 +55,7 @@ def _parse_version(tag: str) -> tuple[int, ...]:
 
 
 # ── public API (thread-safe, no Qt imports needed above here) ──────────
+
 
 def get_latest_release() -> Optional[dict]:
     """Fetch latest release info from GitHub API. Call in a worker thread."""
@@ -135,7 +142,35 @@ def install_appimage_update(downloaded_path: str) -> None:
         os._exit(1)
 
 
+def install_windows_update(downloaded_path: str) -> None:
+    """Replace the running .exe with *downloaded_path* and restart."""
+    exe = sys.executable if getattr(sys, "frozen", False) else None
+    if not exe:
+        return
+
+    import tempfile
+
+    bat_path = os.path.join(tempfile.gettempdir(), "isaacmm_update.bat")
+    content = (
+        f"@echo off\r\n"
+        f"timeout /t 2 /nobreak >nul\r\n"
+        f'move /y "{downloaded_path}" "{exe}"\r\n'
+        f'start "" "{exe}"\r\n'
+    )
+    try:
+        with open(bat_path, "w") as f:
+            f.write(content)
+        subprocess.Popen(
+            ["cmd.exe", "/c", bat_path],
+            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+        )
+    except Exception:
+        return
+    sys.exit(0)
+
+
 # ── update UI dialog ───────────────────────────────────────────────────
+
 
 class UpdateDialog(QDialog):
     def __init__(
@@ -211,8 +246,10 @@ class UpdateDialog(QDialog):
         import tempfile
 
         suffix = (
-            "-x86_64.AppImage" if platform.system() == "Linux"
-            else ".exe" if platform.system() == "Windows"
+            "-x86_64.AppImage"
+            if platform.system() == "Linux"
+            else ".exe"
+            if platform.system() == "Windows"
             else ".dmg"
         )
         tmp = tempfile.mktemp(suffix=suffix)
@@ -223,7 +260,7 @@ class UpdateDialog(QDialog):
         def _do_download() -> bool:
             return download_asset(self._download_url, tmp, _progress)
 
-        from ..worker import ManagedWorker
+        from .worker import ManagedWorker
 
         self._dl_worker = ManagedWorker(parent=self)
         self._dl_worker.finished.connect(lambda ok: self._on_downloaded(ok, tmp))
@@ -243,6 +280,9 @@ class UpdateDialog(QDialog):
         if is_appimage():
             self.accept()
             install_appimage_update(path)
+        elif platform.system() == "Windows" and getattr(sys, "frozen", False):
+            self.accept()
+            install_windows_update(path)
         elif platform.system() == "Linux":
             self._status_label.setText(
                 f"Downloaded to: {path}\n"

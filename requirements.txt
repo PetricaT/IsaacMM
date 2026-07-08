@@ -7,3 +7,4 @@ loguru
 httpx
 tenacity
 packaging
+rapidfuzz

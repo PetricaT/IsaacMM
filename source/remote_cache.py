@@ -1,4 +1,5 @@
 """Generic remote data cache with fetch/cache/bundled/fallback chain."""
+
 from __future__ import annotations
 
 import os
@@ -72,14 +73,14 @@ class RemoteCache:
         try:
             with open(self._cache_path, encoding="utf-8") as f:
                 return self._parse_fn(f.read())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             return None
 
     def _try_bundled(self) -> Optional[Any]:
         try:
             with open(self._bundled_path, encoding="utf-8") as f:
                 return self._parse_fn(f.read())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             return None
 
     def get(self) -> Any:

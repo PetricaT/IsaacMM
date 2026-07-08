@@ -1,17 +1,26 @@
 """Main application window and entry point."""
+
 from __future__ import annotations
 
-
 import os
+import sys
 from typing import Optional
 
-from PySide6.QtCore import QEvent, QSize, QTimer, Qt
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication, QLabel, QSplitter, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QSplitter,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import config, game_versions, paths, sorter
 from .backup import backup_all, get_backup_root
 from .components.console import ConsoleWidget
+from .components.controller_ui import ICON_SIZE, ControllerRouter, FocusOverlay
 from .components.dialogs import SEPARATOR_ROLE, SettingsPanel, _colorize
 from .components.modlist import SEPARATOR_SUFFIX, ModListPanel
 from .components.workshop import (
@@ -22,14 +31,19 @@ from .components.workshop import (
     _save_details_cache,
     _sync_workshop_limiter,
 )
-from .updater import UpdateDialog, get_download_asset, get_latest_release, is_appimage, is_newer_version
+from .controller import (
+    Button,
+    ControllerManager,
+)
+from .updater import (
+    UpdateDialog,
+    get_download_asset,
+    get_latest_release,
+    is_appimage,
+    is_newer_version,
+)
 from .widgets import ModInfoPanel
 from .worker import ManagedWorker
-from .controller import (
-    ControllerManager,
-    Button,
-)
-from .components.controller_ui import ControllerRouter, FocusOverlay, ICON_SIZE
 
 
 class DragApp(QWidget):
@@ -57,18 +71,28 @@ QPushButton:focus {
         self._game_versions_worker = ManagedWorker(parent=self)
         self._manual_backup = False
         self._backup_worker.finished.connect(self._on_backup_finished)
-        self._backup_worker.error.connect(lambda m: self.log(f"Backup failed: {m}", "error"))
-        self._masterlist_worker.finished.connect(
-            lambda r: self.log("Masterlist updated to latest version") if r is True else None
+        self._backup_worker.error.connect(
+            lambda m: self.log(f"Backup failed: {m}", "error")
         )
-        self._masterlist_worker.error.connect(lambda m: self.log(f"Masterlist fetch failed: {m}", "warning"))
+        self._masterlist_worker.finished.connect(
+            lambda r: (
+                self.log("Masterlist updated to latest version") if r is True else None
+            )
+        )
+        self._masterlist_worker.error.connect(
+            lambda m: self.log(f"Masterlist fetch failed: {m}", "warning")
+        )
         self._game_versions_worker.finished.connect(
             lambda r: self.log("Game versions updated to latest") if r is True else None
         )
-        self._game_versions_worker.error.connect(lambda m: self.log(f"Game versions fetch failed: {m}", "warning"))
+        self._game_versions_worker.error.connect(
+            lambda m: self.log(f"Game versions fetch failed: {m}", "warning")
+        )
         self._update_worker = ManagedWorker(parent=self)
         self._update_worker.finished.connect(self._on_update_check_done)
-        self._update_worker.error.connect(lambda m: self.log(f"Update check failed: {m}", "warning"))
+        self._update_worker.error.connect(
+            lambda m: self.log(f"Update check failed: {m}", "warning")
+        )
         self._controller = None
         self._router = None
 
@@ -83,16 +107,21 @@ QPushButton:focus {
         _init_workshop_limiter()
         _init_details_cache()
         game_versions.fetch_initial()
-        paths.setup_symlinks()
+        # Windows requires admin rights for symlinking
+        if sys.platform != "win32":
+            paths.setup_symlinks()
         self.initUi()
         self._refresh_masterlist_background()
         self._refresh_game_versions_background()
         self._load_base_qss()
         self._init_controller()
-        QTimer.singleShot(5000, self._check_for_updates_silent)
+        # AUTOUPDATER-DISABLED(2026-07-07): silent startup check re-enabled
+        # when the Windows/macOS replace+restart logic is stable.
+        # if config.check_updates_on_startup:
+        #     QTimer.singleShot(5000, self._check_for_updates_silent)
 
     def apply_qt_theme(self, style_name: str) -> None:
-        if getattr(self, '_applying_theme', False):
+        if getattr(self, "_applying_theme", False):
             return
         self._applying_theme = True
         try:
@@ -127,27 +156,27 @@ QPushButton:focus {
         config.flush()
         if self._controller:
             self._controller.cleanup()
-        if hasattr(self, '_router'):
+        if hasattr(self, "_router"):
             self._router.cleanup()
-        for icon in getattr(self.mod_list_panel, '_controller_icons', []):
+        for icon in getattr(self.mod_list_panel, "_controller_icons", []):
             icon.cleanup()
-        for icon in getattr(self.modInfoPanel, '_controller_icons', []):
+        for icon in getattr(self.modInfoPanel, "_controller_icons", []):
             icon.cleanup()
-        for ov in getattr(self, '_focus_overlays', []):
+        for ov in getattr(self, "_focus_overlays", []):
             ov.hide()
             ov.setParent(None)
-        for lbl, _ in getattr(self, '_shoulder_indicators', []):
+        for lbl, _ in getattr(self, "_shoulder_indicators", []):
             lbl.hide()
             lbl.setParent(None)
         self._backup_worker.wait(15000)
         self._masterlist_worker.wait(5000)
         self._game_versions_worker.wait(5000)
         self._update_worker.wait(5000)
-        if hasattr(self, 'mod_list_panel'):
+        if hasattr(self, "mod_list_panel"):
             self.mod_list_panel._load_worker.wait(5000)
             self.mod_list_panel._sort_worker.wait(5000)
             self.mod_list_panel._scan_worker.wait(5000)
-        if hasattr(self, 'modInfoPanel'):
+        if hasattr(self, "modInfoPanel"):
             self.modInfoPanel._icon_worker.wait(5000)
             self.modInfoPanel._details_worker.wait(5000)
         super().closeEvent(close_event)
@@ -213,7 +242,8 @@ QPushButton:focus {
         self._stack.setCurrentWidget(self._settings_panel)
         if self._controller and self._controller.is_connected:
             self._router.unregister_global(
-                Button.LEFT_SHOULDER, Button.RIGHT_SHOULDER,
+                Button.LEFT_SHOULDER,
+                Button.RIGHT_SHOULDER,
                 Button.BACK,
             )
             self._settings_panel.connect_controller(self._controller)
@@ -222,11 +252,13 @@ QPushButton:focus {
         self._stack.setCurrentIndex(0)
         if self._controller and self._controller.is_connected:
             self._settings_panel.disconnect_controller(self._controller)
-            self._router.register_global({
-                Button.LEFT_SHOULDER: self._focus_modlist,
-                Button.RIGHT_SHOULDER: self._focus_modinfo,
-                Button.BACK: self._open_settings,
-            })
+            self._router.register_global(
+                {
+                    Button.LEFT_SHOULDER: self._focus_modlist,
+                    Button.RIGHT_SHOULDER: self._focus_modinfo,
+                    Button.BACK: self._open_settings,
+                }
+            )
 
     def _maybe_backup(self) -> None:
         if not config.backup_enabled or not config.mods_path:
@@ -268,12 +300,14 @@ QPushButton:focus {
         self._update_worker.start(get_latest_release, name="UpdateCheck")
 
     def _on_update_check_done(self, release: dict | None) -> None:
-        interactive = getattr(self, '_interactive_update_check', False)
+        interactive = getattr(self, "_interactive_update_check", False)
         self._interactive_update_check = False
 
         if release is None:
             if interactive:
-                self.log("Could not check for updates (no network or API down)", "warning")
+                self.log(
+                    "Could not check for updates (no network or API down)", "warning"
+                )
             return
 
         tag = release.get("tag_name", "")
@@ -300,6 +334,11 @@ QPushButton:focus {
         dl_path = dialog.download_path()
         if dl_path and is_appimage():
             QTimer.singleShot(1500, QApplication.quit)
+        # Refresh masterlist immediately; the hourly timer is already set
+        # in __init__ via _refresh_masterlist_background().
+        self._fetch_masterlist()
+
+    def _refresh_masterlist_background(self) -> None:
         self._fetch_masterlist()
         self._masterlist_timer = QTimer(self)
         self._masterlist_timer.timeout.connect(self._fetch_masterlist)
@@ -312,7 +351,9 @@ QPushButton:focus {
         self._game_versions_timer.start(3600000)
 
     def _fetch_game_versions(self) -> None:
-        self._game_versions_worker.start(game_versions.fetch_background, name="GameVersions")
+        self._game_versions_worker.start(
+            game_versions.fetch_background, name="GameVersions"
+        )
 
     def _batch_fetch_details(self) -> None:
         enqueued = 0
@@ -349,13 +390,13 @@ QPushButton:focus {
         self.console_widget.log_colored(segments)
 
     def eventFilter(self, obj, event) -> bool:
-        controller = getattr(self, '_controller', None)
+        controller = getattr(self, "_controller", None)
         if controller and controller.is_connected:
             etype = event.type()
             if etype in (QEvent.MouseButtonPress, QEvent.KeyPress, QEvent.Wheel):
                 self._controller.set_active(False)
         if event.type() == QEvent.Resize:
-            for lbl, panel in getattr(self, '_shoulder_indicators', []):
+            for lbl, panel in getattr(self, "_shoulder_indicators", []):
                 if obj is panel and lbl.isVisible():
                     self._reposition_shoulder_indicators()
                     break
@@ -383,8 +424,12 @@ QPushButton:focus {
             path = os.path.join(base, f"{btn_name}.png")
             pm = QPixmap(path)
             if not pm.isNull():
-                scaled = pm.scaled(SH, SH, Qt.AspectRatioMode.KeepAspectRatio,
-                                   Qt.TransformationMode.SmoothTransformation)
+                scaled = pm.scaled(
+                    SH,
+                    SH,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
                 lbl.setPixmap(scaled)
             lbl.hide()
             panel.installEventFilter(self)
@@ -405,11 +450,13 @@ QPushButton:focus {
         try:
             self._controller = ControllerManager(self)
             self._router = ControllerRouter(self._controller)
-            self._router.register_global({
-                Button.BACK: self._open_settings,
-                Button.LEFT_SHOULDER: self._focus_modlist,
-                Button.RIGHT_SHOULDER: self._focus_modinfo,
-            })
+            self._router.register_global(
+                {
+                    Button.BACK: self._open_settings,
+                    Button.LEFT_SHOULDER: self._focus_modlist,
+                    Button.RIGHT_SHOULDER: self._focus_modinfo,
+                }
+            )
             self._focus_overlays = (
                 FocusOverlay(self.modInfoPanel),
                 FocusOverlay(self._left_panel),

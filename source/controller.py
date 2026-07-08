@@ -1,4 +1,5 @@
 """Controller support via SDL3 gamepad API."""
+
 from __future__ import annotations
 
 import ctypes
@@ -7,9 +8,8 @@ import os
 import threading
 from typing import Optional
 
-from PySide6.QtCore import QObject, QTimer, Signal
-
 import sdl3
+from PySide6.QtCore import QObject, QTimer, Signal
 
 
 class GamepadType(enum.IntEnum):
@@ -118,6 +118,7 @@ class ControllerManager(QObject):
     def _log_fail(self, msg: str) -> None:
         try:
             from . import logger
+
             logger.log("debug", f"Controller init: {msg}")
         except Exception:
             pass
@@ -142,7 +143,11 @@ class ControllerManager(QObject):
             self._controller = ctrl
             self._instance_id = sdl3.SDL_GetGamepadID(ctrl)
             raw_name = sdl3.SDL_GetGamepadName(ctrl)
-            self._gamepad_name = raw_name.decode("utf-8", "replace") if isinstance(raw_name, bytes) else (raw_name or "")
+            self._gamepad_name = (
+                raw_name.decode("utf-8", "replace")
+                if isinstance(raw_name, bytes)
+                else (raw_name or "")
+            )
             raw_type = sdl3.SDL_GetGamepadType(ctrl)
             self._gamepad_type = GamepadType(raw_type)
             self._connected = True
@@ -172,7 +177,10 @@ class ControllerManager(QObject):
             elif event.type == sdl3.SDL_EVENT_GAMEPAD_REMOVED:
                 should_close = False
                 with self._lock:
-                    if self._instance_id is not None and event.gdevice.which == self._instance_id:
+                    if (
+                        self._instance_id is not None
+                        and event.gdevice.which == self._instance_id
+                    ):
                         should_close = True
                 if should_close:
                     self._close_controller()
@@ -236,9 +244,7 @@ class ControllerManager(QObject):
             if not self._controller:
                 return False
             try:
-                label = sdl3.SDL_GetGamepadButtonLabel(
-                    self._controller, Button.SOUTH
-                )
+                label = sdl3.SDL_GetGamepadButtonLabel(self._controller, Button.SOUTH)
                 return label in (
                     sdl3.SDL_GAMEPAD_BUTTON_LABEL_CROSS,
                     sdl3.SDL_GAMEPAD_BUTTON_LABEL_CIRCLE,
@@ -257,5 +263,3 @@ class ControllerManager(QObject):
             sdl3.SDL_Quit()
         except Exception:
             pass
-
-
