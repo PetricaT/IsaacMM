@@ -823,10 +823,15 @@ class ModListPanel(QWidget):
         self.log_message.emit("Applying sort order...", "info")
         sort_index = 1
         ordered_folders = []
+
+        self.listView.setUpdatesEnabled(False)
+        scroll_pos = self.listView.verticalScrollBar().value()
+
         for row_index in range(self.model.rowCount()):
             col0 = self.model.item(row_index)
             mod_folder = col0.data(Qt.ItemDataRole.UserRole)
             if mod_folder and sorter.should_preserve_name(mod_folder):
+                ordered_folders.append(mod_folder)
                 continue
             ordered_folders.append(mod_folder)
             if col0.data(SEPARATOR_ROLE):
@@ -847,9 +852,12 @@ class ModListPanel(QWidget):
                     encoding="utf-8",
                     xml_declaration=True,
                 )
+                col0.setText(normalize_mod_name(new_name))
+                col0.setData(normalize_mod_name(new_name), NORMALIZED_NAME_ROLE)
                 sort_index += 1
             except Exception as exception:
                 self.log_message.emit(f"Writing {mod_folder}: {exception}", "error")
+
         for folder_name, toggle_state in self.pending_toggles.items():
             disable_file_path = os.path.join(
                 config.mods_path, folder_name, "disable.it"
@@ -872,8 +880,23 @@ class ModListPanel(QWidget):
                     )
         self.pending_toggles.clear()
         sorter.save_last_order(ordered_folders)
+
+        self._renumber_priority()
+        self._update_conflict_indicators()
+
+        config.loaded_mods.clear()
+        for row_index in range(self.model.rowCount()):
+            col0 = self.model.item(row_index)
+            if col0 and not col0.data(SEPARATOR_ROLE):
+                mod_folder = col0.data(Qt.ItemDataRole.UserRole)
+                if mod_folder:
+                    config.loaded_mods.append([col0.text(), mod_folder])
+
+        self.listView.setUpdatesEnabled(True)
+        self.listView.verticalScrollBar().setValue(scroll_pos)
+        self.listView.update()
+
         self.log_message.emit(f"Applied order for {sort_index - 1} mods", "info")
-        self.load_mod_list()
 
     def restore_last_order(self) -> None:
         folder_order = sorter.load_last_order()
@@ -940,16 +963,12 @@ class ModListPanel(QWidget):
         def _run_sort() -> list:
             return sorter.auto_sort(sort_input, mods_path)
 
-        self._sort_mod_data = mod_data_list
         self._sort_separators = separators
         self._sort_worker.start(_run_sort, name="AutoSort")
 
     def _on_sort_done(self, auto_sorted_mods: list) -> None:
-        mod_data_list = getattr(self, "_sort_mod_data", [])
         separators = getattr(self, "_sort_separators", [])
-        self._populating = True
-        self.model.clear()
-        self._mod_files_cache.clear()
+        separator_lookup = {sep["folder"]: sep for sep in separators}
 
         ordered_list = list(auto_sorted_mods)
         blacklisted = [
@@ -965,52 +984,54 @@ class ModListPanel(QWidget):
                 insert_position, (separator_entry["name"], separator_entry["folder"])
             )
 
-        mod_data_lookup = {mod["folder"]: mod for mod in mod_data_list}
-        separator_lookup = {sep["folder"]: sep for sep in separators}
-        priority = 1
-        for row_index, (entry_name, entry_folder) in enumerate(ordered_list):
-            col0, col1, col2, col3 = self._make_row_items()
-            col0.setData(entry_folder, Qt.ItemDataRole.UserRole)
-            if entry_folder in separator_lookup:
-                separator_entry = separator_lookup[entry_folder]
-                separator_data = {
-                    "name": entry_name,
-                    "color": separator_entry["color"],
-                }
-                col0.setData(separator_data, SEPARATOR_ROLE)
-                col0.setText(entry_name)
-                col0.setBackground(QColor(separator_entry["color"]))
-                col0.setForeground(QColor(_text_color_for_bg(separator_entry["color"])))
-                col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                bg = QColor(separator_entry["color"])
-                col1.setBackground(bg)
-                col2.setBackground(bg)
-                col3.setBackground(bg)
-            else:
-                display_name = normalize_mod_name(entry_name)
-                col0.setText(display_name)
-                col0.setData(display_name, NORMALIZED_NAME_ROLE)
-                col0.setCheckable(True)
-                mod_info = mod_data_lookup.get(entry_folder, {})
-                col0.setCheckState(mod_info.get("checked", Qt.CheckState.Checked))
-                mod_version = mod_info.get("version", "")
-                if mod_version:
-                    col2.setText(mod_version)
-                col3.setText(str(priority))
-                col3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                priority += 1
-            self.model.appendRow([col0, col1, col2, col3])
+        self.listView.setUpdatesEnabled(False)
+        scroll_pos = self.listView.verticalScrollBar().value()
 
-        self.model.setHorizontalHeaderLabels(
-            ["Mod Name", "Flags", "Version", "Priority"]
-        )
-        self._restore_column_widths()
+        existing = []
+        for row in reversed(range(self.model.rowCount())):
+            existing.append(self.model.takeRow(row))
+
+        if not existing:
+            self.listView.setUpdatesEnabled(True)
+            return
+
+        folder_to_items = {}
+        for taken in existing:
+            folder = taken[0].data(Qt.ItemDataRole.UserRole) if taken else None
+            if folder:
+                folder_to_items[folder] = taken
+
+        self._populating = True
+
+        for entry_name, entry_folder in ordered_list:
+            items = folder_to_items.pop(entry_folder, None)
+            if items is not None:
+                self.model.appendRow(items)
+
+        for items in folder_to_items.values():
+            self.model.appendRow(items)
+
+        priority = 1
+        for row in range(self.model.rowCount()):
+            c0 = self.model.item(row)
+            c3 = self.model.item(row, 3)
+            if c0 and c3 and not c0.data(SEPARATOR_ROLE):
+                c3.setText(str(priority))
+                c3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                priority += 1
+
         config.loaded_mods = [
             [entry_name, entry_folder]
             for entry_name, entry_folder in ordered_list
             if entry_folder not in separator_lookup
         ]
+
         self._populating = False
+
+        self.listView.setUpdatesEnabled(True)
+        self.listView.verticalScrollBar().setValue(scroll_pos)
+        self.listView.update()
+
         self.log_message.emit(
             f"Auto-sort complete ({len(config.loaded_mods)} mods)", "info"
         )
