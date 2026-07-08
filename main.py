@@ -1,13 +1,19 @@
 import faulthandler
+import os
 import sys
 import traceback
 
+# Safeguard for console=False builds from pyinstaller
 if sys.stderr is None:
     try:
         sys.stderr = open("crash.log", "w", 1)
     except Exception:
         import io
+
         sys.stderr = io.StringIO()
+
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
 
 from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QIcon
@@ -22,7 +28,7 @@ if __name__ == "__main__":
         sys.argv.remove("--trace")
         try:
             faulthandler.enable(sys.stderr)
-        except (io.UnsupportedOperation, AttributeError):
+        except io.UnsupportedOperation, AttributeError:
             pass
 
         def _excepthook(etype, val, tb):

@@ -1,4 +1,5 @@
 """Theme loading and saving."""
+
 from __future__ import annotations
 
 import os
