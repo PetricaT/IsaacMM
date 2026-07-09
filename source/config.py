@@ -55,7 +55,7 @@ class _Config:
     controller_enabled: bool = True
     controller_deadzone: int = 8000
     controller_simple_icons: bool = False
-    use_system_icons: bool = False
+    use_system_icons: bool = True
     theme_preset: str = ""
     # Widget colors
     dpad_color: str = ""
@@ -224,7 +224,7 @@ def load() -> None:
             "controller_simple_icons", False
         )
         theme_section = config_data.get("theme", {})
-        _cfg.use_system_icons = theme_section.get("use_system_icons", False)
+        _cfg.use_system_icons = theme_section.get("use_system_icons", True)
         _cfg.theme_preset = theme_section.get("theme_preset", "")
         _cfg.accent_color = theme_section.get("accent", "")
         _cfg.disabled_mod_color = theme_section.get("disabled_mod", "")

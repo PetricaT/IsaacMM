@@ -1,9 +1,3 @@
-/* === Tags list (Mod Info) === */
-QListWidget {
-    border: none;
-    background: transparent;
-}
-
 /* === Context menu === */
 QMenu {
     border: 1px solid palette(mid);

@@ -5,6 +5,9 @@ import html
 import re
 
 
+from PySide6.QtGui import QFont
+
+
 def bbcode_to_html(input_text: str) -> str:
     text = html.escape(input_text)
     text = re.sub(r"\[b\](.*?)\[/b\]", r"<b>\1</b>", text, flags=re.DOTALL)
@@ -24,4 +27,11 @@ def bbcode_to_html(input_text: str) -> str:
     text = re.sub(r"\[/list\]", "</ul>", text)
     text = re.sub(r"\[\*\]", "<li>", text)
     text = text.replace("\n", "<br>")
-    return f"<html><body style='font-size: 12pt;'>{text}</body></html>"
+    font = QFont()
+    pt = font.pointSize()
+    if pt > 0:
+        font_size = f"{pt}pt"
+    else:
+        px = font.pixelSize()
+        font_size = f"{px}px" if px > 0 else "medium"
+    return f"<html><body style='font-size: {font_size};'>{text}</body></html>"

@@ -129,7 +129,8 @@ class ConflictDelegate(QStyledItemDelegate):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         font = QFont()
-        font.setPixelSize(14)
+        default_px = QFont().pixelSize()
+        font.setPixelSize(default_px + 2 if default_px > 0 else 14)
         font.setBold(True)
         painter.setFont(font)
         item_rect = option.rect

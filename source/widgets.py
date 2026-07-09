@@ -261,7 +261,7 @@ class ModInfoPanel(QWidget):
         self.folder_label = QPushButton()
         self.folder_label.setFlat(True)
         self.folder_label.setStyleSheet(
-            f"QPushButton {{ color: {config.folder_label_color or 'palette(text)'}; font-size: 10px; text-align: left; border: none; }}"
+            f"QPushButton {{ color: {config.folder_label_color or 'palette(text)'}; text-align: left; border: none; }}"
         )
         self.folder_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.folder_label.clicked.connect(self._open_folder)

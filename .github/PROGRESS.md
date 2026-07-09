@@ -223,7 +223,8 @@ New user-facing functionality. Implement after Section 1 is stable.
              Green dot indicator in modlist header when watcher active, gray when off.
       Blocked by: nothing (can land before CONFLICT-INDEX)
 
-- [ ] LOAD-ORDER-HISTORY - Undo/redo for sort operations
+- [x] LOAD-ORDER-HISTORY - Undo/redo for sort operations
+      Completed: 2026-07-09
       Lib: `sqlite3` (stdlib, already in SQLITE-STATE)
       Files: `source/database.py`, `source/components/modlist.py`, `source/window.py`
       Notes: On every sort or manual reorder, write current order to
@@ -312,7 +313,7 @@ hardcoded colors, metrics and styling.
 
 ---
 
-- [ ] NATIVE-PALETTE - Use QPalette as the single source of UI colors
+- [X] NATIVE-PALETTE - Use QPalette as the single source of UI colors
       Lib: `PySide6.QtGui.QPalette`
       Files: all custom-painted widgets, theme helpers
       Notes: Remove hardcoded QColor values wherever possible. Retrieve colors
@@ -331,7 +332,7 @@ hardcoded colors, metrics and styling.
              for Windows, KDE Plasma, GNOME, macOS, dark mode, and custom system
              themes without platform-specific code.
 
-- [ ] NATIVE-STYLE - Follow the platform QStyle
+- [X] NATIVE-STYLE - Follow the platform QStyle
       Lib: `PySide6.QtWidgets.QStyle`
       Files: application startup, custom widgets
       Notes: Do not force the Fusion style. Allow Qt to select the platform
@@ -340,7 +341,7 @@ hardcoded colors, metrics and styling.
              Custom widgets should obtain spacing, frame widths and control
              metrics from QStyle rather than hardcoded constants.
 
-- [ ] NATIVE-FONTS - Use the operating system UI font
+- [X] NATIVE-FONTS - Use the operating system UI font
       Lib: `QApplication`, `QFontDatabase`
       Files: application startup
       Notes: Use the application's default font rather than specifying fonts
@@ -351,7 +352,18 @@ hardcoded colors, metrics and styling.
                - macOS: San Francisco
              Avoid fixed font sizes except where technically required.
 
-- [ ] NATIVE-ICONS - Integrate with platform icon themes
+- [x] NATIVE-ICONS - Integrate with platform icon themes
+      Completed: 2026-07-09
+      Lib: `QStyle`, `QIcon`
+      Files: `source/config.py`, `source/widgets.py`, `source/components/dialogs.py`
+      Notes: Flipped `config.use_system_icons` default to `True`. On first launch
+             the app now prefers `QIcon.fromTheme("folder")` and
+             `QIcon.fromTheme("image-x-generic")` over bundled PNGs. On Linux this
+             follows the user's desktop icon theme (Breeze, Adwaita, etc.).
+             Toggle available in Settings → Appearance. The existing settings
+             checkbox and `refresh_icons()` wiring was already in place —
+             only the default changed. Controller button artwork remains bundled
+             (no native equivalent).
       Lib: `QStyle`, `QIcon`
       Files: toolbar creation, dialogs
       Notes: Prefer `QStyle.standardIcon()` for common actions and
@@ -359,7 +371,7 @@ hardcoded colors, metrics and styling.
              follows the user's selected icon theme. Only bundle application-
              specific artwork that has no native equivalent.
 
-- [ ] NATIVE-WINDOW - Preserve native window decorations
+- [X] NATIVE-WINDOW - Preserve native window decorations
       Files: main window
       Notes: Continue using the operating system's native window frame.
              Do not implement a custom title bar. This preserves:
@@ -369,16 +381,18 @@ hardcoded colors, metrics and styling.
                - Accent/title bar colors
                - Platform-specific effects (Mica, KWin decorations, etc.)
 
-- [ ] THEME-CHANGE - React to runtime theme changes
+- [x] THEME-CHANGE - React to runtime theme changes
+      Completed: 2026-07-09
       Lib: `QEvent`
-      Files: custom widgets, main window
-      Notes: Listen for palette/style change events
-             (`PaletteChange`, `ApplicationPaletteChange`,
-             `StyleChange`) and refresh any cached colors, icons or
-             custom painting. Theme switches should not require an
-             application restart.
+      Files: `source/window.py`
+      Notes: `changeEvent` already handled `PaletteChange` (reload QSS +
+             re-apply theme). Added `StyleChange` handling. Both now call
+             `_refresh_on_theme_change()` which runs `modInfoPanel.refresh_icons()`
+             so icon theme changes are picked up immediately.
+             Theme switches do not require an application restart.
 
 - [ ] CUSTOM-PAINTING - Use palette and style APIs for all custom rendering
+      Blocker: POSTPONED
       Lib: `QPainter`, `QPalette`, `QStyle`
       Files: all custom-painted controls
       Notes: Whenever drawing custom UI, obtain colors from the widget's
@@ -387,6 +401,7 @@ hardcoded colors, metrics and styling.
              of the application's visual identity.
 
 - [ ] PLATFORM-THEME-AUDIT - Remove stylesheet-based native overrides
+      Blocker: POSTPONED
       Files: all `.setStyleSheet()` usage
       Notes: Audit all stylesheets. Remove any stylesheet whose only purpose
              is recoloring or restyling standard Qt widgets. Restrict
@@ -718,10 +733,11 @@ Required once new libraries are added.
 | 1 - Drop-in simplifications | 5 | 5 | 0 | 0 |
 | 1b - Bug fixes (Windows) | 4 | 4 | 0 | 0 |
 | 2 - Architecture & state | 3 | 3 | 0 | 0 |
-| 3 - UX features | 8 | 1 | 0 | 0 |
+| 3 - UX features | 8 | 2 | 0 | 0 |
+| 3b - Native UI integration | 8 | 6 | 0 | 0 |
 | 4 - OS integrations | 5 | 0 | 0 | 0 |
 | 5 - Packaging | 9 | 0 | 0 | 0 |
-| **Total** | **34** | **12** | **0** | **0** |
+| **Total** | **34** | **15** | **0** | **0** |
 
 ---
 
