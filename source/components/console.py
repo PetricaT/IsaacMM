@@ -68,7 +68,7 @@ class ConsoleWidget(QWidget):
         rate_layout.addStretch()
         self._watcher_dot = QLabel("\u25cf")
         self._watcher_dot.setToolTip("Folder watcher: inactive")
-        self._watcher_dot.setStyleSheet("color: #888; font-size: 12px;")
+        self._watcher_dot.setStyleSheet("color: palette(mid); font-size: 12px;")
         rate_layout.addWidget(self._watcher_dot)
         rate_layout.addWidget(self.rate_timer_label)
 
@@ -89,10 +89,10 @@ class ConsoleWidget(QWidget):
     def _on_watcher_state(self) -> None:
         active = self._watcher and self._watcher.is_active
         if active:
-            self._watcher_dot.setStyleSheet("color: #4caf50; font-size: 12px;")
+            self._watcher_dot.setStyleSheet("color: palette(highlight); font-size: 12px;")
             self._watcher_dot.setToolTip("Folder watcher: active")
         else:
-            self._watcher_dot.setStyleSheet("color: #888; font-size: 12px;")
+            self._watcher_dot.setStyleSheet("color: palette(mid); font-size: 12px;")
             self._watcher_dot.setToolTip("Folder watcher: inactive")
 
     def log(self, message: str, level: str = "info") -> None:
