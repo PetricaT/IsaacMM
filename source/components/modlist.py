@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from rapidfuzz import process as fuzzy_process
 
 from .. import config, logger, paths, sorter
+from ..conflict_index import get_cached_files
 from ..controller import Button
 from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
@@ -59,9 +60,6 @@ def _text_color_for_bg(hex_color: str) -> str:
     c = QColor(hex_color)
     l = (0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()) / 255
     return "#000000" if l > 0.5 else "#ffffff"
-
-
-_CONFLICT_EXTS = {".png", ".anm2", ".wav", ".lua"}
 
 
 def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
@@ -116,31 +114,6 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
         "separator_map": separator_map,
         "loaded_mods": loaded_mods,
     }
-
-
-def _scan_mod_files_for_cache(
-    mod_folder_name: str, mods_path: str, ignored_items: list
-) -> set:
-    full_mod_path = os.path.join(mods_path, mod_folder_name)
-    conflict_files = set()
-    try:
-        for walk_root, walk_dirs, file_names in os.walk(full_mod_path):
-            walk_dirs[:] = [d for d in walk_dirs if d not in ignored_items]
-            for file_name in file_names:
-                if file_name in ignored_items:
-                    continue
-                file_extension = os.path.splitext(file_name)[1].lower()
-                if file_extension not in _CONFLICT_EXTS:
-                    continue
-                relative_path = os.path.relpath(
-                    os.path.join(walk_root, file_name), full_mod_path
-                )
-                if "/" in relative_path or "\\" in relative_path:
-                    conflict_files.add(relative_path)
-    except OSError:
-        pass
-    return conflict_files
-
 
 class ModListPanel(QWidget):
     mod_selected = Signal(str, str, object)
@@ -289,7 +262,8 @@ class ModListPanel(QWidget):
         if state is not None:
             self._restoring_widths = True
             self.listView.header().restoreState(state)
-            self._restoring_widths = False
+        self._restoring_widths = False
+        self._watcher = None
 
     def load_mod_list(self) -> None:
         if config.mods_path == "":
@@ -575,9 +549,7 @@ class ModListPanel(QWidget):
         def _run_cache_warmup() -> dict:
             cache = {}
             for folder in mod_folders:
-                cache[folder] = _scan_mod_files_for_cache(
-                    folder, config.mods_path, config.ignored_items
-                )
+                cache[folder] = get_cached_files(folder)
             return cache
 
         self._scan_worker.start(_run_cache_warmup, name="CacheWarmup")
@@ -747,11 +719,22 @@ class ModListPanel(QWidget):
         cached_files = self._mod_files_cache.get(mod_folder_name)
         if cached_files is not None:
             return cached_files
-        conflict_files = _scan_mod_files_for_cache(
-            mod_folder_name, config.mods_path, config.ignored_items
-        )
+        conflict_files = get_cached_files(mod_folder_name)
         self._mod_files_cache[mod_folder_name] = conflict_files
         return conflict_files
+
+    def set_watcher(self, watcher) -> None:
+        self._watcher = watcher
+        if watcher is not None:
+            watcher.folder_changed.connect(self._on_mod_folder_changed)
+
+    def _on_mod_folder_changed(self, folder: str) -> None:
+        if self._populating or self._updating_conflicts:
+            return
+        from ..conflict_index import invalidate
+        invalidate(folder)
+        self._mod_files_cache.pop(folder, None)
+        self._update_conflict_indicators()
 
     def _on_item_changed(self, list_item) -> None:
         if list_item.column() != 0:

@@ -11,11 +11,10 @@ from typing import Callable, Optional
 
 import yaml
 
-from . import logger, paths
+from . import database, logger, paths
 from .remote_cache import RemoteCache
 
 USER_RULES_FILE: str = os.path.join(paths.config_dir, "user_rules.yaml")
-LAST_ORDER_FILE: str = os.path.join(paths.appdata, "last_order.yaml")
 
 _masterlist_cache = RemoteCache(
     url="https://raw.githubusercontent.com/PetricaT/IsaacMM/main/masterlist.yaml",
@@ -54,23 +53,11 @@ def fetch_initial() -> None:
 
 
 def save_last_order(folder_order: list) -> None:
-    try:
-        os.makedirs(paths.appdata, exist_ok=True)
-        with open(LAST_ORDER_FILE, "w") as order_file:
-            yaml.dump(
-                {"ordered_folders": folder_order}, order_file, default_flow_style=False
-            )
-    except OSError as exc:
-        logger.log("error", f"Failed to save last order: {exc}")
+    database.save_load_order(folder_order)
 
 
 def load_last_order() -> Optional[list]:
-    try:
-        with open(LAST_ORDER_FILE) as order_file:
-            yaml_data = yaml.safe_load(order_file)
-            return yaml_data.get("ordered_folders") if yaml_data else None
-    except (OSError, yaml.YAMLError):
-        return None
+    return database.load_latest_order()
 
 
 def _load_user_rules() -> list:

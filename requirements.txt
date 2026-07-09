@@ -8,3 +8,4 @@ httpx
 tenacity
 packaging
 rapidfuzz
+watchdog

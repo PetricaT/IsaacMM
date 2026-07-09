@@ -135,75 +135,63 @@ Windows-specific defects found during testing.
 
 ---
 
-## SECTION 2 - ARCHITECTURE & STATE
+## SECTION 2 — ARCHITECTURE & STATE ✅
 
 These touch the data layer and unlock multiple features downstream.
 
 ---
 
-- [ ] SQLITE-STATE - Consolidate state files into SQLite
+- [x] SQLITE-STATE - Consolidate state files into SQLite
+      Completed: 2026-07-08
       Lib: `sqlite3` (stdlib)
-      Files: `source/config.py`, `source/sorter.py`, `source/components/workshop.py`,
-             new file `source/database.py`
-      Notes: Create `source/database.py` as the single DB access layer.
-             Migrate the following out of config.toml and yaml files:
-               - `workshop_timestamps` → `workshop_items` table
-               - `dead_workshop_ids` → `workshop_items.status` column
-               - `last_order.yaml` → `load_order_history` table (enables undo/redo)
-               - Workshop icon/details cache → `workshop_items` table
-             Keep `config.toml` for user-editable settings only (paths, theme,
-             feature flags). DB file lives at `paths.user_data_dir / isaacmm.db`.
-             Schema:
-               workshop_items(id INTEGER PK, title, preview_url, description,
-                              last_fetched, status TEXT)
-               load_order_history(id INTEGER PK, timestamp, order_json TEXT,
-                                  label TEXT)
-             Migration: on first run with new version, import existing data from
-             config.toml and yaml files into DB, then remove the old keys.
-      Blocked by: PLATFORMDIRS (needs stable paths)
+      Files: `source/database.py`, `source/config.py`, `source/sorter.py`,
+             `source/components/workshop.py`
+      Notes: Created `source/database.py` with workshop_items and
+             load_order_history tables in WAL mode. One-shot migration on first
+             run imports from old `last_order.yaml` and
+             `workshop_details.json`. `sorter.save/load_last_order` now reads
+             from DB. Config fields `workshop_timestamps` and
+             `dead_workshop_ids` removed from config.toml. Workshop rate-limiter
+             timestamps kept purely in-memory (no longer persisted). Workshop
+             details cache replaced with DB queries. Workshop status (dead)
+             stored in `workshop_items.status` column. DB at
+             `paths.appdata / isaacmm.db`.
 
-- [ ] SQLITE-MIGRATIONS - DB schema versioning and migration mechanism
+- [x] SQLITE-MIGRATIONS - DB schema versioning and migration mechanism
+      Completed: 2026-07-08
       Lib: `sqlite3` (stdlib)
       Files: `source/database.py`
-      Notes: The DB must be versioned from day one so schema changes never break
-             existing installs. On every app launch, compare stored `user_version`
-             (SQLite's built-in pragma) against the current code version and run
-             any pending migration functions in order.
-             Pattern:
-               MIGRATIONS = {
-                   1: _migrate_v1,   # initial schema
-                   2: _migrate_v2,   # e.g. added profiles table
-               }
-               current = db.execute("PRAGMA user_version").fetchone()[0]
-               for v, fn in sorted(MIGRATIONS.items()):
-                   if v > current:
-                       fn(db)
-                       db.execute(f"PRAGMA user_version = {v}")
-             CRITICAL — column and table names must be stable and future-proof
-             from the start. Use generic descriptive names, never names tied to
-             current UI labels (e.g. `item_id` not `workshop_id`, `sort_index`
-             not `sort_position`) so future data model changes do not require
-             column renames. SQLite does not support ALTER TABLE RENAME COLUMN
-             cleanly before 3.25 — add new columns and deprecate old ones instead,
-             or recreate the table in the migration.
-             Each migration function must be idempotent — safe to run twice.
-             Wrap each migration in a transaction so a failed migration leaves
-             the DB unchanged and the app falls back gracefully.
-      Blocked by: SQLITE-STATE
+      Notes: Formalized the MIGRATIONS dict pattern (`MIGRATIONS = {1: _migrate_v1}`).
+             On every init, the framework compares `PRAGMA user_version` against
+             MIGRATIONS keys and runs each pending migration in order inside a
+             transaction. Failed migrations roll back and raise. Each migration
+             function is idempotent. The old `_migrate()` function was renamed
+             to `_migrate_v1` (imports from last_order.yaml and
+             workshop_details.json). Schema v1 tables are created with
+             `CREATE TABLE IF NOT EXISTS` in init(), outside the migration
+             framework, so a fresh DB gets tables at version 0 and v1 migration
+             adds the fallback "init" row.
 
-- [ ] CONFLICT-INDEX - File-level conflict detection
-      Lib: `blake3`
+- [x] CONFLICT-INDEX - File-level conflict detection
+      Completed: 2026-07-08
+      Lib: `hashlib.blake2b` (stdlib, dropped `blake3` to avoid C-extension dep)
       Files: new file `source/conflict_index.py`, `source/components/modlist.py`,
-             `source/database.py`, `requirements.txt`, `pyproject.toml`
+             `source/database.py`
       Notes: Build a `dict[relative_path, list[mod_folder]]` by walking each
              enabled mod's folder. Any entry with >1 mod is a conflict. Winner is
              mods[0] (highest in load order), losers are everything after.
-             Use blake3 to fingerprint each mod folder (hash of all relative file
+             Use blake2b to fingerprint each mod folder (hash of all relative file
              paths + mtimes concatenated). Store fingerprint in DB alongside the
              index. On next launch, only re-index mods whose fingerprint changed.
-             Surface conflicts in the existing conflict tree panel - add a new
-             "File Conflicts" column or tab showing which specific files clash.
+             Uses a two-level cache: quick token (dir mtime + top-level entry mtimes)
+             avoids full walk for unchanged mods; full walk computes blake2b
+             fingerprint + file set for changed mods. Replaced
+             `_scan_mod_files_for_cache` with `get_cached_files` from
+             `conflict_index.py`. DB migration v2 adds `mod_fingerprints` table
+             with `(folder, fingerprint, files_json, token, updated_at)`.
              No hashing needed for detection itself - only for cache invalidation.
+             Used `hashlib.blake2b` instead of third-party `blake3` — stdlib,
+             same security properties, no build/AppImage complications.
       Blocked by: SQLITE-STATE
 
 ---
@@ -214,10 +202,11 @@ New user-facing functionality. Implement after Section 1 is stable.
 
 ---
 
-- [ ] WATCHDOG - Live mod folder sync
+- [x] WATCHDOG - Live mod folder sync
+      Completed: 2026-07-08
       Lib: `watchdog`
       Files: new file `source/folder_watcher.py`, `source/components/modlist.py`,
-             `source/window.py`, `requirements.txt`, `pyproject.toml`
+             `source/window.py`, `requirements.txt`
       Notes: Watch `config.mods_path` for `FileCreatedEvent`, `FileDeletedEvent`,
              `FileModifiedEvent`. On event, debounce 500ms then trigger a mod list
              rescan. Run the watchdog observer in a background thread.
@@ -225,6 +214,13 @@ New user-facing functionality. Implement after Section 1 is stable.
              Update CONFLICT-INDEX incrementally on change events rather than full
              rebuild - only re-index the changed mod folder.
              Add a status indicator in the UI (small icon) showing watcher active/inactive.
+             Implemented in source/folder_watcher.py: ModFolderWatcher(QObject) wraps
+             watchdog Observer, extracts mod folder name from event path, buffers
+             changed folders with a threading.Lock, flushes every 500ms via QTimer
+             on main thread. Connected to modlist via set_watcher() which calls
+             conflict_index.invalidate() + clears in-memory cache + triggers
+             _update_conflict_indicators() for the changed mod only.
+             Green dot indicator in modlist header when watcher active, gray when off.
       Blocked by: nothing (can land before CONFLICT-INDEX)
 
 - [ ] LOAD-ORDER-HISTORY - Undo/redo for sort operations
@@ -233,8 +229,7 @@ New user-facing functionality. Implement after Section 1 is stable.
       Notes: On every sort or manual reorder, write current order to
              `load_order_history` table with timestamp and optional label.
              Keep last 50 entries. Expose Ctrl+Z / Ctrl+Y in the mod list to
-             step through history. Add a "History" button or menu that shows
-             a list of past orders with timestamps and lets user jump to any.
+             step through history.
       Blocked by: SQLITE-STATE
 
 - [ ] NOTIFICATIONS - Desktop notifications for async operations
@@ -308,6 +303,191 @@ New user-facing functionality. Implement after Section 1 is stable.
              Use `assets/icon.png` as tray icon.
       Blocked by: WATCHDOG recommended first
 
+---
+
+## SECTION 3b - NATIVE UI INTEGRATION
+
+Improve native look-and-feel by relying on Qt's platform abstraction instead of
+hardcoded colors, metrics and styling.
+
+---
+
+- [ ] NATIVE-PALETTE - Use QPalette as the single source of UI colors
+      Lib: `PySide6.QtGui.QPalette`
+      Files: all custom-painted widgets, theme helpers
+      Notes: Remove hardcoded QColor values wherever possible. Retrieve colors
+             from the active application palette:
+               - Window
+               - WindowText
+               - Base
+               - AlternateBase
+               - Button
+               - ButtonText
+               - Highlight
+               - HighlightedText
+               - Accent (Qt 6.6+, when available)
+             All custom widgets should consume colors from the palette rather
+             than embedding theme-specific values. This allows automatic support
+             for Windows, KDE Plasma, GNOME, macOS, dark mode, and custom system
+             themes without platform-specific code.
+
+- [ ] NATIVE-STYLE - Follow the platform QStyle
+      Lib: `PySide6.QtWidgets.QStyle`
+      Files: application startup, custom widgets
+      Notes: Do not force the Fusion style. Allow Qt to select the platform
+             style automatically (Windows, Breeze, macOS, Adwaita, etc.).
+             Avoid style sheets that replace native widget painting.
+             Custom widgets should obtain spacing, frame widths and control
+             metrics from QStyle rather than hardcoded constants.
+
+- [ ] NATIVE-FONTS - Use the operating system UI font
+      Lib: `QApplication`, `QFontDatabase`
+      Files: application startup
+      Notes: Use the application's default font rather than specifying fonts
+             manually. This automatically follows:
+               - Windows: Segoe UI
+               - KDE: configured system font
+               - GNOME: configured interface font
+               - macOS: San Francisco
+             Avoid fixed font sizes except where technically required.
+
+- [ ] NATIVE-ICONS - Integrate with platform icon themes
+      Lib: `QStyle`, `QIcon`
+      Files: toolbar creation, dialogs
+      Notes: Prefer `QStyle.standardIcon()` for common actions and
+             `QIcon.fromTheme()` for named icons. On Linux this automatically
+             follows the user's selected icon theme. Only bundle application-
+             specific artwork that has no native equivalent.
+
+- [ ] NATIVE-WINDOW - Preserve native window decorations
+      Files: main window
+      Notes: Continue using the operating system's native window frame.
+             Do not implement a custom title bar. This preserves:
+               - Window buttons
+               - Rounded corners
+               - Shadows
+               - Accent/title bar colors
+               - Platform-specific effects (Mica, KWin decorations, etc.)
+
+- [ ] THEME-CHANGE - React to runtime theme changes
+      Lib: `QEvent`
+      Files: custom widgets, main window
+      Notes: Listen for palette/style change events
+             (`PaletteChange`, `ApplicationPaletteChange`,
+             `StyleChange`) and refresh any cached colors, icons or
+             custom painting. Theme switches should not require an
+             application restart.
+
+- [ ] CUSTOM-PAINTING - Use palette and style APIs for all custom rendering
+      Lib: `QPainter`, `QPalette`, `QStyle`
+      Files: all custom-painted controls
+      Notes: Whenever drawing custom UI, obtain colors from the widget's
+             palette and sizing information from QStyle. Avoid hardcoded
+             padding, border widths, radii and colors unless they are part
+             of the application's visual identity.
+
+- [ ] PLATFORM-THEME-AUDIT - Remove stylesheet-based native overrides
+      Files: all `.setStyleSheet()` usage
+      Notes: Audit all stylesheets. Remove any stylesheet whose only purpose
+             is recoloring or restyling standard Qt widgets. Restrict
+             stylesheets to application branding or widget-specific features
+             that cannot be achieved through QStyle/QPalette.
+
+---
+
+## SECTION 3c - THEME ENGINE
+
+Provide a flexible theme system while preserving native Qt integration. Themes
+must be able to override only colors, only widget styling, or both.
+
+---
+
+- [ ] THEME-LOADER - Implement filesystem-based theme loader
+      Lib: `tomllib` (stdlib), `pathlib`
+      Files: `source/theme.py`, `source/config.py`,
+             `source/window.py`
+      Notes: Discover themes from the `{APP_DATA}/themes/` directory. Each immediate
+             subdirectory represents a single theme. A theme may contain any
+             combination of:
+               - `color.toml`
+               - `style.qss`
+             Loading must not require every file to exist. Missing files are
+             simply skipped.
+
+- [ ] THEME-FOLDER-FORMAT - Define supported theme layout
+      Files: `themes/`, documentation
+      Notes: Supported directory structure:
+
+               themes/
+                 System/
+                 Dracula/
+                   colors.toml
+                 Catppuccin/
+                   style.qss
+                 Nord/
+                   colors.toml
+                   style.qss
+
+             Valid theme types:
+               - TOML only
+               - QSS only
+               - TOML + QSS
+
+- [ ] PALETTE-THEME - Apply palette overrides from `colors.toml`
+      Lib: `QPalette`
+      Files: `source/theme.py`
+      Notes: Begin with the current native application palette and override only
+             the color roles explicitly defined in `colors.toml`. Unspecified
+             roles continue using the operating system values.
+             Supported roles include (but are not limited to):
+               Window
+               WindowText
+               Base
+               AlternateBase
+               Button
+               ButtonText
+               Text
+               Highlight
+               HighlightedText
+               Accent (Qt 6.6+, when available)
+
+- [ ] QSS-THEME - Apply optional stylesheet
+      Lib: `QApplication`
+      Files: `source/theme.py`
+      Notes: If `style.qss` exists, load it after the palette has been applied.
+             Encourage theme authors to reference palette colors using
+             `palette(...)` rather than embedding literal colors wherever
+             possible. QSS should primarily define widget appearance (borders,
+             radius, spacing, control styling) rather than replace the palette.
+
+- [ ] SYSTEM-THEME - Native operating system theme
+      Files: `source/theme.py`
+      Notes: Provide a built-in "System" theme that performs no overrides.
+             Selecting this theme restores the application's fully native
+             appearance by clearing any loaded palette overrides and stylesheet.
+
+- [ ] THEME-PIPELINE - Standardize theme loading order
+      Files: `source/theme.py`
+      Notes: Theme application must always follow this sequence:
+
+               Native OS Theme
+                        ↓
+               QApplication.palette()
+                        ↓               
+               Apply colors.toml (optional)
+                        ↓
+               app.setPalette(...)
+                        ↓
+               Apply style.qss (optional)
+                        ↓
+                   Finished
+
+             This guarantees that every theme builds upon the native platform
+             palette instead of replacing it entirely, preserving platform-
+             specific colors, disabled states, accessibility improvements and
+             future Qt enhancements wherever the theme does not explicitly
+             override them.
+             
 ---
 
 ## SECTION 4 - OS-SPECIFIC INTEGRATIONS
@@ -534,14 +714,14 @@ Required once new libraries are added.
 > Auto-update this section when items are checked off.
 
 | Section | Total | Complete | In Progress | Blocked |
-|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|
 | 1 - Drop-in simplifications | 5 | 5 | 0 | 0 |
 | 1b - Bug fixes (Windows) | 4 | 4 | 0 | 0 |
-| 2 - Architecture & state | 3 | 0 | 0 | 0 |
-| 3 - UX features | 8 | 0 | 0 | 0 |
+| 2 - Architecture & state | 3 | 3 | 0 | 0 |
+| 3 - UX features | 8 | 1 | 0 | 0 |
 | 4 - OS integrations | 5 | 0 | 0 | 0 |
 | 5 - Packaging | 9 | 0 | 0 | 0 |
-| **Total** | **34** | **9** | **0** | **0** |
+| **Total** | **34** | **12** | **0** | **0** |
 
 ---
 

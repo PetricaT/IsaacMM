@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import config, logger
+from ..folder_watcher import ModFolderWatcher
 from .workshop import (
     WORKSHOP_RATE_LIMIT,
     _workshop_limiter_state,
@@ -28,6 +29,7 @@ from .workshop import (
 class ConsoleWidget(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self._watcher = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -64,6 +66,10 @@ class ConsoleWidget(QWidget):
         rate_layout.addWidget(self.rate_label)
         rate_layout.addWidget(self.queue_label)
         rate_layout.addStretch()
+        self._watcher_dot = QLabel("\u25cf")
+        self._watcher_dot.setToolTip("Folder watcher: inactive")
+        self._watcher_dot.setStyleSheet("color: #888; font-size: 12px;")
+        rate_layout.addWidget(self._watcher_dot)
         rate_layout.addWidget(self.rate_timer_label)
 
         self._rate_timer = QTimer(self)
@@ -73,6 +79,21 @@ class ConsoleWidget(QWidget):
 
         layout.addWidget(self.console)
         layout.addWidget(self.rate_bar)
+
+    def set_watcher(self, watcher: ModFolderWatcher | None) -> None:
+        self._watcher = watcher
+        if watcher is not None:
+            watcher.is_active_changed.connect(self._on_watcher_state)
+            self._on_watcher_state()
+
+    def _on_watcher_state(self) -> None:
+        active = self._watcher and self._watcher.is_active
+        if active:
+            self._watcher_dot.setStyleSheet("color: #4caf50; font-size: 12px;")
+            self._watcher_dot.setToolTip("Folder watcher: active")
+        else:
+            self._watcher_dot.setStyleSheet("color: #888; font-size: 12px;")
+            self._watcher_dot.setToolTip("Folder watcher: inactive")
 
     def log(self, message: str, level: str = "info") -> None:
         logger.log(level, message)
@@ -131,13 +152,8 @@ class ConsoleWidget(QWidget):
                 self.rate_timer_label.setStyleSheet(
                     f"color: {config.log_warn_color or 'palette(text)'}; font-size: 11px;"
                 )
+                self.rate_timer_label.show()
             else:
-                self.rate_timer_label.setText("-")
-                self.rate_timer_label.setStyleSheet(
-                    f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;"
-                )
+                self.rate_timer_label.hide()
         else:
-            self.rate_timer_label.setText("-")
-            self.rate_timer_label.setStyleSheet(
-                f"color: {config.console_fg or 'palette(text)'}; font-size: 11px;"
-            )
+            self.rate_timer_label.hide()

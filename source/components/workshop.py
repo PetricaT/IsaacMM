@@ -19,7 +19,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from .. import config, logger, paths
+from .. import config, database, logger, paths
 
 _workshop_lock = threading.Lock()
 
@@ -88,9 +88,6 @@ _failed_workshop_ids: dict[str, float] = {}
 _permanent_failures: set[str] = set()
 _icon_names: dict[str, str] = {}
 
-DETAILS_CACHE_FILE: str = os.path.join(paths.cache_dir, "workshop_details.json")
-_workshop_details_cache: dict[str, dict] = {}
-
 
 def _workshop_queue_length() -> int:
     return len(_icon_queue)
@@ -118,19 +115,10 @@ def _requeue_workshop(ws_id: str, normalized_name: str) -> None:
 
 
 def _init_workshop_limiter() -> None:
-    now = time.time()
     with _workshop_lock:
         _WORKSHOP_LIMITER.clear()
-        for ts in config.workshop_timestamps:
-            if ts >= now - WORKSHOP_RATE_WINDOW:
-                _WORKSHOP_LIMITER.append(ts)
         _permanent_failures.clear()
-        _permanent_failures.update(config.dead_workshop_ids)
-
-
-def _sync_workshop_limiter() -> None:
-    with _workshop_lock:
-        config.workshop_timestamps = list(_WORKSHOP_LIMITER)
+        _permanent_failures.update(str(i) for i in database.get_dead_workshop_ids())
 
 
 def _workshop_limiter_state() -> tuple[int, Optional[float]]:
@@ -177,38 +165,36 @@ def _is_recent_failure(ws_id: str) -> bool:
 
 
 def _init_details_cache() -> None:
-    global _workshop_details_cache
-    with _workshop_lock:
-        _workshop_details_cache.clear()
-        try:
-            if os.path.exists(DETAILS_CACHE_FILE):
-                with open(DETAILS_CACHE_FILE) as f:
-                    _workshop_details_cache.update(json.load(f))
-        except (OSError, json.JSONDecodeError):
-            _workshop_details_cache.clear()
+    pass
 
 
 def _save_details_cache() -> None:
-    with _workshop_lock:
-        try:
-            os.makedirs(os.path.dirname(DETAILS_CACHE_FILE), exist_ok=True)
-            with open(DETAILS_CACHE_FILE, "w") as f:
-                json.dump(_workshop_details_cache, f)
-        except OSError as exc:
-            logger.log("error", f"Failed to save workshop details cache: {exc}")
+    pass
 
 
 def _get_details_from_cache(ws_id: str) -> Optional[dict]:
-    with _workshop_lock:
-        return _workshop_details_cache.get(ws_id)
+    try:
+        item = database.get_workshop_item(int(ws_id))
+    except (ValueError, TypeError):
+        return None
+    if item is None:
+        return None
+    return {
+        "time_created": item.get("created_at"),
+        "time_updated": item.get("updated_at"),
+    }
 
 
 def _set_details_in_cache(ws_id: str, data: dict) -> None:
-    with _workshop_lock:
-        _workshop_details_cache[ws_id] = {
-            "time_created": data.get("time_created"),
-            "time_updated": data.get("time_updated"),
-        }
+    try:
+        ws_id_int = int(ws_id)
+    except (ValueError, TypeError):
+        return
+    database.upsert_workshop_item(
+        ws_id_int,
+        created_at=data.get("time_created"),
+        updated_at=data.get("time_updated"),
+    )
 
 
 def _details_queue_length() -> int:
@@ -368,8 +354,7 @@ def _download_workshop_icon(ws_id: str, cached_path: str) -> str:
     except FileNotFoundError:
         with _workshop_lock:
             _permanent_failures.add(ws_id)
-            config.dead_workshop_ids = sorted(_permanent_failures)
-        config.save()
+        database.mark_workshop_dead(int(ws_id))
         raise RuntimeError(f"workshop {ws_id}: file not found (permanent)")
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 429:
