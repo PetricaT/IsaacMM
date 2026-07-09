@@ -273,7 +273,13 @@ class ModInfoPanel(QWidget):
     def _init_icons(self) -> None:
         if config.use_system_icons:
             self._folder_icon = QIcon.fromTheme("folder")
-            self._placeholder = QIcon.fromTheme("image-x-generic").pixmap(128, 128)
+            theme_pm = QIcon.fromTheme("image-x-generic").pixmap(128, 128)
+            if not theme_pm.isNull():
+                self._placeholder = theme_pm
+            else:
+                self._placeholder = QPixmap(
+                    os.path.join(paths.BASE_DIR, "assets", "ui", "no_image.png")
+                )
         else:
             self._placeholder = QPixmap(
                 os.path.join(paths.BASE_DIR, "assets", "ui", "no_image.png")
