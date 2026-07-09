@@ -210,6 +210,9 @@ def save_load_order(folder_order: list) -> None:
             "INSERT INTO load_order_history (timestamp, order_json) VALUES (?, ?)",
             (now, json.dumps(folder_order)),
         )
+        _conn().execute(
+            "DELETE FROM load_order_history WHERE id NOT IN (SELECT id FROM load_order_history ORDER BY id DESC LIMIT 50)"
+        )
         _conn().commit()
 
 

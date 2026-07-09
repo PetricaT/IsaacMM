@@ -135,6 +135,7 @@ class ModListPanel(QWidget):
         self._load_worker = ManagedWorker(parent=self)
         self._sort_worker = ManagedWorker(parent=self)
         self._scan_worker = ManagedWorker(parent=self)
+        self._restore_worker = ManagedWorker(parent=self)
         self._load_worker.finished.connect(self._on_mods_scanned)
         self._load_worker.error.connect(
             lambda m: self.log_message.emit(f"Failed to load mods: {m}", "error")
@@ -144,6 +145,10 @@ class ModListPanel(QWidget):
             lambda m: self.log_message.emit(f"Auto-sort failed: {m}", "error")
         )
         self._scan_worker.finished.connect(self._on_cache_warmed)
+        self._restore_worker.finished.connect(self._on_restore_done)
+        self._restore_worker.error.connect(
+            lambda m: self.log_message.emit(f"Restore order failed: {m}", "error")
+        )
         self._controller_mgr = None
         self._controller_icons = []
         self._move_mode = False
@@ -154,6 +159,9 @@ class ModListPanel(QWidget):
         self._dpad_repeat_timer.setInterval(180)
         self._dpad_repeat_timer.timeout.connect(self._dpad_repeat_tick)
         self._restoring_widths = False
+        self._undo_stack: list[list[str]] = []
+        self._redo_stack: list[list[str]] = []
+        self.model.drop_about_to_happen.connect(self._push_history)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -267,6 +275,10 @@ class ModListPanel(QWidget):
             self.listView.header().restoreState(state)
         self._restoring_widths = False
         self._watcher = None
+        self._conflict_timer = QTimer(self)
+        self._conflict_timer.setInterval(150)
+        self._conflict_timer.setSingleShot(True)
+        self._conflict_timer.timeout.connect(self._update_conflict_indicators)
 
     def load_mod_list(self) -> None:
         if config.mods_path == "":
@@ -393,7 +405,7 @@ class ModListPanel(QWidget):
         if self._populating:
             return
         self._renumber_priority()
-        self._update_conflict_indicators()
+        self._conflict_timer.start()
 
     def _renumber_priority(self) -> None:
         priority = 1
@@ -409,117 +421,148 @@ class ModListPanel(QWidget):
                 c3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 priority += 1
 
+    def _get_current_order(self) -> list[str]:
+        order = []
+        for row in range(self.model.rowCount()):
+            c0 = self.model.item(row)
+            if c0:
+                order.append(c0.data(Qt.ItemDataRole.UserRole))
+        return order
+
+    def _push_history(self) -> None:
+        order = self._get_current_order()
+        self._undo_stack.append(order)
+        if len(self._undo_stack) > 50:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+
+    def _restore_order(self, order: list[str]) -> None:
+        self.listView.setUpdatesEnabled(False)
+        folder_to_items = {}
+        for row in reversed(range(self.model.rowCount())):
+            items = self.model.takeRow(row)
+            if items:
+                folder = items[0].data(Qt.ItemDataRole.UserRole)
+                folder_to_items[folder] = items
+        self._populating = True
+        for folder in order:
+            items = folder_to_items.pop(folder, None)
+            if items is not None:
+                self.model.appendRow(items)
+        for items in folder_to_items.values():
+            self.model.appendRow(items)
+        self._renumber_priority()
+        self._populating = False
+        config.loaded_mods.clear()
+        for row in range(self.model.rowCount()):
+            c0 = self.model.item(row)
+            if c0 and not c0.data(SEPARATOR_ROLE):
+                folder = c0.data(Qt.ItemDataRole.UserRole)
+                if folder:
+                    config.loaded_mods.append([c0.text(), folder])
+        self.listView.setUpdatesEnabled(True)
+        self.listView.update()
+        self._conflict_timer.start()
+
+    def _undo(self) -> None:
+        if not self._undo_stack:
+            return
+        current = self._get_current_order()
+        self._redo_stack.append(current)
+        previous = self._undo_stack.pop()
+        self._restore_order(previous)
+
+    def _redo(self) -> None:
+        if not self._redo_stack:
+            return
+        current = self._get_current_order()
+        self._undo_stack.append(current)
+        next_state = self._redo_stack.pop()
+        self._restore_order(next_state)
+
     def _update_conflict_indicators(self) -> None:
         if self._updating_conflicts:
             return
         self._updating_conflicts = True
         t0 = time.perf_counter()
 
-        for row_index in range(self.model.rowCount()):
-            col0 = self.model.item(row_index)
-            col1 = self.model.item(row_index, 1)
-            col2 = self.model.item(row_index, 2)
-            col3 = self.model.item(row_index, 3)
+        row_count = self.model.rowCount()
+
+        # Pass 1: build file-to-rows index (checked non-separator rows only)
+        file_to_rows: dict[str, list[int]] = {}
+        row_files: dict[int, set[str]] = {}
+        for row in range(row_count):
+            col0 = self.model.item(row)
+            if col0 is None or col0.data(SEPARATOR_ROLE):
+                continue
+            if col0.checkState() != Qt.CheckState.Checked:
+                continue
+            files = self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole))
+            row_files[row] = files
+            for f in files:
+                file_to_rows.setdefault(f, []).append(row)
+
+        # Pass 2: compute and apply all roles + overwritten + foreground
+        running_files: set[str] = set()
+        for row in range(row_count):
+            col0 = self.model.item(row)
+            col1 = self.model.item(row, 1)
             if col0 is None:
                 continue
-            col0.setData(None, CONFLICT_ROLE)
-            col0.setData(None, OVERWRITTEN_ROLE)
-            col0.setData(None, WINS_ROLE)
-            col0.setData(None, LOSSES_ROLE)
-            if col1:
-                col1.setData(None, WINS_ROLE)
-                col1.setData(None, LOSSES_ROLE)
-                col1.setData(None, EMPTY_ROLE)
-            separator_data = col0.data(SEPARATOR_ROLE)
-            if separator_data:
-                bg = QColor(separator_data["color"])
+
+            sep = col0.data(SEPARATOR_ROLE)
+            if sep:
+                bg = QColor(sep["color"])
                 col0.setBackground(bg)
-                col0.setForeground(QColor(_text_color_for_bg(separator_data["color"])))
+                col0.setForeground(QColor(_text_color_for_bg(sep["color"])))
                 col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if col1:
-                    col1.setBackground(bg)
-                if col2:
-                    col2.setBackground(bg)
-                if col3:
-                    col3.setBackground(bg)
-
-        file_to_mods: dict[str, set[int]] = {}
-        for row_index in range(self.model.rowCount()):
-            col0 = self.model.item(row_index)
-            if (
-                col0 is None
-                or col0.data(SEPARATOR_ROLE)
-                or col0.checkState() != Qt.CheckState.Checked
-            ):
+                for item in (col1, self.model.item(row, 2), self.model.item(row, 3)):
+                    if item:
+                        item.setBackground(bg)
                 continue
-            for f in self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole)):
-                file_to_mods.setdefault(f, set()).add(row_index)
 
-        for row_index in range(self.model.rowCount()):
-            col0 = self.model.item(row_index)
-            if (
-                col0 is None
-                or col0.data(SEPARATOR_ROLE)
-                or col0.checkState() != Qt.CheckState.Checked
-            ):
-                continue
-            for f in self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole)):
-                if len(file_to_mods.get(f, ())) > 1:
-                    col0.setData(True, CONFLICT_ROLE)
-                    break
+            for role in (CONFLICT_ROLE, OVERWRITTEN_ROLE, WINS_ROLE, LOSSES_ROLE):
+                col0.setData(None, role)
+            if col1:
+                for role in (WINS_ROLE, LOSSES_ROLE, EMPTY_ROLE):
+                    col1.setData(None, role)
 
-        for row_index in range(self.model.rowCount()):
-            col0 = self.model.item(row_index)
-            if (
-                col0 is None
-                or col0.data(SEPARATOR_ROLE)
-                or col0.checkState() != Qt.CheckState.Checked
-            ):
+            if col0.checkState() != Qt.CheckState.Checked:
+                if config.disabled_mod_color:
+                    col0.setForeground(QColor(config.disabled_mod_color))
                 continue
-            wins = False
-            losses = False
-            for f in self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole)):
-                peers = file_to_mods.get(f, ())
+
+            files = row_files.get(row, set())
+            wins = losses = conflict = False
+
+            for f in files:
+                peers = file_to_rows.get(f, ())
                 if len(peers) > 1:
+                    conflict = True
                     for peer in peers:
-                        if peer < row_index:
+                        if peer < row:
                             losses = True
-                        if peer > row_index:
+                        if peer > row:
                             wins = True
+
+            overwritten = bool(files) and files.issubset(running_files)
+            running_files |= files
+
+            if conflict:
+                col0.setData(True, CONFLICT_ROLE)
             if wins:
                 col0.setData(True, WINS_ROLE)
             if losses:
                 col0.setData(True, LOSSES_ROLE)
-            col1 = self.model.item(row_index, 1)
+            if overwritten:
+                col0.setData(True, OVERWRITTEN_ROLE)
+
             if col1:
                 col1.setData(True if wins else None, WINS_ROLE)
                 col1.setData(True if losses else None, LOSSES_ROLE)
+                col1.setData(True if overwritten else None, EMPTY_ROLE)
 
-        running_files: set[str] = set()
-        for row_index in range(self.model.rowCount()):
-            col0 = self.model.item(row_index)
-            if (
-                col0 is None
-                or col0.data(SEPARATOR_ROLE)
-                or col0.checkState() != Qt.CheckState.Checked
-            ):
-                continue
-            mod_files = self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole))
-            if mod_files and mod_files.issubset(running_files):
-                col0.setData(True, OVERWRITTEN_ROLE)
-                col1 = self.model.item(row_index, 1)
-                if col1:
-                    col1.setData(True, EMPTY_ROLE)
-            running_files |= mod_files
-
-        for row_index in range(self.model.rowCount()):
-            col0 = self.model.item(row_index)
-            if col0 is None or col0.data(SEPARATOR_ROLE):
-                continue
-            if col0.checkState() != Qt.CheckState.Checked:
-                if config.disabled_mod_color:
-                    col0.setForeground(QColor(config.disabled_mod_color))
-            elif col0.data(OVERWRITTEN_ROLE):
+            if overwritten:
                 if config.disabled_mod_color:
                     col0.setForeground(QColor(config.disabled_mod_color))
                 font = col0.font()
@@ -531,7 +574,7 @@ class ModListPanel(QWidget):
         total_ms = (time.perf_counter() - t0) * 1000
         if total_ms > 5 and config.log_level == "debug":
             self.log_message.emit(
-                f"Conflict scan: {total_ms:.0f}ms ({self.model.rowCount()} mods)",
+                f"Conflict scan: {total_ms:.0f}ms ({row_count} mods)",
                 "debug",
             )
         self._updating_conflicts = False
@@ -557,7 +600,7 @@ class ModListPanel(QWidget):
 
     def _on_cache_warmed(self, cache: dict) -> None:
         self._mod_files_cache.update(cache)
-        self._update_conflict_indicators()
+        self._conflict_timer.start()
 
     def _filter_mods(self, query: str) -> None:
         """Show only mods whose name fuzzy-matches *query*."""
@@ -721,6 +764,9 @@ class ModListPanel(QWidget):
         if cached_files is not None:
             return cached_files
         conflict_files = get_cached_files(mod_folder_name)
+        if len(self._mod_files_cache) > 600:
+            for k in list(self._mod_files_cache)[:100]:
+                del self._mod_files_cache[k]
         self._mod_files_cache[mod_folder_name] = conflict_files
         return conflict_files
 
@@ -735,7 +781,7 @@ class ModListPanel(QWidget):
         from ..conflict_index import invalidate
         invalidate(folder)
         self._mod_files_cache.pop(folder, None)
-        self._update_conflict_indicators()
+        self._conflict_timer.start()
 
     def _on_item_changed(self, list_item) -> None:
         if list_item.column() != 0:
@@ -753,7 +799,7 @@ class ModListPanel(QWidget):
         list_item.setData(current_state, PREV_CHECK_ROLE)
         self.pending_toggles[mod_folder] = current_state
         self._apply_item_style(list_item)
-        self._update_conflict_indicators()
+        self._conflict_timer.start()
 
         selected_indexes = self.listView.selectedIndexes()
         if selected_indexes:
@@ -804,6 +850,7 @@ class ModListPanel(QWidget):
                 self._refresh_selection_conflicts(row)
 
     def apply_mod_order(self) -> None:
+        self._push_history()
         self.log_message.emit("Applying sort order...", "info")
         sort_index = 1
         ordered_folders = []
@@ -867,7 +914,7 @@ class ModListPanel(QWidget):
         sorter.save_last_order(ordered_folders)
 
         self._renumber_priority()
-        self._update_conflict_indicators()
+        self._conflict_timer.start()
 
         config.loaded_mods.clear()
         for row_index in range(self.model.rowCount()):
@@ -884,6 +931,8 @@ class ModListPanel(QWidget):
         self.log_message.emit(f"Applied order for {sort_index - 1} mods", "info")
 
     def restore_last_order(self) -> None:
+        if self._restore_worker.is_running:
+            return
         folder_order = sorter.load_last_order()
         if not folder_order:
             self.log_message.emit("No saved order to restore", "info")
@@ -960,6 +1009,7 @@ class ModListPanel(QWidget):
         self._sort_worker.start(_run_sort, name="AutoSort")
 
     def _on_sort_done(self, auto_sorted_mods: list) -> None:
+        self._push_history()
         separators = getattr(self, "_sort_separators", [])
         separator_lookup = {sep["folder"]: sep for sep in separators}
 
@@ -1024,6 +1074,7 @@ class ModListPanel(QWidget):
         self.listView.setUpdatesEnabled(True)
         self.listView.verticalScrollBar().setValue(scroll_pos)
         self.listView.update()
+        self._conflict_timer.start()
 
         self.log_message.emit(
             f"Auto-sort complete ({len(config.loaded_mods)} mods)", "info"
@@ -1033,6 +1084,15 @@ class ModListPanel(QWidget):
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self.listView and event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Z and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    self._redo()
+                else:
+                    self._undo()
+                return True
+            if event.key() == Qt.Key_Y and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                self._redo()
+                return True
             if event.key() == Qt.Key_Delete:
                 selected = self.listView.selectionModel().selectedIndexes()
                 if not selected:
@@ -1065,6 +1125,7 @@ class ModListPanel(QWidget):
         if deleted:
             self.log_message.emit(f"Deleted separators: {', '.join(deleted)}", "info")
             self._save_current_order()
+            self._push_history()
             self.load_mod_list()
 
     def _on_item_double_clicked(self, index) -> None:
@@ -1125,6 +1186,7 @@ class ModListPanel(QWidget):
         xml_tree.write(separator_xml_path, encoding="utf-8", xml_declaration=True)
         self.log_message.emit(f"Updated separator '{new_separator_name}'", "info")
         self._save_current_order()
+        self._push_history()
         self.load_mod_list()
 
     def _on_context_menu(self, position) -> None:
@@ -1150,6 +1212,7 @@ class ModListPanel(QWidget):
             shutil.rmtree(folder_path)
             self.log_message.emit(f"Deleted separator '{item_name}'", "info")
             self._save_current_order()
+            self._push_history()
             self.load_mod_list()
         except OSError as exception:
             self.log_message.emit(f"Deleting separator: {exception}", "error")
@@ -1179,6 +1242,7 @@ class ModListPanel(QWidget):
         except OSError as exception:
             self.log_message.emit(f"Creating separator: {exception}", "error")
         self._save_current_order()
+        self._push_history()
         self.load_mod_list()
 
     def _export_modlist(self) -> None:
@@ -1221,6 +1285,7 @@ class ModListPanel(QWidget):
             ordered_folders = import_modlist_csv(file_path, known_mods)
             if ordered_folders:
                 sorter.save_last_order(ordered_folders)
+                self._push_history()
                 self.log_message.emit(f"Imported modlist from {file_path}", "info")
                 self.load_mod_list()
         except Exception as exception:
@@ -1235,6 +1300,7 @@ class ModListPanel(QWidget):
         sorter.save_last_order(ordered_folders)
 
     def _on_header_clicked(self, section: int) -> None:
+        self._push_history()
         if not hasattr(self, "_sort_ascending"):
             self._sort_ascending = {}
         current = self._sort_ascending.get(section, True)
@@ -1290,7 +1356,7 @@ class ModListPanel(QWidget):
                     priority += 1
             self.model.appendRow(items)
         self._populating = False
-        self._update_conflict_indicators()
+        self._conflict_timer.start()
 
     def update_accent_color(self, color: str) -> None:
         self._accent_color = color
@@ -1385,6 +1451,7 @@ class ModListPanel(QWidget):
                 font.setBold(False)
                 c0.setFont(font)
             if self._move_original_row >= 0:
+                self._push_history()
                 items = self.model.takeRow(self._move_index)
                 self._populating = True
                 self.model.insertRow(self._move_original_row, items)
@@ -1394,7 +1461,7 @@ class ModListPanel(QWidget):
                 self._populating = False
                 self._renumber_priority()
                 self._save_current_order()
-                self._update_conflict_indicators()
+                self._conflict_timer.start()
             self._move_index = -1
             self._move_original_row = -1
 
@@ -1457,13 +1524,14 @@ class ModListPanel(QWidget):
         new_idx = self._move_index + direction
         if new_idx < 0 or new_idx >= self.model.rowCount():
             return
+        self._push_history()
         items = self.model.takeRow(self._move_index)
         self._move_index = new_idx
         self.model.insertRow(self._move_index, items)
         self.listView.setCurrentIndex(self.model.index(self._move_index, 0))
         self._renumber_priority()
         self._save_current_order()
-        self._update_conflict_indicators()
+        self._conflict_timer.start()
 
     def _controller_dpad_nav(self, direction: int) -> None:
         idx = self.listView.currentIndex()

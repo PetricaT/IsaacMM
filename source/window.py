@@ -174,6 +174,7 @@ QPushButton:focus {
             self.mod_list_panel._load_worker.wait(5000)
             self.mod_list_panel._sort_worker.wait(5000)
             self.mod_list_panel._scan_worker.wait(5000)
+            self.mod_list_panel._restore_worker.wait(5000)
         if hasattr(self, "modInfoPanel"):
             self.modInfoPanel._icon_worker.wait(5000)
             self.modInfoPanel._details_worker.wait(5000)
