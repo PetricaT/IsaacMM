@@ -108,6 +108,9 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
             entries.append((mod_name, directory_entry, mod_version))
         except FileNotFoundError:
             continue
+        except ET.ParseError:
+            logger.log("warning", f"Skipping mod with malformed metadata.xml: {directory_entry}")
+            continue
 
     return {
         "entries": entries,
@@ -298,8 +301,6 @@ class ModListPanel(QWidget):
 
         all_entries = scan_result["entries"]
         separator_map = scan_result["separator_map"]
-        loaded_mods = scan_result["loaded_mods"]
-
         saved_folder_order = sorter.load_last_order()
         if saved_folder_order:
             entries_by_folder = {f: (n, f, v) for n, f, v in all_entries}
@@ -825,13 +826,14 @@ class ModListPanel(QWidget):
             else:
                 new_name = f"{sort_index:03} {mod_name}"
             try:
-                metadata_tree = ET.parse(
-                    f"{config.mods_path}/{mod_folder}/metadata.xml"
+                metadata_xml_path = os.path.join(
+                    config.mods_path, mod_folder, "metadata.xml"
                 )
+                metadata_tree = ET.parse(metadata_xml_path)
                 xml_root = metadata_tree.getroot()
                 xml_root.find("name").text = new_name
                 metadata_tree.write(
-                    f"{config.mods_path}/{mod_folder}/metadata.xml",
+                    metadata_xml_path,
                     encoding="utf-8",
                     xml_declaration=True,
                 )
@@ -899,13 +901,21 @@ class ModListPanel(QWidget):
                     f"{mod_folder} no longer exists, skipping", "warning"
                 )
                 continue
-            metadata_tree = ET.parse(xml_path)
-            xml_root = metadata_tree.getroot()
-            mod_name = xml_root.find("name").text
-            if sorted_pattern.match(mod_name):
-                mod_name = mod_name[4:]
-            xml_root.find("name").text = f"{sort_index:03} {mod_name}"
-            metadata_tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+            try:
+                metadata_tree = ET.parse(xml_path)
+                xml_root = metadata_tree.getroot()
+                mod_name = xml_root.find("name").text
+                if sorted_pattern.match(mod_name):
+                    mod_name = mod_name[4:]
+                xml_root.find("name").text = f"{sort_index:03} {mod_name}"
+                metadata_tree.write(
+                    xml_path, encoding="utf-8", xml_declaration=True
+                )
+            except ET.ParseError:
+                self.log_message.emit(
+                    f"Skipping {mod_folder}: malformed metadata.xml", "warning"
+                )
+                continue
             sort_index += 1
         self.log_message.emit(f"Restored order for {sort_index - 1} mods", "info")
         self.load_mod_list()
@@ -1118,7 +1128,6 @@ class ModListPanel(QWidget):
         self.load_mod_list()
 
     def _on_context_menu(self, position) -> None:
-        from PySide6.QtWidgets import QDialog
 
         index = self.listView.indexAt(position)
         if not index or not index.isValid():
@@ -1173,7 +1182,6 @@ class ModListPanel(QWidget):
         self.load_mod_list()
 
     def _export_modlist(self) -> None:
-        from PySide6.QtWidgets import QDialog, QFileDialog
 
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Export Modlist", "", "CSV files (*.csv);;All files (*)"
@@ -1195,7 +1203,6 @@ class ModListPanel(QWidget):
             self.log_message.emit(f"Exporting modlist: {exception}", "error")
 
     def _import_modlist(self) -> None:
-        from PySide6.QtWidgets import QDialog, QFileDialog
 
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Import Modlist", "", "CSV files (*.csv);;All files (*)"
@@ -1243,13 +1250,13 @@ class ModListPanel(QWidget):
                 if not c0:
                     return 3
                 w = c0.data(WINS_ROLE) or False
-                l = c0.data(LOSSES_ROLE) or False
+                lost = c0.data(LOSSES_ROLE) or False
                 v = 3
-                if w and l:
+                if w and lost:
                     v = 0
                 elif w:
                     v = 1
-                elif l:
+                elif lost:
                     v = 2
                 return v if asc else (3 - v)
             elif section == 2:

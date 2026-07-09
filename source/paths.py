@@ -107,14 +107,17 @@ def find_isaac_mods_folder() -> Optional[str]:
 
 def _parse_vdf_path(steam_path: str) -> Optional[str]:
     try:
-        with open(f"{steam_path}/config/libraryfolders.vdf") as vdf_file:
+        with open(os.path.join(steam_path, "config", "libraryfolders.vdf")) as vdf_file:
             for line in vdf_file:
                 if '"path"' in line:
                     game_root_path = line.split('"')[3]
                 if f'"{STEAM_APPID}"' in line:
-                    candidate_path = (
-                        f"{game_root_path}/steamapps/common/"
-                        "The Binding of Isaac Rebirth/mods/"
+                    candidate_path = os.path.join(
+                        game_root_path,
+                        "steamapps",
+                        "common",
+                        "The Binding of Isaac Rebirth",
+                        "mods",
                     )
                     if os.path.exists(candidate_path):
                         return game_root_path
@@ -132,7 +135,13 @@ def _resolve_windows_path() -> Optional[str]:
         winreg.CloseKey(registry_key)  # pyright: ignore[reportAttributeAccessIssue]
         steam_root = _parse_vdf_path(steam_path)
         if steam_root:
-            return f"{steam_root}/steamapps/common/The Binding of Isaac Rebirth/mods/"
+            return os.path.join(
+                steam_root,
+                "steamapps",
+                "common",
+                "The Binding of Isaac Rebirth",
+                "mods",
+            )
     except Exception:
         pass
     return None
@@ -155,7 +164,11 @@ def _resolve_linux_path() -> Optional[str]:
         if os.path.exists(steam_path):
             steam_root = _parse_vdf_path(steam_path)
             if steam_root:
-                return (
-                    f"{steam_root}/steamapps/common/The Binding of Isaac Rebirth/mods/"
+                return os.path.join(
+                    steam_root,
+                    "steamapps",
+                    "common",
+                    "The Binding of Isaac Rebirth",
+                    "mods",
                 )
     return None
