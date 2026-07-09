@@ -161,7 +161,6 @@ class ModListPanel(QWidget):
         self._restoring_widths = False
         self._undo_stack: list[list[str]] = []
         self._redo_stack: list[list[str]] = []
-        self.model.drop_about_to_happen.connect(self._push_history)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -223,6 +222,7 @@ class ModListPanel(QWidget):
         self.listView.installEventFilter(self)
         self.model.itemChanged.connect(self._on_item_changed)
         self.model.rowsInserted.connect(self._on_rows_inserted)
+        self.model.drop_about_to_happen.connect(self._push_history)
         self.listView.header().sectionClicked.connect(self._on_header_clicked)
 
         self.applyOrder = QPushButton("Apply Sort Order")
@@ -938,35 +938,48 @@ class ModListPanel(QWidget):
             self.log_message.emit("No saved order to restore", "info")
             return
         self.log_message.emit("Restoring last saved order...", "info")
-        sort_index = 1
-        for mod_folder in folder_order:
-            if mod_folder.endswith(SEPARATOR_SUFFIX):
-                continue
-            if sorter.should_preserve_name(mod_folder):
-                continue
-            xml_path = os.path.join(config.mods_path, mod_folder, "metadata.xml")
-            if not os.path.exists(xml_path):
-                self.log_message.emit(
-                    f"{mod_folder} no longer exists, skipping", "warning"
-                )
-                continue
-            try:
-                metadata_tree = ET.parse(xml_path)
-                xml_root = metadata_tree.getroot()
-                mod_name = xml_root.find("name").text
-                if sorted_pattern.match(mod_name):
-                    mod_name = mod_name[4:]
-                xml_root.find("name").text = f"{sort_index:03} {mod_name}"
-                metadata_tree.write(
-                    xml_path, encoding="utf-8", xml_declaration=True
-                )
-            except ET.ParseError:
-                self.log_message.emit(
-                    f"Skipping {mod_folder}: malformed metadata.xml", "warning"
-                )
-                continue
-            sort_index += 1
-        self.log_message.emit(f"Restored order for {sort_index - 1} mods", "info")
+
+        def _run_restore() -> dict:
+            count = 0
+            sort_index = 1
+            skipped = []
+            for mod_folder in folder_order:
+                if mod_folder.endswith(SEPARATOR_SUFFIX):
+                    continue
+                if sorter.should_preserve_name(mod_folder):
+                    continue
+                xml_path = os.path.join(config.mods_path, mod_folder, "metadata.xml")
+                if not os.path.exists(xml_path):
+                    continue
+                try:
+                    tree = ET.parse(xml_path)
+                    root = tree.getroot()
+                    name_el = root.find("name")
+                    if name_el is not None:
+                        name = name_el.text or ""
+                        if sorted_pattern.match(name):
+                            name = name[4:]
+                        name_el.text = f"{sort_index:03} {name}"
+                        tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+                        count += 1
+                except ET.ParseError:
+                    skipped.append(mod_folder)
+                except Exception:
+                    pass
+                sort_index += 1
+            return {"count": count, "skipped": skipped}
+
+        self._restore_worker.start(_run_restore, name="RestoreOrder")
+
+    def _on_restore_done(self, result: dict) -> None:
+        count = result["count"]
+        skipped = result.get("skipped", [])
+        self.log_message.emit(f"Restored order for {count} mods", "info")
+        for folder in skipped:
+            self.log_message.emit(
+                f"Skipping {folder}: malformed metadata.xml", "warning"
+            )
+        self._push_history()
         self.load_mod_list()
 
     def auto_sort_mods(self) -> None:
