@@ -7,7 +7,7 @@ import time
 from typing import Optional
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from .. import config, paths
@@ -16,6 +16,7 @@ from ..controller import (
     Button,
     is_playstation_type,
 )
+from ..theme_helpers import palette_color
 
 ICON_SIZE = 32
 BUTTON_SIZE = ICON_SIZE + 8
@@ -191,7 +192,7 @@ class ControllerRouter:
 class FocusOverlay(QWidget):
     def __init__(self, target: QWidget) -> None:
         super().__init__(target)
-        self._color = QColor(0, 0, 0, 140)
+        self._color = palette_color(QPalette.Shadow, alpha=140)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_NoSystemBackground, False)
         target.installEventFilter(self)

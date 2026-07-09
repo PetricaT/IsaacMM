@@ -414,9 +414,16 @@ QPushButton:focus {
         if event.type() == QEvent.PaletteChange:
             self._load_base_qss()
             self.apply_qt_theme(QApplication.instance().style().name())
+            self._refresh_on_theme_change()
+        elif event.type() == QEvent.StyleChange:
+            self._refresh_on_theme_change()
         elif event.type() == QEvent.ActivationChange and not self.isActiveWindow():
             self.modInfoPanel.stop_preview()
         super().changeEvent(event)
+
+    def _refresh_on_theme_change(self) -> None:
+        if hasattr(self, "modInfoPanel"):
+            self.modInfoPanel.refresh_icons()
 
     def _setup_shoulder_indicators(self) -> None:
         SH = ICON_SIZE

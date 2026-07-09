@@ -32,6 +32,7 @@ from ..conflict_index import get_cached_files
 from ..controller import Button
 from ..models import FlatDropModel
 from ..modlist_io import export_modlist_csv, import_modlist_csv
+from ..theme_helpers import text_color_for_bg
 from ..worker import ManagedWorker
 from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
 from .dialogs import (
@@ -54,12 +55,6 @@ sorted_pattern = re.compile(r"[0-9]{3}\s.*")
 
 def normalize_mod_name(name: str) -> str:
     return re.sub(r"^[^a-zA-Z]+", "", name).strip()
-
-
-def _text_color_for_bg(hex_color: str) -> str:
-    c = QColor(hex_color)
-    l = (0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()) / 255
-    return "#000000" if l > 0.5 else "#ffffff"
 
 
 def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
@@ -187,10 +182,6 @@ class ModListPanel(QWidget):
         layout.addWidget(self._search_bar)
 
         self.listView = QTreeView(self)
-        if self._accent_color:
-            self.listView.setStyleSheet(
-                f"QTreeView::item:selected {{ background-color: {self._accent_color}; }}"
-            )
         self.listView.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.listView.setDragEnabled(True)
         self.listView.setAcceptDrops(True)
@@ -251,7 +242,7 @@ class ModListPanel(QWidget):
         self.listView.selectionModel().selectionChanged.connect(self._on_mod_selected)
 
         if self._accent_color:
-            fg = _text_color_for_bg(self._accent_color)
+            fg = text_color_for_bg(QColor(self._accent_color)).name()
             self.applyOrder.setStyleSheet(
                 f"background-color: {self._accent_color}; color: {fg};"
             )
@@ -338,7 +329,7 @@ class ModListPanel(QWidget):
                 col0.setData(separator_data, SEPARATOR_ROLE)
                 col0.setText(entry_name)
                 col0.setBackground(QColor(separator_color))
-                col0.setForeground(QColor(_text_color_for_bg(separator_color)))
+                col0.setForeground(text_color_for_bg(QColor(separator_color)))
                 col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 bg = QColor(separator_color)
                 col1.setBackground(bg)
@@ -514,7 +505,7 @@ class ModListPanel(QWidget):
             if sep:
                 bg = QColor(sep["color"])
                 col0.setBackground(bg)
-                col0.setForeground(QColor(_text_color_for_bg(sep["color"])))
+                col0.setForeground(text_color_for_bg(QColor(sep["color"])))
                 col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 for item in (col1, self.model.item(row, 2), self.model.item(row, 3)):
                     if item:
@@ -668,7 +659,7 @@ class ModListPanel(QWidget):
                 separator_data = col0.data(SEPARATOR_ROLE)
                 bg = QColor(separator_data["color"])
                 col0.setBackground(bg)
-                col0.setForeground(QColor(_text_color_for_bg(separator_data["color"])))
+                col0.setForeground(text_color_for_bg(QColor(separator_data["color"])))
                 if col1:
                     col1.setBackground(bg)
                 if col2:
@@ -819,7 +810,7 @@ class ModListPanel(QWidget):
                         bg = QColor(separator_data["color"])
                         c0.setBackground(bg)
                         c0.setForeground(
-                            QColor(_text_color_for_bg(separator_data["color"]))
+                            text_color_for_bg(QColor(separator_data["color"]))
                         )
                         if c1:
                             c1.setBackground(bg)
@@ -1374,10 +1365,7 @@ class ModListPanel(QWidget):
     def update_accent_color(self, color: str) -> None:
         self._accent_color = color
         if color:
-            self.listView.setStyleSheet(
-                f"QTreeView::item:selected {{ background-color: {color}; }}"
-            )
-            fg = _text_color_for_bg(color)
+            fg = text_color_for_bg(QColor(color)).name()
             self.applyOrder.setStyleSheet(f"background-color: {color}; color: {fg};")
 
     def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
