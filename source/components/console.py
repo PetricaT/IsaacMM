@@ -139,6 +139,8 @@ class ConsoleWidget(QWidget):
                 char_format.setForeground(QColor(color))
             elif config.log_info_color:
                 char_format.setForeground(QColor(config.log_info_color))
+            else:
+                char_format.clearForeground()
             text_cursor.insertText(text, char_format)
         text_cursor.insertText("\n", char_format)
         self.console.setTextCursor(text_cursor)
