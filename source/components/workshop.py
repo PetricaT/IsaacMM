@@ -190,11 +190,15 @@ def _set_details_in_cache(ws_id: str, data: dict) -> None:
         ws_id_int = int(ws_id)
     except (ValueError, TypeError):
         return
-    database.upsert_workshop_item(
-        ws_id_int,
-        created_at=data.get("time_created"),
-        updated_at=data.get("time_updated"),
-    )
+    fields = {
+        "created_at": data.get("time_created"),
+        "updated_at": data.get("time_updated"),
+    }
+    if not config.slim_db:
+        fields["title"] = data.get("title", "")
+        fields["preview_url"] = data.get("preview_url", "")
+        fields["description"] = data.get("description", "")
+    database.upsert_workshop_item(ws_id_int, **fields)
 
 
 def _details_queue_length() -> int:
@@ -325,6 +329,9 @@ def _fetch_workshop_details(ws_id: str) -> dict:
     except FileNotFoundError:
         return _scrape_workshop_dates(ws_id)
     return {
+        "title": details.get("title", ""),
+        "preview_url": details.get("preview_url", ""),
+        "description": details.get("short_description", ""),
         "time_created": details.get("time_created"),
         "time_updated": details.get("time_updated"),
     }

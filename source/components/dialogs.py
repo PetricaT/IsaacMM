@@ -334,17 +334,27 @@ class SettingsPanel(QWidget):
 
         updates_group = QGroupBox("Updates")
         updates_layout = QVBoxLayout(updates_group)
-        # AUTOUPDATER-DISABLED(2026-07-07): re-enable when replace+restart
-        # logic on Windows/macOS is stable.
-        # self.startup_check_check = QCheckBox("Check for updates on startup")
-        # self.startup_check_check.setChecked(config.check_updates_on_startup)
-        # self.startup_check_check.toggled.connect(self._save_settings)
-        # updates_layout.addWidget(self.startup_check_check)
-        # self.update_check_btn = QPushButton("Check for Updates")
-        # self.update_check_btn.clicked.connect(self._check_updates)
-        # updates_layout.addWidget(self.update_check_btn)
+        self.startup_check_check = QCheckBox("Check for updates on startup")
+        self.startup_check_check.setChecked(config.check_updates_on_startup)
+        self.startup_check_check.toggled.connect(self._save_settings)
+        updates_layout.addWidget(self.startup_check_check)
+        version_row = QHBoxLayout()
         self._update_status_label = QLabel(f"Current version: {paths.version}")
-        updates_layout.addWidget(self._update_status_label)
+        version_row.addWidget(self._update_status_label)
+        version_row.addStretch()
+        updates_layout.addLayout(version_row)
+        buttons_row = QHBoxLayout()
+        self.update_check_btn = QPushButton("Check for Updates")
+        self.update_check_btn.clicked.connect(self._check_updates)
+        buttons_row.addWidget(self.update_check_btn)
+        self.changelogs_btn = QPushButton("Changelogs")
+        self.changelogs_btn.clicked.connect(self._open_changelogs)
+        buttons_row.addWidget(self.changelogs_btn)
+        updates_layout.addLayout(buttons_row)
+        self.notif_check = QCheckBox("Desktop notifications (backup, updates)")
+        self.notif_check.setChecked(config.notifications_enabled)
+        self.notif_check.toggled.connect(self._save_settings)
+        updates_layout.addWidget(self.notif_check)
         behavior_layout.addWidget(updates_group)
 
         display_group = QGroupBox("Display")
@@ -901,11 +911,12 @@ class SettingsPanel(QWidget):
         config.animate_anm2_preview = self.animate_anm2_check.isChecked()
         config.preview_images = self.preview_check.isChecked()
         config.download_icons = self.download_icons_check.isChecked()
-        # AUTOUPDATER-DISABLED: config.check_updates_on_startup = self.startup_check_check.isChecked()
         config.log_level = self.log_level_combo.currentData()
         logger.set_level(config.log_level)
+        config.check_updates_on_startup = self.startup_check_check.isChecked()
         config.date_format = self.date_format_combo.currentData()
         config.controller_enabled = self.ctrl_enable_check.isChecked()
+        config.notifications_enabled = self.notif_check.isChecked()
         config.controller_deadzone = self.ctrl_deadzone_slider.value()
         config.controller_simple_icons = self.simple_icons_check.isChecked()
         config.use_system_icons = self.system_icons_check.isChecked()
@@ -981,6 +992,33 @@ class SettingsPanel(QWidget):
         owner = self._owner
         if owner is None:
             return
+        pending = getattr(owner, "_get_pending_update", lambda: None)()
+        if pending is not None:
+            apply_fn = getattr(owner, "_apply_pending_update", None)
+            if callable(apply_fn):
+                apply_fn()
+            return
         check = getattr(owner, "_check_for_updates_interactive", None)
         if callable(check):
             check()
+
+    def _open_changelogs(self) -> None:
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+
+        QDesktopServices.openUrl(QUrl("https://github.com/PetricaT/IsaacMM/releases"))
+
+    def _refresh_update_state(self) -> None:
+        owner = self._owner
+        if owner is None:
+            return
+        release = getattr(owner, "_get_pending_update", lambda: None)()
+        if release is not None:
+            tag = release.get("tag_name", "")
+            self._update_status_label.setText(
+                f"Current version: {paths.version} \u2192 {tag}"
+            )
+            self.update_check_btn.setText("Update now")
+        else:
+            self._update_status_label.setText(f"Current version: {paths.version}")
+            self.update_check_btn.setText("Check for Updates")

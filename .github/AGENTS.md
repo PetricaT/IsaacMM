@@ -1,87 +1,49 @@
 # IsaacMM Agent Guide
 
-## 1. Think Before Coding
+## Process
 
-Don't assume. Don't hide confusion. Surface tradeoffs.
-
-Before implementing:
-
-    State your assumptions explicitly. If uncertain, ask.
-    If multiple interpretations exist, present them - don't pick silently.
-    If a simpler approach exists, say so. Push back when warranted.
-    If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-Minimum code that solves the problem. Nothing speculative.
-
-    No features beyond what was asked.
-    No abstractions for single-use code.
-    No "flexibility" or "configurability" that wasn't requested.
-    No error handling for impossible scenarios.
-    If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-Touch only what you must. Clean up only your own mess.
-
-When editing existing code:
-
-    Don't "improve" adjacent code, comments, or formatting.
-    Don't refactor things that aren't broken.
-    Match existing style, even if you'd do it differently.
-    If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-
-    Remove imports/variables/functions that YOUR changes made unused.
-    Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-Define success criteria. Loop until verified.
-
-Transform tasks into verifiable goals:
-
-    "Add validation" → "Write tests for invalid inputs, then make them pass"
-    "Fix the bug" → "Write a test that reproduces it, then make it pass"
-    "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+1. Read `PROGRESS.md` before making changes. Identify the target item. Check `Blocked by:` — do not implement if blocker is incomplete. Read all `Files:` listed. After completing, update the item status and COMPLETION SUMMARY table.
+2. State plan, verify after each step. No speculative features.
+3. Remove imports/variables YOUR changes made unused. Don't touch pre-existing dead code unless asked.
+4. Do not touch `packaging/`, `masterlist.yaml`, `game_versions.json`. `assets/` is read-only.
 
 ## Project structure
-IsaacMM/source/ houses the core functionality of the application
-IsaacMM/source/components stores all UI generating code, which is separated from the Logic code
 
-## Coding conventions
-- All platform-specific code gated behind sys.platform checks
-- Never import platform libs at module level
-- Use ManagedWorker for all background tasks (see source/worker.py)
-- Config accessed via config.field_name (module-level __getattr__)
+- `main.py` — entrypoint. Creates `QApplication`, calls `config.load()`, shows `DragApp`.
+- `source/` — core logic and UI wiring.
+- `source/components/` — all UI widget code (separated from logic).
+- `source/window.py:DragApp` — main window (QWidget), owns all panels.
+- `source/worker.py:ManagedWorker` — **must use this for ALL background tasks.** Wraps QThread with finished/error signals. Usage: `self._worker = ManagedWorker(parent=self); self._worker.start(fn, arg, name="Name")`. Workers must be waited in `closeEvent`.
+- `source/config.py` — dataclass + module-level `__getattr__`. Access: `config.field_name`.
+- `source/database.py` — SQLite (WAL mode). Schema migrations via `MIGRATIONS` dict. `PRAGMA user_version` tracks version.
+- `source/theme_helpers.py` — `palette_color(role, widget, alpha)` and `text_color_for_bg(bg_qcolor)` for palette-derived colors.
 
-## Before making changes
-1. Read PROGRESS.md and identify the target item
-2. Check its Blocked by: field - do not implement if blocker is incomplete
-3. Read all Files: listed in the item before touching anything
-4. After completing, update item status in PROGRESS.md
+## Developer commands
+
+```sh
+uv run main.py              # launch app (requires .venv with PySide6 etc.)
+source .venv/bin/activate   # activate uv venv
+```
+
+## Conventions
+
+- Platform-specific code gated with `if sys.platform == "win32":` etc. Never import platform libs at module level.
+- Use `config.field_name` for all settings. Config defaults in the dataclass and in `config.load()`.
+- Logging via `logger.log(level, msg)` (loguru wrapper). Colored console output via `log_colored(segments)`.
 
 ## Testing
-You must activate the virtual environment created by uv (source .venv/bin/activate)
-You must verify that there are no linting errors, no indentation errors, and the code compiles via ast.
-You must run the application with uv run main.py to check for crashes on startup, and have a 5 second timeout to close it if it didnt crash.
 
-## Do not touch
-- packaging/ unless the task explicitly involves it
-- masterlist.yaml
-- game_versions.json
-- assets/ is READ only
+No test framework is set up. Verification steps:
+1. `python -c "import ast; ast.parse(open('file.py').read())"` — syntax check
+2. `uv run main.py` — launch, verify no crash within 5s, then kill it
+
+## PROGRESS.md
+
+The file at `.github/PROGRESS.md` is the single source of truth for planned/completed work. It uses status markers: `[ ]` not started, `[~]` in progress, `[x]` complete, `[!]` blocked. Always update the COMPLETION SUMMARY table when changing item status.
+
+## Key backend patterns
+
+- **Conflict detection**: `source/conflict_index.py` — blake2b fingerprinting + quick tokens. `get_cached_files(mod_folder)` returns `dict[rel_path, list[mod_folder]]`.
+- **Folder watching**: `source/folder_watcher.py:ModFolderWatcher` wraps `watchdog.Observer`. Buffers events, flushes via QTimer (500ms).
+- **Undo/redo**: In-memory `_undo_stack`/`_redo_stack` in `ModListPanel` (max 50). Ctrl+Z/Y in eventFilter.
+- **Sorting**: `source/sorter.py` — auto-sort algorithm. Runs in `ManagedWorker`. Results emitted as mod list.

@@ -607,7 +607,7 @@ class ModListPanel(QWidget):
             rows.append((c0.text() if c0 else "", r))
 
         names_only = [name for name, _ in rows]
-        results = fuzzy_process.extract(query, names_only, limit=None, score_cutoff=60)
+        results = fuzzy_process.extract(query, names_only, limit=None, score_cutoff=70)
         matched_indices = set()
         for match, score, _ in results:
             for name, idx in rows:
@@ -625,14 +625,6 @@ class ModListPanel(QWidget):
 
         for r in range(self.model.rowCount()):
             self.listView.setRowHidden(r, QModelIndex(), r not in matched_indices)
-
-        # Scroll to the best match
-        if results:
-            best_name = results[0][0]
-            for name, idx in rows:
-                if name == best_name:
-                    self.listView.scrollTo(self.model.index(idx, 0))
-                    break
 
         # Scroll to the best match
         if results:

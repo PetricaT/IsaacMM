@@ -233,19 +233,25 @@ New user-facing functionality. Implement after Section 1 is stable.
              step through history.
       Blocked by: SQLITE-STATE
 
-- [ ] NOTIFICATIONS - Desktop notifications for async operations
+- [x] NOTIFICATIONS - Desktop notifications for async operations
+      Completed: 2026-07-13
       Lib: `notify-py`
       Files: new file `source/notifications.py`, `source/window.py`,
-             `source/backup.py`, `requirements.txt`, `pyproject.toml`
-      Notes: Send notifications for: update available (new version found).
-             Make notification opt-in via a settings toggle.
-             On Linux uses libnotify, on macOS osascript, on Windows PowerShell toast.
-             For richer platform-native notifications see OS-SPECIFIC section.
+             `source/config.py`, `source/components/dialogs.py`,
+             `requirements.txt`, `pyproject.toml`
+      Notes: Send notifications for: backup complete (after manual backup),
+             update available (new version found on silent check).
+             Make notification opt-in via a settings toggle (Settings → Updates).
+             Uses notify-py: on Linux uses libnotify, on macOS osascript,
+             on Windows PowerShell toast.
+             Wrapper in source/notifications.py handles ImportError gracefully
+             and checks config.notifications_enabled before sending.
 
-- [ ] UPDATE-CHECKER - Check for new app versions on GitHub
-      Lib: `httpx` (already in HTTPX), `packaging`
-      Files: new file `source/updater.py`, `source/window.py`,
-             `source/components/dialogs.py`
+- [x] UPDATE-CHECKER - Check for new app versions on GitHub
+      Completed: 2026-07-13
+      Lib: `httpx`, `packaging`
+      Files: `source/updater.py`, `source/window.py`,
+             `source/components/dialogs.py`, `source/config.py`
       Notes: On launch (and via Help → Check for Updates), query:
              `https://api.github.com/repos/PetricaT/IsaacMM/releases/latest`
              Compare returned `tag_name` against `paths.version` using
@@ -256,7 +262,10 @@ New user-facing functionality. Implement after Section 1 is stable.
              Gate network call in a ManagedWorker so it never blocks the UI.
              This item is the prerequisite for APPIMAGE-UPDATER and
              TUFUP-AUTOUPDATER — it detects the update, they apply it.
-      Blocked by: HTTPX, SQLITE-MIGRATIONS
+             Background silent checks store pending update and update Settings UI
+             label/button without showing a popup. Interactive checks show the
+             full UpdateDialog. Replaced urllib with httpx + tenacity retries.
+             Added Changelogs button in Settings. Persisted check_updates_on_startup.
 
 - [ ] LAUNCH-GAME - Launch Isaac directly from the app
       Lib: `subprocess` (stdlib)
@@ -603,22 +612,8 @@ Required once new libraries are added.
              Test each platform build after adding new deps.
       Blocked by: REQUIREMENTS-SYNC
 
-- [ ] LINUX-NATIVE-BINARY - Ship a plain native Linux ELF binary
-      Files: new file `packaging/native/build.sh`,
-             new file `packaging/native/IsaacMM-Linux-Native.spec`
-      Notes: PyInstaller `--onefile` already produces a self-extracting ELF.
-             The AppImage build does this internally — skip the appimagetool wrap.
-             Output named `IsaacMM-linux-x86_64` for clarity in release assets.
-             No .desktop or icon integration — user's responsibility with this format.
-             Intended for users placing the binary in `~/.local/bin/` manually.
-             The LD_LIBRARY_PATH xdg-open fix in `file_utils.py` still applies —
-             PyInstaller onefile sets LD_LIBRARY_PATH on extraction regardless of
-             whether wrapped in an AppImage.
-             CI: add as a second artifact in `build-appimage.yml` or a separate
-             `build-native.yml`. Both attached to GitHub release.
-      Blocked by: nothing
-
-- [ ] APPIMAGE-UPDATER - Delta self-update for AppImage via AppImageUpdate
+- [x] APPIMAGE-UPDATER - Delta self-update for AppImage via AppImageUpdate
+      Completed: 2026-07-13
       Tool: `AppImageUpdate` / `appimageupdatetool` / `zsync2`
       Files: `packaging/appimage/build.sh`,
              `packaging/appimage/IsaacMM-Linux.spec`,
@@ -646,7 +641,7 @@ Required once new libraries are added.
              AppImageUpdate shows its own progress UI — no custom download UI
              needed for this path. After update completes, prompt user to relaunch.
              The old AppImage is backed up as `IsaacMM.AppImage.zs-old` automatically.
-      Blocked by: UPDATE-CHECKER (for the in-app trigger), LINUX-NATIVE-BINARY
+      Blocked by: nothing (UPDATE-CHECKER complete)
 
 - [ ] TUFUP-AUTOUPDATER - In-place auto-update for Windows and macOS
       Lib: `tufup`
@@ -673,7 +668,7 @@ Required once new libraries are added.
              Do NOT use for Flatpak (flatpak update handles it).
              Do NOT use for Linux native binary (see AUTO-UPDATER note in
              LINUX-INSTALLER below).
-      Blocked by: UPDATE-CHECKER
+      Blocked by: nothing (UPDATE-CHECKER complete)
 
 - [ ] LINUX-INSTALLER - Optional GUI installer for Linux (MAYBE)
       Files: new file `packaging/linux-installer/build.sh`,
@@ -703,7 +698,7 @@ Required once new libraries are added.
              Uninstaller: `uninstall.sh` removes binary, .desktop, icon, symlink.
              Does NOT remove user data — prompt the user separately.
              Gate behind actual user demand before investing time.
-      Blocked by: LINUX-NATIVE-BINARY
+      Blocked by: nothing (but do not start until MAYBE becomes YES)
 
 - [ ] WINDOWS-INSTALLER - Optional NSIS installer for Windows (MAYBE)
       Files: new file `packaging/windows/installer.nsi`,
@@ -733,11 +728,11 @@ Required once new libraries are added.
 | 1 - Drop-in simplifications | 5 | 5 | 0 | 0 |
 | 1b - Bug fixes (Windows) | 4 | 4 | 0 | 0 |
 | 2 - Architecture & state | 3 | 3 | 0 | 0 |
-| 3 - UX features | 8 | 2 | 0 | 0 |
+| 3 - UX features | 8 | 4 | 0 | 0 |
 | 3b - Native UI integration | 8 | 6 | 0 | 0 |
 | 4 - OS integrations | 5 | 0 | 0 | 0 |
-| 5 - Packaging | 9 | 0 | 0 | 0 |
-| **Total** | **34** | **15** | **0** | **0** |
+| 5 - Packaging | 9 | 1 | 0 | 0 |
+| **Total** | **34** | **18** | **0** | **0** |
 
 ---
 
@@ -761,20 +756,23 @@ Required once new libraries are added.
 
 Changes requested 2026-07-07 for the update-checking feature. **Not yet implemented.**
 
-- [ ] **BACKGROUND-CHECK-SILENT** — On startup, check for updates silently (no popup).
+- [x] **BACKGROUND-CHECK-SILENT** — On startup, check for updates silently (no popup).
+      Completed: 2026-07-13
       `_check_for_updates_silent` already exists (QTimer 5s) but currently opens
       the `UpdateDialog` popup when a new version is found. Change it so that
       the popup is **only** shown for interactive/forced checks. For background
       checks, store the result and let the Settings UI reflect it.
 
-- [ ] **SETTINGS-UPDATE-UI** — When a background check finds a newer version,
+- [x] **SETTINGS-UPDATE-UI** — When a background check finds a newer version,
+      Completed: 2026-07-13
       replace the static version label in the "Updates" group with:
       `Current version: {VERSION} -> {NEW_VERSION}`
       Change the button text from "Check for Updates" to **"Update now"**.
       Clicking "Update now" launches the same update flow (asset download,
       progress bar, AppImage restart) that `UpdateDialog` does.
 
-- [ ] **CHANGELOGS-BUTTON** — Add a permanent "Changelogs" button next to
+- [x] **CHANGELOGS-BUTTON** — Add a permanent "Changelogs" button next to
+      Completed: 2026-07-13
       "Check for Updates" / "Update now" in the Settings Updates group.
       Opens `https://github.com/PetricaT/IsaacMM/releases` in the browser
       via `QDesktopServices.openUrl`.

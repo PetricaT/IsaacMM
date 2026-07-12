@@ -12,8 +12,7 @@ else
     pip install -r requirements.txt pyinstaller
 fi
 
-VERSION=$(python3 -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
-APPNAME="IsaacMM-${VERSION}"
+APPNAME="IsaacMM"
 APPDIR="${APPNAME}.AppDir"
 
 pyinstaller packaging/appimage/IsaacMM-Linux.spec
@@ -23,6 +22,14 @@ rm -rf "${APPDIR}"
 mkdir -p "${APPDIR}/usr/bin"
 
 cp -r "dist/IsaacMM-Linux/"* "${APPDIR}/usr/bin/"
+
+# Bundle appimageupdatetool for delta self-updates
+if [ ! -f appimageupdatetool ]; then
+    wget -q "https://github.com/AppImageCommunity/AppImageUpdate/releases/download/continuous/appimageupdatetool-x86_64.AppImage" -O appimageupdatetool
+    chmod +x appimageupdatetool
+fi
+cp appimageupdatetool "${APPDIR}/usr/bin/appimageupdatetool"
+chmod +x "${APPDIR}/usr/bin/appimageupdatetool"
 
 cat > "${APPDIR}/AppRun" << 'EOF'
 #!/bin/bash
@@ -41,8 +48,18 @@ fi
 
 APPIMAGETOOL=$(command -v appimagetool || echo "./appimagetool")
 
+# Embed update information so appimageupdatetool can do delta updates
+export UPD_INFO="gh-releases-zsync|PetricaT|IsaacMM|latest|IsaacMM-*x86_64.AppImage.zsync"
 export ARCH=x86_64
-APPIMAGE_EXTRACT_AND_RUN=1 "${APPIMAGETOOL}" "${APPDIR}" "${APPNAME}-x86_64.AppImage"
+APPIMAGE_EXTRACT_AND_RUN=1 "${APPIMAGETOOL}" --updateinformation "${UPD_INFO}" "${APPDIR}" "${APPNAME}-x86_64.AppImage"
 
 rm -rf "${APPDIR}"
 echo "Created ${APPNAME}-x86_64.AppImage"
+
+# Generate .zsync for delta updates
+if command -v zsyncmake &>/dev/null; then
+    zsyncmake "${APPNAME}-x86_64.AppImage"
+    echo "Created ${APPNAME}-x86_64.AppImage.zsync"
+else
+    echo "WARNING: zsyncmake not found, skipping .zsync generation"
+fi

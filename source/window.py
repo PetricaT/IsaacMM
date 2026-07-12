@@ -34,6 +34,7 @@ from .controller import (
     ControllerManager,
 )
 from .folder_watcher import ModFolderWatcher
+from .notifications import send_notification
 from .updater import (
     UpdateDialog,
     get_download_asset,
@@ -114,10 +115,8 @@ QPushButton:focus {
         self._refresh_game_versions_background()
         self._load_base_qss()
         self._init_controller()
-        # AUTOUPDATER-DISABLED(2026-07-07): silent startup check re-enabled
-        # when the Windows/macOS replace+restart logic is stable.
-        # if config.check_updates_on_startup:
-        #     QTimer.singleShot(5000, self._check_for_updates_silent)
+        if config.check_updates_on_startup:
+            QTimer.singleShot(5000, self._check_for_updates_silent)
 
     def apply_qt_theme(self, style_name: str) -> None:
         if getattr(self, "_applying_theme", False):
@@ -294,6 +293,8 @@ QPushButton:focus {
             segments = [(f"{mod_name}: ", None)]
             segments.extend(_colorize(old_ver, new_ver))
             self.log_colored(segments)
+        if results:
+            send_notification("Backup complete", f"{len(results)} mod(s) backed up")
 
     def _check_for_updates_silent(self) -> None:
         if self._update_worker.is_running:
@@ -322,10 +323,22 @@ QPushButton:focus {
         if not tag or not is_newer_version(tag):
             if interactive:
                 self.log(f"You are up to date ({paths.version})")
+            self._pending_update = None
+            self._notify_settings_update_state()
             return
 
         self.log(f"Update available: {tag} (you have {paths.version})")
+        send_notification("Update available", f"{tag} is ready to download")
 
+        if not interactive:
+            self._pending_update = release
+            self._notify_settings_update_state()
+            return
+
+        self._show_update_dialog(release)
+
+    def _show_update_dialog(self, release: dict) -> None:
+        tag = release.get("tag_name", "")
         changelog = release.get("body", "")
         asset = get_download_asset(release)
         download_url = asset["browser_download_url"] if asset else ""
@@ -342,9 +355,24 @@ QPushButton:focus {
         dl_path = dialog.download_path()
         if dl_path and is_appimage():
             QTimer.singleShot(1500, QApplication.quit)
-        # Refresh masterlist immediately; the hourly timer is already set
-        # in __init__ via _refresh_masterlist_background().
+        self._pending_update = None
+        self._notify_settings_update_state()
         self._fetch_masterlist()
+
+    def _apply_pending_update(self) -> None:
+        release = getattr(self, "_pending_update", None)
+        if release is None:
+            return
+        self._show_update_dialog(release)
+
+    def _get_pending_update(self) -> dict | None:
+        return getattr(self, "_pending_update", None)
+
+    def _notify_settings_update_state(self) -> None:
+        if hasattr(self, "_settings_panel"):
+            fn = getattr(self._settings_panel, "_refresh_update_state", None)
+            if callable(fn):
+                fn()
 
     def _refresh_masterlist_background(self) -> None:
         self._fetch_masterlist()

@@ -55,6 +55,7 @@ class _Config:
     controller_enabled: bool = True
     controller_deadzone: int = 8000
     controller_simple_icons: bool = False
+    notifications_enabled: bool = False
     use_system_icons: bool = True
     theme_preset: str = ""
     # Widget colors
@@ -223,6 +224,10 @@ def load() -> None:
         _cfg.controller_simple_icons = settings_section.get(
             "controller_simple_icons", False
         )
+        _cfg.notifications_enabled = settings_section.get("notifications_enabled", False)
+        _cfg.check_updates_on_startup = settings_section.get(
+            "check_updates_on_startup", False
+        )
         theme_section = config_data.get("theme", {})
         _cfg.use_system_icons = theme_section.get("use_system_icons", True)
         _cfg.theme_preset = theme_section.get("theme_preset", "")
@@ -309,6 +314,8 @@ def _do_save() -> None:
                 "controller_enabled": _v("controller_enabled"),
                 "controller_deadzone": _v("controller_deadzone"),
                 "controller_simple_icons": _v("controller_simple_icons"),
+                "notifications_enabled": _v("notifications_enabled"),
+                "check_updates_on_startup": _v("check_updates_on_startup"),
             },
             "theme": {
                 "accent": _v("accent_color"),

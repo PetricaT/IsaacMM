@@ -2,25 +2,20 @@
 
 from __future__ import annotations
 
-import json
 import os
 import platform
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Callable, Optional
-from urllib.request import Request, urlopen
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (
-    QDialog,
-    QDialogButtonBox,
-    QLabel,
-    QProgressBar,
-    QPushButton,
-    QTextBrowser,
-    QVBoxLayout,
+import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
 )
 
 from . import config, paths
@@ -29,23 +24,10 @@ REPO = "PetricaT/IsaacMM"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_URL = f"https://github.com/{REPO}/releases"
 
+_HEADERS = {"User-Agent": "IsaacMM/1.0"}
+
 
 # ── helpers (thread-safe) ──────────────────────────────────────────────
-
-
-def _fetch_json(url: str, timeout: int = 10) -> Optional[dict]:
-    try:
-        req = Request(
-            url,
-            headers={
-                "User-Agent": "IsaacMM/1.0",
-                "Accept": "application/json",
-            },
-        )
-        with urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except Exception:
-        return None
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:
@@ -57,9 +39,25 @@ def _parse_version(tag: str) -> tuple[int, ...]:
 # ── public API (thread-safe, no Qt imports needed above here) ──────────
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(min=1, max=10),
+    retry=retry_if_exception_type(httpx.RequestError),
+    reraise=True,
+)
+def _fetch_json(url: str) -> Optional[dict]:
+    with httpx.Client(follow_redirects=True) as client:
+        resp = client.get(url, headers=_HEADERS, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+
 def get_latest_release() -> Optional[dict]:
     """Fetch latest release info from GitHub API. Call in a worker thread."""
-    return _fetch_json(API_URL)
+    try:
+        return _fetch_json(API_URL)
+    except Exception:
+        return None
 
 
 def is_newer_version(release_tag: str, current: str = paths.version) -> bool:
@@ -92,28 +90,57 @@ def is_appimage() -> bool:
     return "APPIMAGE" in os.environ
 
 
+def find_appimageupdatetool() -> Optional[str]:
+    """Find the bundled appimageupdatetool inside the running AppImage."""
+    appimage = get_appimage_path()
+    if not appimage:
+        return None
+    appdir = os.path.dirname(appimage)
+    tool = os.path.join(appdir, "usr", "bin", "appimageupdatetool")
+    if os.path.isfile(tool) and os.access(tool, os.X_OK):
+        return tool
+    return None
+
+
+def run_appimage_delta_update(
+    progress_cb: Optional[Callable[[str], None]] = None,
+) -> bool:
+    """Run appimageupdatetool for a delta update. Returns True on success."""
+    tool = find_appimageupdatetool()
+    appimage = get_appimage_path()
+    if not tool or not appimage:
+        return False
+    try:
+        proc = subprocess.run(
+            [tool, appimage],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
 def download_asset(
     url: str,
     dest: str,
     progress_cb: Optional[Callable[[float], None]] = None,
 ) -> bool:
-    """Download an asset to *dest*.progress_cb receives 0.0–1.0."""
+    """Download an asset to *dest*. progress_cb receives 0.0-1.0."""
     tmp = dest + ".part"
     try:
-        req = Request(url, headers={"User-Agent": "IsaacMM/1.0"})
-        with urlopen(req, timeout=120) as resp:
-            total = int(resp.headers.get("Content-Length", "0"))
-            downloaded = 0
-            chunk_size = 8192
-            with open(tmp, "wb") as f:
-                while True:
-                    chunk = resp.read(chunk_size)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if progress_cb and total:
-                        progress_cb(downloaded / total)
+        with httpx.Client(follow_redirects=True) as client:
+            with client.stream("GET", url, headers=_HEADERS, timeout=120) as resp:
+                resp.raise_for_status()
+                total = int(resp.headers.get("content-length", "0"))
+                downloaded = 0
+                with open(tmp, "wb") as f:
+                    for chunk in resp.iter_bytes(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_cb and total:
+                            progress_cb(downloaded / total)
         os.replace(tmp, dest)
         return True
     except Exception:
@@ -148,8 +175,6 @@ def install_windows_update(downloaded_path: str) -> None:
     if not exe:
         return
 
-    import tempfile
-
     bat_path = os.path.join(tempfile.gettempdir(), "isaacmm_update.bat")
     content = (
         f"@echo off\r\n"
@@ -170,6 +195,19 @@ def install_windows_update(downloaded_path: str) -> None:
 
 
 # ── update UI dialog ───────────────────────────────────────────────────
+
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QTextBrowser,
+    QVBoxLayout,
+)
 
 
 class UpdateDialog(QDialog):
@@ -237,35 +275,28 @@ class UpdateDialog(QDialog):
     def _on_install(self) -> None:
         self._install_btn.setEnabled(False)
         self._open_btn.setEnabled(False)
+
+        # Try delta update first when running as AppImage with bundled tool
+        if is_appimage() and find_appimageupdatetool():
+            self._progress.setVisible(True)
+            self._progress.setRange(0, 0)
+            self._status_label.setVisible(True)
+            self._status_label.setText("Applying delta update...")
+            from .worker import ManagedWorker
+
+            self._dl_worker = ManagedWorker(parent=self)
+            self._dl_worker.finished.connect(self._on_delta_done)
+            self._dl_worker.error.connect(self._on_delta_error)
+            self._dl_worker.start(run_appimage_delta_update, name="DeltaUpdate")
+            return
+
+        # Fall back to full download
         self._progress.setVisible(True)
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._status_label.setVisible(True)
         self._status_label.setText("Downloading...")
-
-        import tempfile
-
-        suffix = (
-            "-x86_64.AppImage"
-            if platform.system() == "Linux"
-            else ".exe"
-            if platform.system() == "Windows"
-            else ".dmg"
-        )
-        tmp = tempfile.mktemp(suffix=suffix)
-
-        def _progress(pct: float) -> None:
-            QTimer.singleShot(0, lambda: self._progress.setValue(int(pct * 100)))
-
-        def _do_download() -> bool:
-            return download_asset(self._download_url, tmp, _progress)
-
-        from .worker import ManagedWorker
-
-        self._dl_worker = ManagedWorker(parent=self)
-        self._dl_worker.finished.connect(lambda ok: self._on_downloaded(ok, tmp))
-        self._dl_worker.error.connect(lambda _: None)
-        self._dl_worker.start(_do_download, name="UpdateDownload")
+        self._start_full_download()
 
     def _on_downloaded(self, ok: bool, path: str) -> None:
         if not ok:
@@ -297,3 +328,47 @@ class UpdateDialog(QDialog):
 
     def download_path(self) -> Optional[str]:
         return self._download_path
+
+    def _on_delta_done(self, ok: bool) -> None:
+        if ok:
+            self._status_label.setText("Update applied. Restarting...")
+            self._progress.setRange(0, 100)
+            self._progress.setValue(100)
+            self.accept()
+            appimage = get_appimage_path()
+            if appimage:
+                QTimer.singleShot(1500, lambda: os.execv(appimage, [appimage] + sys.argv[1:]))
+        else:
+            self._status_label.setText("Delta update failed. Falling back to full download...")
+            self._progress.setRange(0, 100)
+            self._progress.setValue(0)
+            self._start_full_download()
+
+    def _on_delta_error(self, msg: str) -> None:
+        self._status_label.setText("Delta update failed. Falling back to full download...")
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        self._start_full_download()
+
+    def _start_full_download(self) -> None:
+        suffix = (
+            "-x86_64.AppImage"
+            if platform.system() == "Linux"
+            else ".exe"
+            if platform.system() == "Windows"
+            else ".dmg"
+        )
+        tmp = tempfile.mktemp(suffix=suffix)
+
+        def _progress(pct: float) -> None:
+            QTimer.singleShot(0, lambda: self._progress.setValue(int(pct * 100)))
+
+        def _do_download() -> bool:
+            return download_asset(self._download_url, tmp, _progress)
+
+        from .worker import ManagedWorker
+
+        self._dl_worker = ManagedWorker(parent=self)
+        self._dl_worker.finished.connect(lambda ok: self._on_downloaded(ok, tmp))
+        self._dl_worker.error.connect(lambda _: None)
+        self._dl_worker.start(_do_download, name="UpdateDownload")

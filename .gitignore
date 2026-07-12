@@ -196,8 +196,10 @@ __marimo__/
 
 # Linux Build
 appimagetool
+appimageupdatetool
 *.AppImage
 *.AppDir
+*.zsync
 
 # Flatpak
 build-dir/

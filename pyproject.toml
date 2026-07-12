@@ -14,4 +14,6 @@ dependencies = [
     "tenacity",
     "packaging",
     "rapidfuzz",
+    "notify-py",
+    "watchdog",
 ]

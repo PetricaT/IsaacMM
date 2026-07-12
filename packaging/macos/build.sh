@@ -12,14 +12,12 @@ else
     pip install -r requirements.txt pyinstaller
 fi
 
-VERSION=$(python3 -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
-
 pyinstaller packaging/macos/IsaacMM-MacOS.spec
 
 mkdir -p dmg
 cp -r "dist/IsaacMM.app" "dmg/IsaacMM.app"
 ln -s /Applications dmg/Applications
-hdiutil create -volname "IsaacMM" -srcfolder dmg -ov -format UDZO "dist/IsaacMM-${VERSION}-MacOS.dmg"
+hdiutil create -volname "IsaacMM" -srcfolder dmg -ov -format UDZO "dist/IsaacMM-MacOS.dmg"
 
 rm -rf dmg
-echo "Created dist/IsaacMM-${VERSION}-MacOS.dmg"
+echo "Created dist/IsaacMM-MacOS.dmg"

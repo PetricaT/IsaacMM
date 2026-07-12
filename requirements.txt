@@ -9,3 +9,4 @@ tenacity
 packaging
 rapidfuzz
 watchdog
+notify-py

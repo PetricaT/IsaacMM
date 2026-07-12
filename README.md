@@ -15,7 +15,6 @@ An experimental way of sorting mods for the game The binding of Isaac: Rebirth (
 1. [How to use](#how-to-use)
 2. [Why?](#why)
 3. [How it works](#how-it-works)
-4. [Developing](#developing)
 
 ## 1. HOW TO USE
 
@@ -101,43 +100,11 @@ Tboi sorts mods as follows:
 
 I don't expect people to have more than 999 mods for this game, but if that proves wrong, the limit can be changed.
 
-## 4. Developing
-
-Quick rundown on the files.
-
-The main entry point is `main.py` (shocker)
-
-
-```
-root
-├─ main.py
-└─ source
-   ├─ sorter.py  -- Autosorting algorithm and masterlist handler  
-   ├─ window.py  -- Original UI entrypoint, still has some logic tied to it
-   ├─ widgets.py -- Layout of the GUI  
-   ├─ paths.py   -- Parses steam info to automatically find the mods folder 
-   ├─ models.py  -- Template for the drag and drop model 
-   └─ config.py  -- Handles the config directory read/write
-```
-
----
-
-If you want to aid in the development of this, fork the repo and install the requierments 
-
-``` sh
-pip install -r requirements.txt
-```
-
-Create a pull request with your changes and I will approve them.
-
-> [!NOTE]
-> The build scripts assume you have "[uv](https://docs.astral.sh/uv/)" installed, if you don't have it, do yourself a favour and install it.
-
-
 ## Known issues & TODO
 
 - [x] Add config file versioning & migration
-- [ ] Add update checker & notification
-- [ ] Add auto-updater (If possible on all 3 platforms)
+- [x] Add update checker & notification
+- [x] Add auto-updater (If possible on all 3 platforms)
 - [ ] Add launch game button
 - [ ] Add UI locking on active game
+- [ ] aarch64 build? (if requested)
