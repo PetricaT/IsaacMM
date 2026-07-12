@@ -136,7 +136,7 @@ Create a pull request with your changes and I will approve them.
 
 ## Known issues & TODO
 
-- [ ] Add config file versioning & migration
+- [x] Add config file versioning & migration
 - [ ] Add update checker & notification
 - [ ] Add auto-updater (If possible on all 3 platforms)
 - [ ] Add launch game button
