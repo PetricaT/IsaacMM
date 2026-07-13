@@ -6,7 +6,8 @@ import traceback
 # Safeguard for console=False builds from pyinstaller
 if sys.stderr is None:
     try:
-        sys.stderr = open("crash.log", "w", 1)
+        # sys.stderr = open("crash.log", "w", 1)
+        pass
     except Exception:
         import io
 

@@ -392,6 +392,8 @@ QPushButton:focus {
         )
 
     def _batch_fetch_details(self) -> None:
+        if not config.download_icons:
+            return
         enqueued = 0
         for row_index in range(self.mod_list_panel.model.rowCount()):
             list_item = self.mod_list_panel.model.item(row_index)

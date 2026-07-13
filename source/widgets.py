@@ -502,6 +502,8 @@ class ModInfoPanel(QWidget):
         return False
 
     def _process_icon_queue(self) -> None:
+        if not config.download_icons:
+            return
         if self._icon_worker.is_running:
             return
 
@@ -622,6 +624,8 @@ class ModInfoPanel(QWidget):
         )
 
     def _process_details_queue(self) -> None:
+        if not config.download_icons:
+            return
         if self._details_worker.is_running:
             return
 
