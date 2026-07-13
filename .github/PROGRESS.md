@@ -426,19 +426,24 @@ must be able to override only colors, only widget styling, or both.
 
 ---
 
-- [ ] THEME-LOADER - Implement filesystem-based theme loader
+- [x] THEME-LOADER - Implement filesystem-based theme loader
+      Completed: 2026-07-13
       Lib: `tomllib` (stdlib), `pathlib`
       Files: `source/theme.py`, `source/config.py`,
              `source/window.py`
       Notes: Discover themes from the `{APP_DATA}/themes/` directory. Each immediate
              subdirectory represents a single theme. A theme may contain any
              combination of:
-               - `color.toml`
+               - `colors.toml`
                - `style.qss`
              Loading must not require every file to exist. Missing files are
-             simply skipped.
+             simply skipped. Deleted dead `source/theme_io.py` (wrong format).
+             Added `active_theme: str = "System"` to config, loaded/saved from
+             `[settings] active_theme`. Built-in "System" theme always available
+             as first entry.
 
-- [ ] THEME-FOLDER-FORMAT - Define supported theme layout
+- [x] THEME-FOLDER-FORMAT - Define supported theme layout
+      Completed: 2026-07-13
       Files: `themes/`, documentation
       Notes: Supported directory structure:
 
@@ -447,9 +452,13 @@ must be able to override only colors, only widget styling, or both.
                  Dracula/
                    colors.toml
                  Catppuccin/
+                   colors.toml
+                   colors-light.toml
+                   colors-dark.toml
                    style.qss
                  Nord/
                    colors.toml
+                   colors-light.toml
                    style.qss
 
              Valid theme types:
@@ -457,7 +466,14 @@ must be able to override only colors, only widget styling, or both.
                - QSS only
                - TOML + QSS
 
-- [ ] PALETTE-THEME - Apply palette overrides from `colors.toml`
+             Light/dark variants:
+               - ``colors.toml`` only → used for both light and dark
+               - ``colors-light.toml`` + ``colors-dark.toml`` → swapped
+                 based on system color scheme hint
+               - Scheme-specific file takes precedence over ``colors.toml``
+
+- [x] PALETTE-THEME - Apply palette overrides from `colors.toml`
+      Completed: 2026-07-13
       Lib: `QPalette`
       Files: `source/theme.py`
       Notes: Begin with the current native application palette and override only
@@ -474,8 +490,15 @@ must be able to override only colors, only widget styling, or both.
                Highlight
                HighlightedText
                Accent (Qt 6.6+, when available)
+             Implemented `_PALETTE_MAP` dict mapping TOML keys to
+             `QPalette.ColorRole`. `apply_palette(theme)` reads the
+             `[palette]` section from `colors.toml`, starts from the native
+             app palette, overrides only defined roles, then calls
+             `app.setPalette()`. `reset_palette()` restores the native
+             standard palette. Accent role gracefully skipped on Qt < 6.6.
 
-- [ ] QSS-THEME - Apply optional stylesheet
+- [x] QSS-THEME - Apply optional stylesheet
+      Completed: 2026-07-13
       Lib: `QApplication`
       Files: `source/theme.py`
       Notes: If `style.qss` exists, load it after the palette has been applied.
@@ -483,14 +506,22 @@ must be able to override only colors, only widget styling, or both.
              `palette(...)` rather than embedding literal colors wherever
              possible. QSS should primarily define widget appearance (borders,
              radius, spacing, control styling) rather than replace the palette.
+             `apply_qss(theme, base_qss)` concatenates base QSS + theme QSS
+             and calls `app.setStyleSheet()`. Theme rules appended last so
+             they take precedence. `reset_qss(base_qss)` strips theme QSS
+             back to base only.
 
-- [ ] SYSTEM-THEME - Native operating system theme
+- [x] SYSTEM-THEME - Native operating system theme
+      Completed: 2026-07-13
       Files: `source/theme.py`
       Notes: Provide a built-in "System" theme that performs no overrides.
              Selecting this theme restores the application's fully native
              appearance by clearing any loaded palette overrides and stylesheet.
+             `apply_theme("System")` calls `reset_palette()` + `reset_qss()`.
+             Unknown theme names also fall back to System behaviour.
 
-- [ ] THEME-PIPELINE - Standardize theme loading order
+- [x] THEME-PIPELINE - Standardize theme loading order
+      Completed: 2026-07-13
       Files: `source/theme.py`
       Notes: Theme application must always follow this sequence:
 
@@ -511,6 +542,10 @@ must be able to override only colors, only widget styling, or both.
              specific colors, disabled states, accessibility improvements and
              future Qt enhancements wherever the theme does not explicitly
              override them.
+             Implemented `apply_theme(name, base_qss)` — single entry point
+             that orchestrates the full sequence. System/unknown names call
+             `reset_palette()` + `reset_qss()`. Other themes call
+             `apply_palette()` then `apply_qss()`.
              
 ---
 
@@ -521,17 +556,6 @@ Implement last. Each is self-contained and platform-gated.
 ---
 
 ### macOS
-
-- [ ] MACOS-NOTIFICATIONS - Native UNUserNotificationCenter notifications
-      Lib: `pyobjc-framework-UserNotifications`
-      Files: `source/notifications.py` (extend existing), `requirements.txt`
-      Notes: Replace `notify-py` macOS backend with direct
-             `UNUserNotificationCenter` calls for action button support.
-             Request notification permission at first launch.
-             Add action buttons to sort-complete notification: "View Log".
-             Gate behind `sys.platform == "darwin"` check.
-             Falls back to `notify-py` if pyobjc not available.
-      Blocked by: NOTIFICATIONS
 
 - [ ] MACOS-DOCK-PROGRESS - Dock icon progress during operations
       Lib: `pyobjc-framework-Cocoa`
@@ -563,16 +587,6 @@ Implement last. Each is self-contained and platform-gated.
              Get HWND from `self.winId()` on the main window.
              Gate behind `sys.platform == "win32"` check.
       Blocked by: WINDOWS-JUMPLIST (shares file)
-
-- [ ] WINDOWS-TOAST - Native Win10/11 toast notifications
-      Lib: `winrt-runtime`, `winrt-Windows.UI.Notifications`
-      Files: `source/notifications.py` (extend existing), `requirements.txt`
-      Notes: Replace `notify-py` Windows backend with WinRT toast API for proper
-             Win10/11 notifications with action buttons and app icon.
-             Action button on sort-complete: "View Log".
-             Falls back to `notify-py` if winrt not available (older Windows).
-             Gate behind `sys.platform == "win32"` check.
-      Blocked by: NOTIFICATIONS
 
 ---
 
@@ -670,53 +684,6 @@ Required once new libraries are added.
              LINUX-INSTALLER below).
       Blocked by: nothing (UPDATE-CHECKER complete)
 
-- [ ] LINUX-INSTALLER - Optional GUI installer for Linux (MAYBE)
-      Files: new file `packaging/linux-installer/build.sh`,
-             new file `packaging/linux-installer/installer.py`,
-             new file `packaging/linux-installer/IsaacMM-Installer.spec`,
-             new file `.github/workflows/build-installer-linux.yml`
-      Notes: STATUS: MAYBE — AppImage and Flatpak remain primary Linux artifacts.
-             A Linux installer provides: user-chosen install path via QWizard
-             (default `~/.local/share/IsaacMM/` or `/opt/IsaacMM/` for system),
-             automatic `.desktop` file at
-             `~/.local/share/applications/io.github.PetricaT.IsaacMM.desktop`,
-             icon at `~/.local/share/icons/hicolor/256x256/apps/`,
-             optional `~/.local/bin/IsaacMM` symlink, and an uninstall script.
-             Implementation: a separate small PySide6 QWizard bundled as its own
-             PyInstaller onefile ELF. Pages: Welcome → Choose Path → Installing
-             → Finish. Produces `IsaacMM-Installer-linux-x86_64`.
-             After writing .desktop file run:
-               `update-desktop-database ~/.local/share/applications`
-             After installing icon run:
-               `xdg-icon-resource install --size 256 icon.png io.github.PetricaT.IsaacMM`
-             Self-update for installed native binary: download new installer ELF
-             to temp, run with `--update` flag (skips wizard, overwrites binary,
-             relaunches). Use `packaging` lib for version comparison. Show a
-             non-intrusive banner in UI when update is available rather than a
-             blocking dialog. This path is separate from APPIMAGE-UPDATER —
-             it applies only to the binary installed by this installer.
-             Uninstaller: `uninstall.sh` removes binary, .desktop, icon, symlink.
-             Does NOT remove user data — prompt the user separately.
-             Gate behind actual user demand before investing time.
-      Blocked by: nothing (but do not start until MAYBE becomes YES)
-
-- [ ] WINDOWS-INSTALLER - Optional NSIS installer for Windows (MAYBE)
-      Files: new file `packaging/windows/installer.nsi`,
-             new file `.github/workflows/build-installer-windows.yml`
-      Notes: STATUS: MAYBE — portable .exe remains the primary Windows artifact.
-             NSIS recommended over WiX — simpler, better PyInstaller community
-             support, produces `IsaacMM-Setup-x.y.z.exe`.
-             Provides: Start Menu shortcut, optional Desktop shortcut,
-             Add/Remove Programs entry, uninstaller.
-             Self-update: TUFUP-AUTOUPDATER handles Windows auto-update already
-             for both portable and installed variants — no separate update
-             mechanism needed here. The NSIS installer just handles first install
-             and uninstall cleanly.
-             Both portable `IsaacMM.exe` and `IsaacMM-Setup-x.y.z.exe` attached
-             to the GitHub release. Do not remove the portable build.
-             Gate behind actual user demand before investing time.
-      Blocked by: nothing (but do not start until MAYBE becomes YES)
-
 ---
 
 ## COMPLETION SUMMARY
@@ -730,9 +697,10 @@ Required once new libraries are added.
 | 2 - Architecture & state | 3 | 3 | 0 | 0 |
 | 3 - UX features | 8 | 4 | 0 | 0 |
 | 3b - Native UI integration | 8 | 6 | 0 | 0 |
+| 3c - Theme engine | 6 | 6 | 0 | 0 |
 | 4 - OS integrations | 5 | 0 | 0 | 0 |
 | 5 - Packaging | 9 | 1 | 0 | 0 |
-| **Total** | **34** | **18** | **0** | **0** |
+| **Total** | **40** | **24** | **0** | **0** |
 
 ---
 
