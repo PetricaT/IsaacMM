@@ -70,5 +70,18 @@ if __name__ == "__main__":
         application.setWindowIcon(QIcon("assets/icon.png"))
 
     main_window = DragApp()
+    if config.active_theme and config.active_theme != "System":
+        from source import theme as _theme
+
+        _t = _theme.get_theme(config.active_theme)
+        if _t:
+            _scheme = _theme.detect_color_scheme()
+            _pal = _theme.build_palette(_t, scheme=_scheme)
+            _qss = _theme.load_qss(_t)
+            _colors = _theme.load_theme_colors(_t, scheme=_scheme)
+            for _k, _v in _colors.items():
+                if hasattr(config, _k):
+                    setattr(config, _k, _v)
+            main_window._apply_theme_data(palette=_pal, theme_qss=_qss)
     main_window.show()
     sys.exit(application.exec())

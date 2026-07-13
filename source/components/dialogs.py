@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import config, logger, paths
+from .. import config, logger, paths, theme
 from ..backup import backup_all, get_backup_root
 from ..worker import ManagedWorker
 from .controller_ui import BUTTON_SIZE, ICON_SIZE
@@ -455,16 +455,15 @@ class SettingsPanel(QWidget):
         self.theme_combo.currentIndexChanged.connect(self._save_settings)
 
         self.preset_combo = QComboBox()
-        for name in config.THEME_PRESETS:
-            label = name.replace("_", " ").title()
-            self.preset_combo.addItem(label, name)
-        idx = self.preset_combo.findData(config.theme_preset)
+        for t in theme.discover_themes():
+            self.preset_combo.addItem(t.name, t.name)
+        idx = self.preset_combo.findData(config.active_theme)
         if idx >= 0:
             self.preset_combo.setCurrentIndex(idx)
-        self.preset_combo.currentIndexChanged.connect(self._apply_preset)
+        self.preset_combo.currentIndexChanged.connect(self._apply_theme)
 
         theme_layout.addRow("Qt Style:", self.theme_combo)
-        theme_layout.addRow("Preset:", self.preset_combo)
+        theme_layout.addRow("Theme:", self.preset_combo)
 
         self.system_icons_check = QCheckBox("Use system icons (KDE/desktop theme)")
         self.system_icons_check.setChecked(config.use_system_icons)
@@ -769,9 +768,26 @@ class SettingsPanel(QWidget):
             btn.setStyleSheet(_btn_qss(color.name()))
             self._save_settings()
 
-    def _apply_preset(self) -> None:
+    def _apply_theme(self) -> None:
         name = self.preset_combo.currentData()
-        config.apply_preset(name)
+        if not name:
+            return
+        config.active_theme = name
+        scheme = theme.detect_color_scheme()
+        t = theme.get_theme(name)
+        if t is None or name == "System":
+            palette = None
+            qss = ""
+        else:
+            palette = theme.build_palette(t, scheme=scheme)
+            qss = theme.load_qss(t)
+            colors = theme.load_theme_colors(t, scheme=scheme)
+            for key, value in colors.items():
+                if hasattr(config, key):
+                    setattr(config, key, value)
+        apply_fn = getattr(self._owner, "_apply_theme_data", None)
+        if callable(apply_fn):
+            apply_fn(palette=palette, theme_qss=qss)
         self._sync_theme_buttons()
         self._save_settings()
 
@@ -921,6 +937,7 @@ class SettingsPanel(QWidget):
         config.controller_simple_icons = self.simple_icons_check.isChecked()
         config.use_system_icons = self.system_icons_check.isChecked()
         config.theme_preset = self.preset_combo.currentData()
+        config.active_theme = self.preset_combo.currentData()
         self._update_date_preview()
         mods_text = self.mods_path_edit.text().strip()
         if mods_text:

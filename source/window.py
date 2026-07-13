@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import config, game_versions, paths, sorter
+from . import config, game_versions, paths, sorter, theme
 from .backup import backup_all, get_backup_root
 from .components.console import ConsoleWidget
 from .components.controller_ui import ICON_SIZE, ControllerRouter, FocusOverlay
@@ -70,6 +70,7 @@ QPushButton:focus {
         self._masterlist_worker = ManagedWorker(parent=self)
         self._game_versions_worker = ManagedWorker(parent=self)
         self._manual_backup = False
+        self._theme_qss = ""
         self._backup_worker.finished.connect(self._on_backup_finished)
         self._backup_worker.error.connect(
             lambda m: self.log(f"Backup failed: {m}", "error")
@@ -128,6 +129,41 @@ QPushButton:focus {
                 return
             app.setStyle(style_name)
             qss = self._base_qss
+            if self._controller and self._controller.is_active:
+                qss = qss + self.FOCUS_QSS
+            app.setStyleSheet("")
+            app.setStyleSheet(qss)
+            for widget in app.allWidgets():
+                if type(widget) is QWidget:
+                    widget.setAutoFillBackground(True)
+            for widget in app.allWidgets():
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+                widget.update()
+        finally:
+            self._applying_theme = False
+
+    def _apply_theme_data(
+        self,
+        palette: Optional[QPalette] = None,
+        theme_qss: str = "",
+    ) -> None:
+        """Apply a full theme (palette + QSS) through the safe repaint cycle.
+
+        Uses the same ``setStyleSheet("")`` → ``setStyleSheet(qss)`` +
+        unpolish/polish pattern as :meth:`apply_qt_theme` to avoid Qt crashes.
+        """
+        if getattr(self, "_applying_theme", False):
+            return
+        self._applying_theme = True
+        self._theme_qss = theme_qss
+        try:
+            app = QApplication.instance()
+            if not app:
+                return
+            if palette is not None:
+                app.setPalette(palette)
+            qss = self._base_qss + theme_qss
             if self._controller and self._controller.is_active:
                 qss = qss + self.FOCUS_QSS
             app.setStyleSheet("")
@@ -534,9 +570,13 @@ QPushButton:focus {
 
     def _apply_focus_qss(self, active: bool) -> None:
         if active:
-            QApplication.instance().setStyleSheet(self._base_qss + self.FOCUS_QSS)
+            QApplication.instance().setStyleSheet(
+                self._base_qss + self._theme_qss + self.FOCUS_QSS
+            )
         else:
-            QApplication.instance().setStyleSheet(self._base_qss)
+            QApplication.instance().setStyleSheet(
+                self._base_qss + self._theme_qss
+            )
 
     def _on_controller_connected(self, name: str, gp_type: int) -> None:
         self.log(f"Controller connected: {name}", "info")

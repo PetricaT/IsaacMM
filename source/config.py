@@ -25,6 +25,7 @@ class _Config:
     backup_enabled: bool = False
     backup_path: Optional[str] = None
     theme: str = "native"
+    active_theme: str = "System"
     accent_color: str = ""
     disabled_mod_color: str = ""
     win_color: str = "#65A665"
@@ -196,6 +197,7 @@ def load() -> None:
         _cfg.backup_enabled = settings_section.get("backup_enabled", False)
         _cfg.backup_path = settings_section.get("backup_path") or None
         _cfg.theme = settings_section.get("theme", "native")
+        _cfg.active_theme = settings_section.get("active_theme", "System")
         _cfg.animate_icons = settings_section.get("animate_icons", True)
         _cfg.animate_anm2_preview = settings_section.get("animate_anm2_preview", True)
         _cfg.preview_images = settings_section.get("preview_images", True)
@@ -304,6 +306,7 @@ def _do_save() -> None:
                 "backup_enabled": _v("backup_enabled"),
                 "backup_path": _v("backup_path"),
                 "theme": _v("theme"),
+                "active_theme": _v("active_theme"),
                 "animate_icons": _v("animate_icons"),
                 "animate_anm2_preview": _v("animate_anm2_preview"),
                 "preview_images": _v("preview_images"),

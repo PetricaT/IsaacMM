@@ -93,7 +93,9 @@ class ConsoleWidget(QWidget):
     def _on_watcher_state(self) -> None:
         active = self._watcher and self._watcher.is_active
         if active:
-            self._watcher_dot.setStyleSheet("color: palette(highlight);")
+            self._watcher_dot.setStyleSheet(
+                f"color: {config.win_color or 'palette(highlight)'};"
+            )
             self._watcher_dot.setToolTip("Folder watcher: active")
         else:
             self._watcher_dot.setStyleSheet("color: palette(mid);")
