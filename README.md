@@ -100,6 +100,10 @@ Tboi sorts mods as follows:
 
 I don't expect people to have more than 999 mods for this game, but if that proves wrong, the limit can be changed.
 
+## 4. Themes
+
+You can find themes for the manager here: [PetricaT/IsaacMM-themes](https://github.com/PetricaT/IsaacMM-themes)
+
 ## Known issues & TODO
 
 - [x] Add config file versioning & migration
