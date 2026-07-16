@@ -56,6 +56,7 @@ class _Config:
     controller_enabled: bool = True
     controller_deadzone: int = 8000
     controller_simple_icons: bool = False
+    slim_db: bool = False
     notifications_enabled: bool = False
     use_system_icons: bool = True
     theme_preset: str = ""
