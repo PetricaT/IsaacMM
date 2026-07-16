@@ -194,7 +194,7 @@ class ModListPanel(QWidget):
 
         header = self.listView.header()
         header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.Interactive)
         header.setSectionResizeMode(2, QHeaderView.Interactive)
         header.setSectionResizeMode(3, QHeaderView.Interactive)
@@ -265,6 +265,15 @@ class ModListPanel(QWidget):
             self._restoring_widths = True
             self.listView.header().restoreState(state)
         self._restoring_widths = False
+
+        # Re-apply resize modes after restore so Column 0 always fills
+        # remaining space while Columns 1-3 keep user-defined widths.
+        header = self.listView.header()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
+
         self._watcher = None
         self._conflict_timer = QTimer(self)
         self._conflict_timer.setInterval(150)

@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileIconProvider,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -225,7 +226,9 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.setRootIsDecorated(True)
         self.conflicts_tree.setAlternatingRowColors(True)
         self.conflicts_tree.header().setStretchLastSection(False)
-        self.conflicts_tree.header().resizeSection(1, 350)
+        self.conflicts_tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
+        self.conflicts_tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.conflicts_tree.header().resizeSection(0, 200)
         self.conflicts_tree.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
@@ -380,6 +383,9 @@ class ModInfoPanel(QWidget):
                 )
                 mod_tree_item = QTreeWidgetItem([conflict_mod_name, ""])
                 mod_tree_item.setForeground(0, QColor(overwrite_color))
+                fnt = mod_tree_item.font(0)
+                fnt.setBold(True)
+                mod_tree_item.setFont(0, fnt)
                 self._populate_file_tree(
                     mod_tree_item, conflict_data["files"], conflict_folder
                 )
@@ -786,6 +792,8 @@ class ModInfoPanel(QWidget):
     def restore_column_state(self, state_data: QByteArray) -> None:
         if state_data:
             self.conflicts_tree.header().restoreState(state_data)
+        self.conflicts_tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
+        self.conflicts_tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
 
     def _open_conflict_file(self, item, tree_column: int) -> None:
         conflict_data = item.data(0, Qt.ItemDataRole.UserRole)
