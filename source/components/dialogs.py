@@ -466,8 +466,8 @@ class SettingsPanel(QWidget):
         theme_layout.addRow("Theme:", self.preset_combo)
 
         self.system_icons_check = QCheckBox("Use system icons (KDE/desktop theme)")
-        self.system_icons_check.setChecked(config.use_system_icons)
-        self.system_icons_check.toggled.connect(self._save_settings)
+        self.system_icons_check.setChecked(True)
+        self.system_icons_check.setEnabled(False)
         theme_layout.addRow(self.system_icons_check)
 
         theme_main_layout.addWidget(top_widget)

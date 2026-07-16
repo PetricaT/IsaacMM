@@ -14,6 +14,7 @@ from PySide6.QtCore import (
     QByteArray,
     QDateTime,
     QEvent,
+    QFileInfo,
     QLocale,
     QSize,
     Qt,
@@ -31,6 +32,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QFileIconProvider,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -271,26 +273,23 @@ class ModInfoPanel(QWidget):
         layout.addWidget(self.folder_label)
 
     def _init_icons(self) -> None:
-        if config.use_system_icons:
-            self._folder_icon = QIcon.fromTheme("folder")
-            theme_pm = QIcon.fromTheme("image-x-generic").pixmap(128, 128)
-            if not theme_pm.isNull():
-                self._placeholder = theme_pm
-            else:
-                self._placeholder = QPixmap(
-                    os.path.join(paths.BASE_DIR, "assets", "ui", "no_image.png")
-                )
+        self._folder_icon = QIcon.fromTheme("folder")
+        self._file_icon_provider = QFileIconProvider()
+        theme_pm = QIcon.fromTheme("image-x-generic").pixmap(128, 128)
+        if not theme_pm.isNull():
+            self._placeholder = theme_pm
         else:
             self._placeholder = QPixmap(
                 os.path.join(paths.BASE_DIR, "assets", "ui", "no_image.png")
             )
-            self._folder_icon = QIcon(
-                os.path.join(paths.BASE_DIR, "assets", "ui", "folder-yellow.png")
-            )
+
+    def _get_file_icon(self, full_path: str) -> QIcon:
+        return self._file_icon_provider.icon(QFileInfo(full_path))
 
     def refresh_icons(self) -> None:
         self._init_icons()
         self._update_tree_icons(self.files_tree.invisibleRootItem())
+        self._update_tree_icons(self.conflicts_tree.invisibleRootItem())
         self._show_placeholder()
 
     def _update_tree_icons(self, parent: QTreeWidgetItem) -> None:
@@ -707,6 +706,12 @@ class ModInfoPanel(QWidget):
                     file_item.setData(
                         0, Qt.ItemDataRole.UserRole, (conflict_folder, segment_path)
                     )
+                    file_item.setIcon(
+                        0,
+                        self._get_file_icon(
+                            os.path.join(conflict_folder, segment_path)
+                        ),
+                    )
                     parent.addChild(file_item)
 
         add_branches(path_tree, parent_item)
@@ -739,6 +744,7 @@ class ModInfoPanel(QWidget):
             else:
                 file_item = QTreeWidgetItem([entry])
                 file_item.setData(0, Qt.ItemDataRole.UserRole, (mod_folder, rel_path))
+                file_item.setIcon(0, self._get_file_icon(full_entry))
                 if overwritten_files and rel_path in overwritten_files:
                     font = file_item.font(0)
                     font.setItalic(True)
