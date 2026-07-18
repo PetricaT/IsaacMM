@@ -325,6 +325,12 @@ class ModListPanel(QWidget):
         else:
             all_entries.sort(key=lambda entry: entry[0].lower())
 
+        merged_dir = os.path.join(config.mods_path, "MERGED")
+        if os.path.isdir(merged_dir) and not any(
+            f == "MERGED" for _, f, _ in all_entries
+        ):
+            all_entries.insert(0, ("MERGED", "MERGED", ""))
+
         config.loaded_mods.clear()
         priority = 1
         for row_index, (entry_name, entry_folder, mod_version) in enumerate(
@@ -497,7 +503,10 @@ class ModListPanel(QWidget):
                 continue
             if col0.checkState() != Qt.CheckState.Checked:
                 continue
-            files = self._scan_mod_files(col0.data(Qt.ItemDataRole.UserRole))
+            folder = col0.data(Qt.ItemDataRole.UserRole)
+            if folder == "MERGED":
+                continue
+            files = self._scan_mod_files(folder)
             row_files[row] = files
             for f in files:
                 file_to_rows.setdefault(f, []).append(row)
@@ -519,6 +528,21 @@ class ModListPanel(QWidget):
                 for item in (col1, self.model.item(row, 2), self.model.item(row, 3)):
                     if item:
                         item.setBackground(bg)
+                continue
+
+            folder = col0.data(Qt.ItemDataRole.UserRole)
+            if folder == "MERGED":
+                for item in (col0, col1, self.model.item(row, 2), self.model.item(row, 3)):
+                    if item:
+                        item.setBackground(QBrush())
+                for role in (CONFLICT_ROLE, OVERWRITTEN_ROLE, WINS_ROLE, LOSSES_ROLE):
+                    col0.setData(None, role)
+                if col1:
+                    for role in (WINS_ROLE, LOSSES_ROLE, EMPTY_ROLE):
+                        col1.setData(None, role)
+                if col0.checkState() != Qt.CheckState.Checked:
+                    if config.disabled_mod_color:
+                        col0.setForeground(QColor(config.disabled_mod_color))
                 continue
 
             for role in (CONFLICT_ROLE, OVERWRITTEN_ROLE, WINS_ROLE, LOSSES_ROLE):
@@ -725,7 +749,7 @@ class ModListPanel(QWidget):
         for row_index in range(self.model.rowCount()):
             other_col0 = self.model.item(row_index)
             other_mod_folder = other_col0.data(Qt.ItemDataRole.UserRole)
-            if other_mod_folder == mod_folder:
+            if other_mod_folder == mod_folder or other_mod_folder == "MERGED":
                 continue
             if other_col0.checkState() != Qt.CheckState.Checked:
                 continue

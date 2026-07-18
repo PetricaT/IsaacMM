@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -16,6 +17,7 @@ from PySide6.QtCore import (
     QEvent,
     QFileInfo,
     QLocale,
+    QPoint,
     QSize,
     Qt,
     QTimer,
@@ -38,6 +40,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QTabWidget,
     QTextBrowser,
@@ -96,7 +99,29 @@ def _format_date(ts: Optional[float]) -> str:
 
 
 class ConflictTreeWidget(QTreeWidget):
-    pass
+    merge_requested = Signal(str)  # relative file path
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
+
+    def _on_context_menu(self, pos: QPoint) -> None:
+        item = self.itemAt(pos)
+        if item is None or item.childCount():
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data is None:
+            return
+        _conflict_folder, relative_path = data
+        if not relative_path.lower().endswith(".png"):
+            return
+        if shutil.which("imagediff") is None:
+            return
+        menu = QMenu(self)
+        action = menu.addAction("Merge with imagediff")
+        action.triggered.connect(lambda: self.merge_requested.emit(relative_path))
+        menu.exec(self.viewport().mapToGlobal(pos))
 
 
 class ModInfoPanel(QWidget):
@@ -247,6 +272,7 @@ class ModInfoPanel(QWidget):
             self._on_preview_tree_scroll
         )
         self.tabs.addTab(self.conflicts_tree, "Conflicts")
+        self.conflicts_tree.merge_requested.connect(self._on_merge_requested)
 
         self.files_tree = QTreeWidget()
         self.files_tree.setHeaderLabels(["Name"])
@@ -794,6 +820,103 @@ class ModInfoPanel(QWidget):
             self.conflicts_tree.header().restoreState(state_data)
         self.conflicts_tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
         self.conflicts_tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
+
+    def _on_merge_requested(self, relative_path: str) -> None:
+        images: list[str] = []
+        found_mods: list[str] = []
+        for i in range(self.conflicts_tree.topLevelItemCount()):
+            mod_item = self.conflicts_tree.topLevelItem(i)
+            mod_name = mod_item.text(0)
+            if mod_name == "MERGED":
+                continue
+            before = len(images)
+            self._walk_for_conflict_file(mod_item, relative_path, mod_name, images)
+            if len(images) > before:
+                found_mods.append(mod_name)
+            logger.log(
+                "debug",
+                f"Merge: scanned top-level {mod_name!r} -> {'MATCH' if len(images) > before else 'no match'}",
+            )
+        selected_full = os.path.join(self._mod_path, relative_path)
+        if os.path.isfile(selected_full):
+            images.append(selected_full)
+            found_mods.append(os.path.basename(self._mod_path))
+            logger.log("debug", f"Merge: added selected mod: {os.path.basename(self._mod_path)}")
+        else:
+            logger.log(
+                "debug",
+                f"Merge: selected mod has no file at {selected_full}",
+            )
+        logger.log(
+            "debug",
+            f"Merge: collected {len(images)} file(s) for {relative_path!r} "
+            f"in {len(found_mods)} mod(s): {found_mods}",
+        )
+        for fp in images:
+            logger.log("debug", f"  Merge candidate: {fp}")
+        if len(images) < 2:
+            logger.log("warning", "Need at least 2 versions of the image to merge")
+            return
+        loaded = [e[1] for e in config.loaded_mods]
+        images.sort(key=lambda p: (
+            loaded.index(os.path.basename(os.path.dirname(p)))
+            if os.path.basename(os.path.dirname(p)) in loaded
+            else len(loaded)
+        ))
+        logger.log(
+            "debug",
+            f"Merge: sorted order: {[os.path.basename(os.path.dirname(p)) for p in images]}",
+        )
+        merged_dir = os.path.join(config.mods_path, "MERGED")
+        os.makedirs(merged_dir, exist_ok=True)
+        meta_path = os.path.join(merged_dir, "metadata.xml")
+        if not os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+                    f.write('<metadata>\n')
+                    f.write('  <name>MERGED</name>\n')
+                    f.write('  <description>Output folder for imagediff merges</description>\n')
+                    f.write('</metadata>\n')
+            except OSError:
+                pass
+        output = os.path.join(merged_dir, relative_path)
+        os.makedirs(os.path.dirname(output), exist_ok=True)
+        try:
+            subprocess.Popen(
+                # ["imagediff", "--minimal", "--output", output, *images],
+                ["imagediff", "--output", output, *images],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logger.log("info", f"Merge: launched imagediff for {relative_path}")
+        except FileNotFoundError:
+            logger.log("error", "imagediff not found on PATH")
+
+    @staticmethod
+    def _walk_for_conflict_file(
+        item: QTreeWidgetItem,
+        target_path: str,
+        mod_name: str,
+        images: list[str],
+    ) -> None:
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data is not None:
+            child_folder, child_path = data
+            if child_path == target_path:
+                full = os.path.join(config.mods_path, child_folder, target_path)
+                if os.path.isfile(full):
+                    images.append(full)
+                else:
+                    logger.log(
+                        "debug",
+                        f"Merge: {mod_name} claims {target_path} but file not found at {full}",
+                    )
+                return
+        for ci in range(item.childCount()):
+            ModInfoPanel._walk_for_conflict_file(
+                item.child(ci), target_path, mod_name, images
+            )
 
     def _open_conflict_file(self, item, tree_column: int) -> None:
         conflict_data = item.data(0, Qt.ItemDataRole.UserRole)

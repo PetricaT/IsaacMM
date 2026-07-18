@@ -15,11 +15,15 @@ from watchdog.observers import Observer
 
 
 class _Handler(FileSystemEventHandler):
+    MODIFY_EVENTS = {"created", "modified", "deleted", "moved"}
+
     def __init__(self, watcher: "ModFolderWatcher") -> None:
         super().__init__()
         self._watcher = watcher
 
     def on_any_event(self, event) -> None:
+        if event.event_type not in self.MODIFY_EVENTS:
+            return
         if event.is_directory:
             return
         self._watcher._notify_change(event.src_path)

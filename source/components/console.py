@@ -39,7 +39,7 @@ class ConsoleWidget(QWidget):
         self.console.setReadOnly(True)
         self.console.setFont(QFont("Courier New", 9))
         fm = self.console.fontMetrics()
-        self.console.setFixedHeight(fm.lineSpacing() * 5 + 4)
+        self.console.setMinimumHeight(fm.lineSpacing() * 3 + 4)
         self.console.setStyleSheet(
             f"background-color: {config.console_bg or 'palette(base)'}; color: {config.console_fg or 'palette(text)'}; border: 1px solid {config.console_border or 'palette(mid)'};"
         )

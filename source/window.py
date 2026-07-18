@@ -183,6 +183,7 @@ QPushButton:focus {
         s = config.get_settings()
         s.setValue("ui/window_geometry", self.saveGeometry())
         s.setValue("ui/splitter_state", self._splitter.saveState())
+        s.setValue("ui/vsplitter_state", self._vsplitter.saveState())
         s.setValue(
             "ui/column_state", self.modInfoPanel.conflicts_tree.header().saveState()
         )
@@ -251,11 +252,20 @@ QPushButton:focus {
             horizontal_splitter.restoreState(splitter_state)
         self._splitter = horizontal_splitter
 
+        vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        vertical_splitter.addWidget(horizontal_splitter)
+        vertical_splitter.addWidget(self.console_widget)
+        vertical_splitter.setStretchFactor(0, 1)
+        vertical_splitter.setStretchFactor(1, 0)
+        vstate = s.value("ui/vsplitter_state")
+        if vstate:
+            vertical_splitter.restoreState(vstate)
+        self._vsplitter = vertical_splitter
+
         main_page = QWidget()
         main_layout = QVBoxLayout(main_page)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.addWidget(horizontal_splitter, 1)
-        main_layout.addWidget(self.console_widget)
+        main_layout.addWidget(vertical_splitter)
 
         self._settings_panel = SettingsPanel(self)
         self._settings_panel.closed.connect(self._on_settings_closed)
