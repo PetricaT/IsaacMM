@@ -390,7 +390,10 @@ class ModListPanel(QWidget):
     def _make_row_items(self):
         from PySide6.QtGui import QStandardItem
 
-        return [QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem()]
+        items = [QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem()]
+        for item in items[1:]:
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        return items
 
     def _apply_item_style(self, item) -> None:
         if item is None or item.data(SEPARATOR_ROLE):
@@ -776,6 +779,8 @@ class ModListPanel(QWidget):
         )
 
     def _scan_mod_files(self, mod_folder_name: str) -> set:
+        if not mod_folder_name:
+            return set()
         cached_files = self._mod_files_cache.get(mod_folder_name)
         if cached_files is not None:
             return cached_files
