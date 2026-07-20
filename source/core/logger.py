@@ -6,8 +6,6 @@ import sys
 
 from loguru import logger
 
-from . import config
-
 __all__ = ["logger", "log", "set_handler", "set_level"]
 
 _LEVEL_MAP = {
@@ -24,6 +22,8 @@ def set_handler(handler) -> None:
     """Replace all handlers with a single callable sink."""
     global _current_handler
     _current_handler = handler
+    from . import config
+
     logger.remove()
     if handler is not None:
         logger.add(

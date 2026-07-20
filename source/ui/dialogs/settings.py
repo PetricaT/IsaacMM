@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Any, Optional, Protocol
+from typing import Optional
 
-from PySide6.QtCore import QDateTime, QLocale, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPalette, QPixmap
+from PySide6.QtCore import QDateTime, QLocale, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
     QCheckBox,
     QColorDialog,
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
@@ -27,188 +26,31 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSlider,
     QSpinBox,
-    QStyledItemDelegate,
     QStyleFactory,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from .. import config, logger, paths, theme
-from ..backup import backup_all, get_backup_root
-from ..worker import ManagedWorker
-from .controller_ui import BUTTON_SIZE, ICON_SIZE
-from .file_utils import open_path
-
-
-def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
-    i = 0
-    while i < len(old) and i < len(new) and old[i] == new[i]:
-        i += 1
-    segments: list[tuple[str, Optional[str]]] = []
-    if old:
-        segments.append((old[:i], None))
-        if old[i:]:
-            segments.append((old[i:], config.lose_color))
-    segments.append((" \u2192 ", None))
-    if new:
-        segments.append((new[:i], None))
-        if new[i:]:
-            segments.append((new[i:], config.win_color))
-    return segments
-
-
-class SettingsPanelOwner(Protocol):
-    def log(self, message: str, level: str = "info") -> None: ...
-    def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None: ...
-    def getModList(self) -> None: ...
-
-    mod_list_panel: Any
-    modInfoPanel: Any
-    _backup_thread: Any
-
-
-def _btn_qss(color: str) -> str:
-    return f"background-color: {color};"
+from ...core import config, logger, paths
+from ...core.worker import ManagedWorker
+from ...mods.backup import backup_all, get_backup_root
+from ...controller.controller_ui import BUTTON_SIZE, ICON_SIZE
+from ..file_utils import open_path
+from ...theme import theme
 
 
 try:
-    from ..controller import GamepadType
+    from ...controller.controller import GamepadType
 
     _HAS_SDL = True
 except ImportError:
     GamepadType = object
     _HAS_SDL = False
 
-CONFLICT_ROLE = Qt.ItemDataRole.UserRole + 1  # 257
-SEPARATOR_ROLE = Qt.ItemDataRole.UserRole + 2  # 258
-PREV_CHECK_ROLE = Qt.ItemDataRole.UserRole + 3  # 259
-OVERWRITTEN_ROLE = Qt.ItemDataRole.UserRole + 4  # 260
-NORMALIZED_NAME_ROLE = Qt.ItemDataRole.UserRole + 5  # 261
-WINS_ROLE = Qt.ItemDataRole.UserRole + 6  # 262
-LOSSES_ROLE = Qt.ItemDataRole.UserRole + 7  # 263
-EMPTY_ROLE = Qt.ItemDataRole.UserRole + 8  # 264
 
-
-class ConflictDelegate(QStyledItemDelegate):
-    _empty_pixmap: QPixmap | None = None
-
-    @classmethod
-    def _get_empty_pixmap(cls) -> QPixmap | None:
-        if cls._empty_pixmap is None:
-            from .. import paths
-
-            path = os.path.join(paths.BASE_DIR, "assets", "ui", "empty.png")
-            if os.path.exists(path):
-                pm = QPixmap(path)
-                if not pm.isNull():
-                    cls._empty_pixmap = pm.scaled(
-                        16,
-                        16,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-        return cls._empty_pixmap
-
-    def paint(self, painter, option, index) -> None:
-        super().paint(painter, option, index)
-        if index.data(EMPTY_ROLE):
-            pm = self._get_empty_pixmap()
-            if pm and not pm.isNull():
-                item_rect = option.rect
-                x = item_rect.right() - pm.width() - 4
-                y = item_rect.top() + (item_rect.height() - pm.height()) // 2
-                painter.drawPixmap(x, y, pm)
-            return
-        wins = index.data(WINS_ROLE)
-        losses = index.data(LOSSES_ROLE)
-        if not wins and not losses:
-            return
-        from .. import config
-
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        font = QFont()
-        default_px = QFont().pixelSize()
-        font.setPixelSize(default_px + 2 if default_px > 0 else 14)
-        font.setBold(True)
-        painter.setFont(font)
-        item_rect = option.rect
-        size = 16
-        gap = 2
-        if wins and not losses:
-            painter.setPen(QColor(config.win_color))
-            x = item_rect.right() - size - 4
-            y = item_rect.top() + (item_rect.height() - size) // 2
-            painter.drawText(QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "+")
-        elif losses and not wins:
-            painter.setPen(QColor(config.lose_color))
-            x = item_rect.right() - size - 4
-            y = item_rect.top() + (item_rect.height() - size) // 2
-            painter.drawText(
-                QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "\u2212"
-            )
-        else:
-            total_w = size * 2 + gap
-            x = item_rect.right() - total_w - 4
-            y = item_rect.top() + (item_rect.height() - size) // 2
-            painter.setPen(QColor(config.lose_color))
-            painter.drawText(
-                QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, "\u2212"
-            )
-            painter.setPen(QColor(config.win_color))
-            painter.drawText(
-                QRect(x + size + gap, y, size, size), Qt.AlignmentFlag.AlignCenter, "+"
-            )
-        painter.restore()
-
-
-class SeparatorDialog(QDialog):
-    def __init__(
-        self,
-        title: str,
-        name: str = "",
-        color: str = "",
-        parent: Optional[QWidget] = None,
-    ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self._color = color or config.separator_color
-        form_layout = QFormLayout(self)
-
-        self.name_edit = QLineEdit(name)
-
-        self.color_btn = QPushButton()
-        self.color_btn.setStyleSheet(
-            f"background-color: {self._color}; min-height: 24px; min-width: 60px;"
-        )
-        self.color_btn.clicked.connect(self._pick_color)
-
-        dialog_buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        dialog_buttons.accepted.connect(self.accept)
-        dialog_buttons.rejected.connect(self.reject)
-
-        form_layout.addRow("Name:", self.name_edit)
-        form_layout.addRow("Color:", self.color_btn)
-        form_layout.addRow(dialog_buttons)
-
-    def _pick_color(self) -> None:
-        selected_color = QColorDialog.getColor(QColor(self._color), self)
-        if selected_color.isValid():
-            self._color = selected_color.name()
-            self.color_btn.setStyleSheet(
-                f"background-color: {self._color}; min-height: 24px; min-width: 60px;"
-            )
-
-    @property
-    def result_name(self) -> str:
-        return self.name_edit.text().strip()
-
-    @property
-    def result_color(self) -> str:
-        return self._color
+def _btn_qss(color: str) -> str:
+    return f"background-color: {color};"
 
 
 class SettingsPanel(QWidget):
@@ -635,7 +477,7 @@ class SettingsPanel(QWidget):
         )
 
     def connect_controller(self, controller_mgr) -> None:
-        from ..controller import Button
+        from ...controller.controller import Button
 
         self._ctrl_buttons = {
             Button.LEFT_SHOULDER: self._ctrl_prev_tab,
@@ -963,7 +805,7 @@ class SettingsPanel(QWidget):
                 get_mod_list()
         log = getattr(self._owner, "log", None)
         if callable(log) and config.backup_enabled != prev_backup:
-            log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}")
+            log(f"Backup {'enabled' if config.backup_enabled else 'disabled'}", "debug")
         if config.controller_simple_icons != prev_simple:
             if hasattr(self._owner, "mod_list_panel"):
                 self._owner.mod_list_panel.set_simple_icons(
@@ -994,7 +836,7 @@ class SettingsPanel(QWidget):
 
         log = getattr(owner, "log", None)
         if callable(log):
-            log("Running manual backup...")
+            log("Running manual backup...", "debug")
 
         owner._manual_backup = True
         bw.start(

@@ -11,7 +11,7 @@ from typing import Callable, Optional
 
 import yaml
 
-from . import database, logger, paths
+from ..core import database, logger, paths
 from .remote_cache import RemoteCache
 
 USER_RULES_FILE: str = os.path.join(paths.config_dir, "user_rules.yaml")

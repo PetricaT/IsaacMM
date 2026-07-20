@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QFont, QPalette, QTextCharFormat, QTextCursor
@@ -20,9 +20,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import config, logger
-from ..folder_watcher import ModFolderWatcher
-from .workshop import (
+from ...core import config, logger
+from ...mods.folder_watcher import ModFolderWatcher
+from ...mods.workshop import (
     WORKSHOP_RATE_LIMIT,
     _workshop_limiter_state,
     _workshop_queue_length,
@@ -195,20 +195,22 @@ class ConsoleWidget(QWidget):
         self.console.setTextCursor(cursor)
         self.console.ensureCursorVisible()
 
-    def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None:
+    def log_colored(
+        self, segments: list[tuple[str, Optional[str | QTextCharFormat]]]
+    ) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
         cursor = self.console.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self._insert_tag(cursor, "[INF]", None)
         self._insert_timestamp(cursor, timestamp)
-        for text, color in segments:
+        for text, fmt_or_color in segments:
             fmt = QTextCharFormat()
-            if not self._native_theme and color:
-                fmt.setForeground(QColor(color))
-            elif not self._native_theme and config.log_info_color:
-                fmt.setForeground(QColor(config.log_info_color))
+            if fmt_or_color is None:
+                pass
+            elif isinstance(fmt_or_color, str):
+                fmt.setForeground(QColor(fmt_or_color))
             else:
-                fmt.clearForeground()
+                fmt = fmt_or_color
             cursor.insertText(text, fmt)
         cursor.insertText("\n")
         self.console.setTextCursor(cursor)

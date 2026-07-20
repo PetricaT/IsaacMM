@@ -26,10 +26,13 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QFont,
     QIcon,
     QImageReader,
     QMovie,
+    QPalette,
     QPixmap,
+    QTextCharFormat,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -50,19 +53,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import config, game_versions, logger, paths
-from .components.controller_ui import (
-    BUTTON_SIZE,
-    ICON_SIZE,
-    AxisScroller,
-    ControllerButtonIcon,
-    ControllerRouter,
-)
-from .components.file_utils import open_path, open_url
-from .components.modlist import normalize_mod_name
-from .components.preview import PreviewWidget
-from .components.text_utils import bbcode_to_html
-from .components.workshop import (
+from ...core import config, logger, paths
+from ...core.worker import ManagedWorker
+from ...mods import game_versions
+from ...mods.workshop import (
     _check_workshop_rate_limit,
     _dequeue_details,
     _dequeue_workshop,
@@ -83,7 +77,18 @@ from .components.workshop import (
     _unmark_details_pending,
     _unmark_pending,
 )
-from .worker import ManagedWorker
+from ...controller.controller_ui import (
+    AxisScroller,
+    BUTTON_SIZE,
+    ControllerButtonIcon,
+    ControllerRouter,
+    ICON_SIZE,
+)
+from ..file_utils import open_path, open_url
+from ..text_utils import bbcode_to_html
+from .conflict_tree import ConflictTreeWidget
+from .mod_list import normalize_mod_name
+from .preview import PreviewWidget
 
 
 def _format_date(ts: Optional[float]) -> str:
@@ -97,54 +102,9 @@ def _format_date(ts: Optional[float]) -> str:
     except (OSError, ValueError):
         return "?"
 
-
-class ConflictTreeWidget(QTreeWidget):
-    merge_requested = Signal(str)  # relative file path
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.customContextMenuRequested.connect(self._on_context_menu)
-        self._imagediff_path: str | None = None
-
-    def _find_imagediff(self) -> str | None:
-        if self._imagediff_path is not None:
-            return self._imagediff_path
-        candidates = [
-            shutil.which("imagediff"),
-            os.path.expanduser("~/.local/bin/imagediff"),
-            "/usr/local/bin/imagediff",
-            "/usr/bin/imagediff",
-        ]
-        for path in candidates:
-            if path and os.path.isfile(path):
-                self._imagediff_path = path
-                return path
-        return None
-
-    def _on_context_menu(self, pos: QPoint) -> None:
-        item = self.itemAt(pos)
-        if item is None or item.childCount():
-            return
-        data = item.data(0, Qt.ItemDataRole.UserRole)
-        if data is None:
-            return
-        _conflict_folder, relative_path = data
-        if not relative_path.lower().endswith(".png"):
-            return
-        imagediff = self._find_imagediff()
-        if imagediff is None:
-            logger.log("debug", "imagediff not found on PATH (checked PATH, ~/.local/bin, /usr/local/bin, /usr/bin)")
-            return
-        logger.log("debug", f"imagediff found at {imagediff}")
-        menu = QMenu(self)
-        action = menu.addAction("Merge with imagediff")
-        action.triggered.connect(lambda: self.merge_requested.emit(relative_path))
-        menu.exec(self.viewport().mapToGlobal(pos))
-
-
 class ModInfoPanel(QWidget):
     log_message = Signal(str, str)  # message, level
+    log_colored = Signal(list)  # list[tuple[str, Optional[str | QTextCharFormat]]]
 
     PRIORITY_ICON_NAMES: list[str] = [
         "title",
@@ -910,7 +870,34 @@ class ModInfoPanel(QWidget):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        logger.log("info", f"Merge: launched imagediff for {relative_path}")
+        app = QApplication.instance()
+        palette = app.palette() if app else QPalette()
+        text_color = palette.color(QPalette.ColorRole.Text)
+        bg_color = palette.color(QPalette.ColorRole.Base)
+        parts = relative_path.replace("\\", "/").split("/")
+        n_dirs = len(parts) - 1
+
+        def blend(factor: float) -> QColor:
+            r = int(text_color.red() + (bg_color.red() - text_color.red()) * factor)
+            g = int(text_color.green() + (bg_color.green() - text_color.green()) * factor)
+            b = int(text_color.blue() + (bg_color.blue() - text_color.blue()) * factor)
+            return QColor(r, g, b)
+
+        segments: list[tuple[str, Optional[str | QTextCharFormat]]] = [
+            ("Merge: launched imagediff for ", None)
+        ]
+        fade_steps = [0.65, 0.43, 0.22]
+        for i, part in enumerate(parts):
+            prefix = "/" if i > 0 else ""
+            if i < n_dirs:
+                step = min(int(i * len(fade_steps) / max(n_dirs, 1)), len(fade_steps) - 1)
+                fmt = QTextCharFormat()
+                fmt.setForeground(blend(fade_steps[step]))
+                segments.append((f"{prefix}{part}", fmt))
+            else:
+                segments.append((f"{prefix}{part}", None))
+
+        self.log_colored.emit(segments)
 
     @staticmethod
     def _walk_for_conflict_file(
@@ -1027,7 +1014,7 @@ class ModInfoPanel(QWidget):
         self.tabs.setEnabled(False)
 
     def set_controller(self, controller_mgr, router: ControllerRouter) -> None:
-        from .controller import Button
+        from ...controller.controller import Button
 
         router.register(
             self,

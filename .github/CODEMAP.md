@@ -3,38 +3,38 @@
 ## Source Layout
 
 ```
-main.py                        ── Application entry point
+main.py                        -- Application entry point
 source/
-  config.py                    ── Config dataclass + TOML I/O
-  database.py                  ── SQLite persistence + migrations
-  logger.py                    ── loguru wrapper
-  models.py                    ── FlatDropModel (drag-drop model)
-  sorter.py                    ── Masterlist auto-sort + topological sort
-  paths.py                     ── Path resolution, symlinks, Isaac folder detection
-  theme.py                     ── Filesystem theme loader (palette + QSS)
-  theme_helpers.py             ── palette_color(), text_color_for_bg()
-  conflict_index.py            ── blake2b fingerprinting for conflict cache
-  folder_watcher.py            ── watchdog-based live mod folder sync
-  controller.py                ── SDL3 gamepad input manager
-  worker.py                    ── QThread worker infrastructure
-  updater.py                   ── Self-update via GitHub releases
-  remote_cache.py              ── Generic fetch/cache/bundled chain
-  backup.py                    ── Mod backup/restore
-  modlist_io.py                ── CSV import/export
-  notifications.py             ── Desktop notification wrapper (notify-py)
-  game_versions.py             ── Game update date tracking
-  widgets.py                   ── ModInfoPanel, ConflictTreeWidget
-  window.py                    ── Main DragApp window
+  config.py                    -- Config dataclass + TOML I/O
+  database.py                  -- SQLite persistence + migrations
+  logger.py                    -- loguru wrapper
+  models.py                    -- FlatDropModel (drag-drop model)
+  sorter.py                    -- Masterlist auto-sort + topological sort
+  paths.py                     -- Path resolution, symlinks, Isaac folder detection
+  theme.py                     -- Filesystem theme loader (palette + QSS)
+  theme_helpers.py             -- palette_color(), text_color_for_bg()
+  conflict_index.py            -- blake2b fingerprinting for conflict cache
+  folder_watcher.py            -- watchdog-based live mod folder sync
+  controller.py                -- SDL3 gamepad input manager
+  worker.py                    -- QThread worker infrastructure
+  updater.py                   -- Self-update via GitHub releases
+  remote_cache.py              -- Generic fetch/cache/bundled chain
+  backup.py                    -- Mod backup/restore
+  modlist_io.py                -- CSV import/export
+  notifications.py             -- Desktop notification wrapper (notify-py)
+  game_versions.py             -- Game update date tracking
+  widgets.py                   -- ModInfoPanel, ConflictTreeWidget
+  window.py                    -- Main DragApp window
 
 source/components/
-  modlist.py                   ── ModListPanel — main list + conflict UI
-  console.py                   ── ConsoleWidget — log output
-  dialogs.py                   ── SettingsPanel, ConflictDelegate, SeparatorDialog
-  preview.py                   ── PreviewWidget — image/anm2 tooltip popup
-  controller_ui.py             ── ControllerRouter, FocusOverlay, AxisScroller
-  workshop.py                  ── WorkshopQueue, rate limiter, Steam API fetches
-  file_utils.py                ── open_path / open_url
-  text_utils.py                ── BBCode to HTML converter
+  modlist.py                   -- ModListPanel — main list + conflict UI
+  console.py                   -- ConsoleWidget — log output
+  dialogs.py                   -- SettingsPanel, ConflictDelegate, SeparatorDialog
+  preview.py                   -- PreviewWidget — image/anm2 tooltip popup
+  controller_ui.py             -- ControllerRouter, FocusOverlay, AxisScroller
+  workshop.py                  -- WorkshopQueue, rate limiter, Steam API fetches
+  file_utils.py                -- open_path / open_url
+  text_utils.py                -- BBCode to HTML converter
 ```
 
 ## Key Classes & Locations

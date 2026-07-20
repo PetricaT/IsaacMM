@@ -10,13 +10,13 @@ from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
-from .. import config, paths
-from ..controller import (
+from ..core import config, paths
+from .controller import (
     Axis,
     Button,
     is_playstation_type,
 )
-from ..theme_helpers import palette_color
+from ..theme.theme_helpers import palette_color
 
 ICON_SIZE = 32
 BUTTON_SIZE = ICON_SIZE + 8

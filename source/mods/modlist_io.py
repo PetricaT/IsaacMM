@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 from typing import Dict, List, Tuple
 
-from . import paths
+from ..core import paths
 
 
 def export_modlist_csv(file_path: str, items: List[Tuple[str, str]]) -> int:

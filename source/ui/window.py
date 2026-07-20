@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
+from typing import Optional, Union
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QTextCharFormat
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -17,33 +17,36 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import config, game_versions, paths, sorter, theme
-from .backup import backup_all, get_backup_root
-from .components.console import ConsoleWidget
-from .components.controller_ui import ICON_SIZE, ControllerRouter, FocusOverlay
-from .components.dialogs import SEPARATOR_ROLE, SettingsPanel, _colorize
-from .components.modlist import SEPARATOR_SUFFIX, ModListPanel
-from .components.workshop import (
+from ..core import config, paths
+from ..core.notifications import send_notification
+from ..core.worker import ManagedWorker
+from ..mods import game_versions, sorter
+from ..mods.backup import backup_all, get_backup_root
+from ..mods.folder_watcher import ModFolderWatcher
+from ..mods.workshop import (
     _enqueue_details,
     _get_details_from_cache,
     _init_details_cache,
     _init_workshop_limiter,
 )
-from .controller import (
+from ..controller.controller import (
     Button,
     ControllerManager,
 )
-from .folder_watcher import ModFolderWatcher
-from .notifications import send_notification
-from .updater import (
+from ..controller.controller_ui import ICON_SIZE, ControllerRouter, FocusOverlay
+from ..theme import theme
+from ..updater.updater import (
     UpdateDialog,
     get_download_asset,
     get_latest_release,
     is_appimage,
     is_newer_version,
 )
-from .widgets import ModInfoPanel
-from .worker import ManagedWorker
+from .dialogs.delegates import SEPARATOR_ROLE, _colorize
+from .dialogs.settings import SettingsPanel
+from .panels.console import ConsoleWidget
+from .panels.mod_info import ModInfoPanel
+from .panels.mod_list import SEPARATOR_SUFFIX, ModListPanel
 
 
 class DragApp(QWidget):
@@ -235,6 +238,7 @@ QPushButton:focus {
 
         self.modInfoPanel = ModInfoPanel()
         self.modInfoPanel.log_message.connect(self.console_widget.log)
+        self.modInfoPanel.log_colored.connect(self.console_widget.log_colored)
 
         self._left_panel = QWidget()
         left_layout = QVBoxLayout(self._left_panel)
@@ -470,7 +474,9 @@ QPushButton:focus {
     def log(self, message: str, level: str = "info") -> None:
         self.console_widget.log(message, level)
 
-    def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None:
+    def log_colored(
+        self, segments: list[tuple[str, Optional[str | QTextCharFormat]]]
+    ) -> None:
         self.console_widget.log_colored(segments)
 
     def eventFilter(self, obj, event) -> bool:

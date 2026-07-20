@@ -18,7 +18,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from . import config, paths
+from ..core import config, paths
 
 REPO = "PetricaT/IsaacMM"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -27,7 +27,7 @@ RELEASES_URL = f"https://github.com/{REPO}/releases"
 _HEADERS = {"User-Agent": "IsaacMM/1.0"}
 
 
-# ── helpers (thread-safe) ──────────────────────────────────────────────
+# -- helpers (thread-safe) ----------------------------------------------
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:
@@ -36,7 +36,7 @@ def _parse_version(tag: str) -> tuple[int, ...]:
     return tuple(int(p) if p.isdigit() else 0 for p in parts)
 
 
-# ── public API (thread-safe, no Qt imports needed above here) ──────────
+# -- public API (thread-safe, no Qt imports needed above here) ----------
 
 
 @retry(
@@ -194,7 +194,7 @@ def install_windows_update(downloaded_path: str) -> None:
     sys.exit(0)
 
 
-# ── update UI dialog ───────────────────────────────────────────────────
+# -- update UI dialog ---------------------------------------------------
 
 
 from PySide6.QtCore import Qt, QTimer
@@ -282,7 +282,7 @@ class UpdateDialog(QDialog):
             self._progress.setRange(0, 0)
             self._status_label.setVisible(True)
             self._status_label.setText("Applying delta update...")
-            from .worker import ManagedWorker
+            from ..core.worker import ManagedWorker
 
             self._dl_worker = ManagedWorker(parent=self)
             self._dl_worker.finished.connect(self._on_delta_done)
@@ -366,7 +366,7 @@ class UpdateDialog(QDialog):
         def _do_download() -> bool:
             return download_asset(self._download_url, tmp, _progress)
 
-        from .worker import ManagedWorker
+        from ..core.worker import ManagedWorker
 
         self._dl_worker = ManagedWorker(parent=self)
         self._dl_worker.finished.connect(lambda ok: self._on_downloaded(ok, tmp))

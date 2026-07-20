@@ -117,7 +117,7 @@ class ControllerManager(QObject):
 
     def _log_fail(self, msg: str) -> None:
         try:
-            from . import logger
+            from ..core import logger
 
             logger.log("debug", f"Controller init: {msg}")
         except Exception:

@@ -15,7 +15,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from . import logger
+from ..core import logger
 
 
 class RemoteCache:

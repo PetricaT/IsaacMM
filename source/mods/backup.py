@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 
 from packaging.version import InvalidVersion, Version
 
-from . import config, paths
+from ..core import config, paths
 
 
 def _read_version(mod_folder: str, mods_path: str) -> str:
@@ -68,7 +68,7 @@ def backup_mod(mod_folder: str, mods_path: str, backup_root: str) -> None:
         full_mod_path,
         backup_mod_path,
         dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns(".git", "__pycache__", ".DS_Store", "Thumbs.db"),
+        ignore=shutil.ignore_patterns(".git", "__pycache__", ".DS_Store", "Thumbs.db", "MERGED"),
     )
 
 

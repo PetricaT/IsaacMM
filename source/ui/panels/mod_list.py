@@ -27,15 +27,16 @@ from PySide6.QtWidgets import (
 )
 from rapidfuzz import process as fuzzy_process
 
-from .. import config, logger, paths, sorter
-from ..conflict_index import get_cached_files
-from ..controller import Button
-from ..models import FlatDropModel
-from ..modlist_io import export_modlist_csv, import_modlist_csv
-from ..theme_helpers import text_color_for_bg
-from ..worker import ManagedWorker
-from .controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
-from .dialogs import (
+from ...core import config, logger, paths
+from ...core.models import FlatDropModel
+from ...core.worker import ManagedWorker
+from ...mods import sorter
+from ...mods.conflict_index import get_cached_files
+from ...mods.modlist_io import export_modlist_csv, import_modlist_csv
+from ...controller.controller import Button
+from ...controller.controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
+from ...theme.theme_helpers import text_color_for_bg
+from ..dialogs.delegates import (
     CONFLICT_ROLE,
     EMPTY_ROLE,
     LOSSES_ROLE,
@@ -45,9 +46,9 @@ from .dialogs import (
     SEPARATOR_ROLE,
     WINS_ROLE,
     ConflictDelegate,
-    SeparatorDialog,
 )
-from .file_utils import open_path
+from ..dialogs.separator import SeparatorDialog
+from ..file_utils import open_path
 
 SEPARATOR_SUFFIX = "_separator"
 sorted_pattern = re.compile(r"[0-9]{3}\s.*")
@@ -252,13 +253,13 @@ class ModListPanel(QWidget):
     def _save_column_widths(self) -> None:
         if self._restoring_widths:
             return
-        from ..config import get_settings
+        from ...core.config import get_settings
 
         settings = get_settings()
         settings.setValue("modlist/header_state", self.listView.header().saveState())
 
     def _restore_column_widths(self) -> None:
-        from ..config import get_settings
+        from ...core.config import get_settings
 
         settings = get_settings()
         state = settings.value("modlist/header_state")
@@ -800,7 +801,7 @@ class ModListPanel(QWidget):
     def _on_mod_folder_changed(self, folder: str) -> None:
         if self._populating or self._updating_conflicts or self._sort_applying:
             return
-        from ..conflict_index import invalidate
+        from ...mods.conflict_index import invalidate
         invalidate(folder)
         self._mod_files_cache.pop(folder, None)
         self._conflict_timer.start()

@@ -9,7 +9,7 @@ from typing import Optional
 
 import httpx
 
-from . import logger, paths
+from ..core import logger, paths
 from .remote_cache import RemoteCache
 
 

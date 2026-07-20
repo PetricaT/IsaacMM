@@ -9,8 +9,8 @@ from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QAction, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QLabel, QMenu
 
-from .. import config
-from ..worker import ManagedWorker
+from ...core import config
+from ...core.worker import ManagedWorker
 
 
 def _resolve_spritesheet(anm2_dir: str, ss_path: str) -> str | None:

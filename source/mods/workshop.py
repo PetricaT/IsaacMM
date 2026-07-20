@@ -19,7 +19,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from .. import config, database, logger, paths
+from ..core import config, database, logger, paths
 
 _workshop_lock = threading.Lock()
 

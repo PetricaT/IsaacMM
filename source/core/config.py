@@ -12,7 +12,8 @@ from typing import Optional
 import toml
 from PySide6.QtCore import QSettings
 
-from . import database, paths, sorter
+from . import database, paths
+from ..mods import sorter
 
 _save_lock = threading.Lock()
 _last_save: float = 0.0

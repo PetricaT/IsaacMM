@@ -27,7 +27,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
-from . import paths
+from ..core import paths
 
 THEMES_DIR: Path = Path(paths.config_dir) / "themes"
 
@@ -60,7 +60,7 @@ except AttributeError:
     pass
 
 
-# ── color-scheme detection ─────────────────────────────────────────────
+# -- color-scheme detection ---------------------------------------------
 
 def detect_color_scheme() -> str:
     """Return ``"light"`` or ``"dark"`` based on the current system hint."""
@@ -81,7 +81,7 @@ def detect_color_scheme() -> str:
     return "light" if luma > 0.5 else "dark"
 
 
-# ── theme data ─────────────────────────────────────────────────────────
+# -- theme data ---------------------------------------------------------
 
 @dataclass
 class Theme:
@@ -169,7 +169,7 @@ def load_qss(theme: Theme) -> str:
         return ""
 
 
-# ── palette building (pure data, no Qt side-effects) ──────────────────
+# -- palette building (pure data, no Qt side-effects) ------------------
 
 def build_palette(
     theme: Theme,
