@@ -53,6 +53,7 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
     if os.path.isfile(last_order_yaml):
         try:
             import yaml
+
             with open(last_order_yaml) as f:
                 data = yaml.safe_load(f)
             folders = (data or {}).get("ordered_folders", [])
@@ -64,7 +65,9 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
                 )
                 migrated = True
         except Exception as exc:
-            logger.log("warning", f"DB migration v1: failed to read {last_order_yaml}: {exc}")
+            logger.log(
+                "warning", f"DB migration v1: failed to read {last_order_yaml}: {exc}"
+            )
 
     details_json = os.path.join(paths.cache_dir, "workshop_details.json")
     if os.path.isfile(details_json):
@@ -74,7 +77,7 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
             for ws_id_str, data in details.items():
                 try:
                     ws_id = int(ws_id_str)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     continue
                 conn.execute(
                     """INSERT OR IGNORE INTO workshop_items
@@ -83,11 +86,15 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
                 )
             migrated = True
         except Exception as exc:
-            logger.log("warning", f"DB migration v1: failed to read {details_json}: {exc}")
+            logger.log(
+                "warning", f"DB migration v1: failed to read {details_json}: {exc}"
+            )
 
     if not migrated:
-        conn.execute("INSERT INTO load_order_history (timestamp, order_json, label) VALUES (?, ?, ?)",
-                      (time.time(), "[]", "init"))
+        conn.execute(
+            "INSERT INTO load_order_history (timestamp, order_json, label) VALUES (?, ?, ?)",
+            (time.time(), "[]", "init"),
+        )
 
 
 MIGRATIONS[1] = _migrate_v1
@@ -152,9 +159,11 @@ def init() -> None:
 
 
 def get_workshop_item(ws_id: int) -> Optional[dict]:
-    row = _conn().execute(
-        "SELECT * FROM workshop_items WHERE id = ?", (ws_id,)
-    ).fetchone()
+    row = (
+        _conn()
+        .execute("SELECT * FROM workshop_items WHERE id = ?", (ws_id,))
+        .fetchone()
+    )
     return dict(row) if row else None
 
 
@@ -182,9 +191,11 @@ def all_workshop_items() -> list[dict]:
 
 
 def get_dead_workshop_ids() -> set[int]:
-    rows = _conn().execute(
-        "SELECT id FROM workshop_items WHERE status = 'dead'"
-    ).fetchall()
+    rows = (
+        _conn()
+        .execute("SELECT id FROM workshop_items WHERE status = 'dead'")
+        .fetchall()
+    )
     return {r["id"] for r in rows}
 
 
@@ -217,14 +228,16 @@ def save_load_order(folder_order: list) -> None:
 
 
 def load_latest_order() -> Optional[list]:
-    row = _conn().execute(
-        "SELECT order_json FROM load_order_history ORDER BY id DESC LIMIT 1"
-    ).fetchone()
+    row = (
+        _conn()
+        .execute("SELECT order_json FROM load_order_history ORDER BY id DESC LIMIT 1")
+        .fetchone()
+    )
     if row is None:
         return None
     try:
         return json.loads(row["order_json"])
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         return None
 
 
@@ -234,10 +247,14 @@ def load_latest_order() -> Optional[list]:
 
 
 def get_mod_fingerprint(folder: str) -> Optional[dict]:
-    row = _conn().execute(
-        "SELECT fingerprint, files_json, token FROM mod_fingerprints WHERE folder = ?",
-        (folder,),
-    ).fetchone()
+    row = (
+        _conn()
+        .execute(
+            "SELECT fingerprint, files_json, token FROM mod_fingerprints WHERE folder = ?",
+            (folder,),
+        )
+        .fetchone()
+    )
     return dict(row) if row else None
 
 

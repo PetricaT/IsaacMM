@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6.QtCore import QDateTime, QLocale, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPalette, QPixmap
@@ -38,7 +38,6 @@ from ...mods.backup import backup_all, get_backup_root
 from ...controller.controller_ui import BUTTON_SIZE, ICON_SIZE
 from ..file_utils import open_path
 from ...theme import theme
-
 
 try:
     from ...controller.controller import GamepadType
@@ -80,7 +79,7 @@ class SettingsPanel(QWidget):
 
         tabs = QTabWidget()
         self._tabs = tabs
-        self._ctrl_buttons: dict[int, callable] = {}
+        self._ctrl_buttons: dict[int, Callable[[], None]] = {}
 
         self._left_tab_icon = QLabel()
         self._left_tab_icon.setFixedSize(BUTTON_SIZE, ICON_SIZE)

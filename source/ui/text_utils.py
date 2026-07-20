@@ -1,4 +1,5 @@
 """Text processing utilities: BBCode to HTML conversion."""
+
 from __future__ import annotations
 
 import html

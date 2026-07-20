@@ -34,7 +34,11 @@ from ...mods import sorter
 from ...mods.conflict_index import get_cached_files
 from ...mods.modlist_io import export_modlist_csv, import_modlist_csv
 from ...controller.controller import Button
-from ...controller.controller_ui import AxisScroller, ControllerButtonIcon, ControllerRouter
+from ...controller.controller_ui import (
+    AxisScroller,
+    ControllerButtonIcon,
+    ControllerRouter,
+)
 from ...theme.theme_helpers import text_color_for_bg
 from ..dialogs.delegates import (
     CONFLICT_ROLE,
@@ -80,7 +84,12 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
             try:
                 metadata_tree = ET.parse(separator_xml_path)
                 xml_root = metadata_tree.getroot()
-                separator_name = xml_root.find("name").text
+                name_elem = xml_root.find("name")
+                separator_name = (
+                    name_elem.text
+                    if name_elem is not None
+                    else directory_entry[: -len(SEPARATOR_SUFFIX)]
+                )
                 color_element = xml_root.find("color")
                 separator_color = (
                     color_element.text
@@ -97,7 +106,8 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
         try:
             metadata_tree = ET.parse(os.path.join(full_path, "metadata.xml"))
             xml_root = metadata_tree.getroot()
-            mod_name = xml_root.find("name").text
+            name_elem = xml_root.find("name")
+            mod_name = name_elem.text if name_elem is not None else directory_entry
             version_element = xml_root.find("version")
             mod_version = version_element.text if version_element is not None else ""
             loaded_mods.append([mod_name, directory_entry, mod_version])
@@ -105,7 +115,10 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
         except FileNotFoundError:
             continue
         except ET.ParseError:
-            logger.log("warning", f"Skipping mod with malformed metadata.xml: {directory_entry}")
+            logger.log(
+                "warning",
+                f"Skipping mod with malformed metadata.xml: {directory_entry}",
+            )
             continue
 
     return {
@@ -113,6 +126,7 @@ def _scan_mods_directory(mods_path: str, ignored_items: list) -> dict:
         "separator_map": separator_map,
         "loaded_mods": loaded_mods,
     }
+
 
 class ModListPanel(QWidget):
     mod_selected = Signal(str, str, object)
@@ -196,10 +210,10 @@ class ModListPanel(QWidget):
 
         header = self.listView.header()
         header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.Interactive)
-        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
         header.setMinimumSectionSize(40)
         header.setSectionsMovable(True)
         header.show()
@@ -271,10 +285,10 @@ class ModListPanel(QWidget):
         # Re-apply resize modes after restore so Column 0 always fills
         # remaining space while Columns 1-3 keep user-defined widths.
         header = self.listView.header()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.Interactive)
-        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
 
         self._watcher = None
         self._conflict_timer = QTimer(self)
@@ -537,7 +551,12 @@ class ModListPanel(QWidget):
 
             folder = col0.data(Qt.ItemDataRole.UserRole)
             if folder == "MERGED":
-                for item in (col0, col1, self.model.item(row, 2), self.model.item(row, 3)):
+                for item in (
+                    col0,
+                    col1,
+                    self.model.item(row, 2),
+                    self.model.item(row, 3),
+                ):
                     if item:
                         item.setBackground(QBrush())
                 for role in (CONFLICT_ROLE, OVERWRITTEN_ROLE, WINS_ROLE, LOSSES_ROLE):
@@ -802,6 +821,7 @@ class ModListPanel(QWidget):
         if self._populating or self._updating_conflicts or self._sort_applying:
             return
         from ...mods.conflict_index import invalidate
+
         invalidate(folder)
         self._mod_files_cache.pop(folder, None)
         self._conflict_timer.start()
@@ -902,7 +922,9 @@ class ModListPanel(QWidget):
                 )
                 metadata_tree = ET.parse(metadata_xml_path)
                 xml_root = metadata_tree.getroot()
-                xml_root.find("name").text = new_name
+                name_elem = xml_root.find("name")
+                if name_elem is not None:
+                    name_elem.text = new_name
                 metadata_tree.write(
                     metadata_xml_path,
                     encoding="utf-8",
@@ -1124,13 +1146,19 @@ class ModListPanel(QWidget):
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self.listView and event.type() == QEvent.KeyPress:
-            if event.key() == Qt.Key_Z and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if (
+                event.key() == Qt.Key_Z
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            ):
                 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                     self._redo()
                 else:
                     self._undo()
                 return True
-            if event.key() == Qt.Key_Y and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if (
+                event.key() == Qt.Key_Y
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            ):
                 self._redo()
                 return True
             if event.key() == Qt.Key_Delete:

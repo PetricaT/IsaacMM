@@ -62,9 +62,7 @@ class ModFolderWatcher(QObject):
             self.stop()
         if not os.path.isdir(mods_path):
             return
-        self._watch = self._observer.schedule(
-            self._handler, mods_path, recursive=True
-        )
+        self._watch = self._observer.schedule(self._handler, mods_path, recursive=True)
         self._observer.start()
         self._debounce.start()
         self.is_active_changed.emit()

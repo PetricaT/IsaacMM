@@ -175,7 +175,7 @@ def _save_details_cache() -> None:
 def _get_details_from_cache(ws_id: str) -> Optional[dict]:
     try:
         item = database.get_workshop_item(int(ws_id))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
     if item is None:
         return None
@@ -188,7 +188,7 @@ def _get_details_from_cache(ws_id: str) -> Optional[dict]:
 def _set_details_in_cache(ws_id: str, data: dict) -> None:
     try:
         ws_id_int = int(ws_id)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return
     fields = {
         "created_at": data.get("time_created"),
@@ -300,7 +300,7 @@ def _scrape_workshop_dates(ws_id: str) -> dict:
             resp = client.get(url, headers=_HEADERS, timeout=10)
             resp.raise_for_status()
             html = resp.text
-    except (httpx.RequestError, OSError):
+    except httpx.RequestError, OSError:
         return {"time_created": None, "time_updated": None}
 
     vals = re.findall(r'<div class="detailsStatRight">([^<]+)</div>', html)
@@ -308,7 +308,7 @@ def _scrape_workshop_dates(ws_id: str) -> dict:
         time_created = datetime.strptime(
             vals[1].strip(), "%d %b, %Y @ %I:%M%p"
         ).timestamp()
-    except (IndexError, ValueError):
+    except IndexError, ValueError:
         time_created = None
 
     time_updated = None

@@ -35,21 +35,21 @@ _SYSTEM_THEME_NAME = "System"
 
 # TOML key  →  QPalette.ColorRole
 _PALETTE_MAP: dict[str, QPalette.ColorRole] = {
-    "Window":          QPalette.ColorRole.Window,
-    "WindowText":      QPalette.ColorRole.WindowText,
-    "Base":            QPalette.ColorRole.Base,
-    "AlternateBase":   QPalette.ColorRole.AlternateBase,
-    "Button":          QPalette.ColorRole.Button,
-    "ButtonText":      QPalette.ColorRole.ButtonText,
-    "Text":            QPalette.ColorRole.Text,
-    "BrightText":      QPalette.ColorRole.BrightText,
-    "Link":            QPalette.ColorRole.Link,
-    "LinkVisited":     QPalette.ColorRole.LinkVisited,
-    "Highlight":       QPalette.ColorRole.Highlight,
+    "Window": QPalette.ColorRole.Window,
+    "WindowText": QPalette.ColorRole.WindowText,
+    "Base": QPalette.ColorRole.Base,
+    "AlternateBase": QPalette.ColorRole.AlternateBase,
+    "Button": QPalette.ColorRole.Button,
+    "ButtonText": QPalette.ColorRole.ButtonText,
+    "Text": QPalette.ColorRole.Text,
+    "BrightText": QPalette.ColorRole.BrightText,
+    "Link": QPalette.ColorRole.Link,
+    "LinkVisited": QPalette.ColorRole.LinkVisited,
+    "Highlight": QPalette.ColorRole.Highlight,
     "HighlightedText": QPalette.ColorRole.HighlightedText,
-    "Mid":             QPalette.ColorRole.Mid,
-    "Dark":            QPalette.ColorRole.Dark,
-    "Shadow":          QPalette.ColorRole.Shadow,
+    "Mid": QPalette.ColorRole.Mid,
+    "Dark": QPalette.ColorRole.Dark,
+    "Shadow": QPalette.ColorRole.Shadow,
     "PlaceholderText": QPalette.ColorRole.PlaceholderText,
 }
 
@@ -61,6 +61,7 @@ except AttributeError:
 
 
 # -- color-scheme detection ---------------------------------------------
+
 
 def detect_color_scheme() -> str:
     """Return ``"light"`` or ``"dark"`` based on the current system hint."""
@@ -82,6 +83,7 @@ def detect_color_scheme() -> str:
 
 
 # -- theme data ---------------------------------------------------------
+
 
 @dataclass
 class Theme:
@@ -128,7 +130,7 @@ def _read_toml(path: Path) -> dict:
     try:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)
-    except (OSError, tomllib.TOMLDecodeError):
+    except OSError, tomllib.TOMLDecodeError:
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -170,6 +172,7 @@ def load_qss(theme: Theme) -> str:
 
 
 # -- palette building (pure data, no Qt side-effects) ------------------
+
 
 def build_palette(
     theme: Theme,

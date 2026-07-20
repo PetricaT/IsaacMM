@@ -139,7 +139,9 @@ class ConsoleWidget(QWidget):
             int(tc.blue() * 0.4 + bc.blue() * 0.6),
         )
 
-    def _insert_tag(self, cursor: QTextCursor, prefix: str, tag_color: QColor | None) -> None:
+    def _insert_tag(
+        self, cursor: QTextCursor, prefix: str, tag_color: QColor | None
+    ) -> None:
         tag_fmt = QTextCharFormat()
         tag_fmt.setFontWeight(QFont.Weight.Bold)
         if tag_color:
@@ -171,8 +173,12 @@ class ConsoleWidget(QWidget):
         if current_key == self._last_message:
             self._repeat_count += 1
             cursor.movePosition(QTextCursor.MoveOperation.End)
-            cursor.movePosition(QTextCursor.MoveOperation.PreviousBlock, QTextCursor.MoveMode.MoveAnchor)
-            cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+            cursor.movePosition(
+                QTextCursor.MoveOperation.PreviousBlock, QTextCursor.MoveMode.MoveAnchor
+            )
+            cursor.movePosition(
+                QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor
+            )
             cursor.removeSelectedText()
             self._insert_tag(cursor, prefix, tag_color)
             self._insert_timestamp(cursor, timestamp)

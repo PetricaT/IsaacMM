@@ -337,15 +337,21 @@ class UpdateDialog(QDialog):
             self.accept()
             appimage = get_appimage_path()
             if appimage:
-                QTimer.singleShot(1500, lambda: os.execv(appimage, [appimage] + sys.argv[1:]))
+                QTimer.singleShot(
+                    1500, lambda: os.execv(appimage, [appimage] + sys.argv[1:])
+                )
         else:
-            self._status_label.setText("Delta update failed. Falling back to full download...")
+            self._status_label.setText(
+                "Delta update failed. Falling back to full download..."
+            )
             self._progress.setRange(0, 100)
             self._progress.setValue(0)
             self._start_full_download()
 
     def _on_delta_error(self, msg: str) -> None:
-        self._status_label.setText("Delta update failed. Falling back to full download...")
+        self._status_label.setText(
+            "Delta update failed. Falling back to full download..."
+        )
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._start_full_download()
@@ -354,9 +360,7 @@ class UpdateDialog(QDialog):
         suffix = (
             "-x86_64.AppImage"
             if platform.system() == "Linux"
-            else ".exe"
-            if platform.system() == "Windows"
-            else ".dmg"
+            else ".exe" if platform.system() == "Windows" else ".dmg"
         )
         tmp = tempfile.mktemp(suffix=suffix)
 

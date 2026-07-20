@@ -23,7 +23,7 @@ def _read_version(mod_folder: str, mods_path: str) -> str:
             if version_el is not None and version_el.text
             else "?"
         )
-    except (ET.ParseError, FileNotFoundError, AttributeError):
+    except ET.ParseError, FileNotFoundError, AttributeError:
         return "?"
 
 
@@ -68,7 +68,9 @@ def backup_mod(mod_folder: str, mods_path: str, backup_root: str) -> None:
         full_mod_path,
         backup_mod_path,
         dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns(".git", "__pycache__", ".DS_Store", "Thumbs.db", "MERGED"),
+        ignore=shutil.ignore_patterns(
+            ".git", "__pycache__", ".DS_Store", "Thumbs.db", "MERGED"
+        ),
     )
 
 

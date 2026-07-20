@@ -65,7 +65,7 @@ def _load_user_rules() -> list:
         with open(USER_RULES_FILE) as rules_file:
             yaml_data = yaml.safe_load(rules_file)
             return yaml_data.get("rules", []) if yaml_data else []
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return []
 
 

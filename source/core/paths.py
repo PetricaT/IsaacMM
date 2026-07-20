@@ -121,7 +121,7 @@ def _parse_vdf_path(steam_path: str) -> Optional[str]:
                     )
                     if os.path.exists(candidate_path):
                         return game_root_path
-    except (FileNotFoundError, IndexError):
+    except FileNotFoundError, IndexError:
         pass
     return None
 
@@ -130,8 +130,12 @@ def _resolve_windows_path() -> Optional[str]:
     try:
         import winreg
 
-        registry_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")  # pyright: ignore[reportAttributeAccessIssue]
-        steam_path, _ = winreg.QueryValueEx(registry_key, "SteamPath")  # pyright: ignore[reportAttributeAccessIssue]
+        registry_key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"
+        )  # pyright: ignore[reportAttributeAccessIssue]
+        steam_path, _ = winreg.QueryValueEx(
+            registry_key, "SteamPath"
+        )  # pyright: ignore[reportAttributeAccessIssue]
         winreg.CloseKey(registry_key)  # pyright: ignore[reportAttributeAccessIssue]
         steam_root = _parse_vdf_path(steam_path)
         if steam_root:

@@ -228,7 +228,9 @@ def load() -> None:
         _cfg.controller_simple_icons = settings_section.get(
             "controller_simple_icons", False
         )
-        _cfg.notifications_enabled = settings_section.get("notifications_enabled", False)
+        _cfg.notifications_enabled = settings_section.get(
+            "notifications_enabled", False
+        )
         _cfg.check_updates_on_startup = settings_section.get(
             "check_updates_on_startup", False
         )

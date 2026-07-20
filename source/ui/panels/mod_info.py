@@ -99,8 +99,9 @@ def _format_date(ts: Optional[float]) -> str:
             return datetime.fromtimestamp(ts).strftime(config.date_format)
         qdt = QDateTime.fromSecsSinceEpoch(int(ts))
         return QLocale().toString(qdt, QLocale.FormatType.ShortFormat)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return "?"
+
 
 class ModInfoPanel(QWidget):
     log_message = Signal(str, str)  # message, level
@@ -154,9 +155,9 @@ class ModInfoPanel(QWidget):
 
         self.tags_box = QListWidget()
         self.tags_box.setMaximumHeight(128)
-        self.tags_box.setSelectionMode(QAbstractItemView.NoSelection)
+        self.tags_box.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.tags_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.tags_box.setFlow(QListWidget.LeftToRight)
+        self.tags_box.setFlow(QListWidget.Flow.LeftToRight)
         self.tags_box.setWrapping(True)
         self.tags_box.setSpacing(4)
 
@@ -230,8 +231,12 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.setRootIsDecorated(True)
         self.conflicts_tree.setAlternatingRowColors(True)
         self.conflicts_tree.header().setStretchLastSection(False)
-        self.conflicts_tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
-        self.conflicts_tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.conflicts_tree.header().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Interactive
+        )
+        self.conflicts_tree.header().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
         self.conflicts_tree.header().resizeSection(0, 200)
         self.conflicts_tree.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
@@ -240,13 +245,15 @@ class ModInfoPanel(QWidget):
         self.conflicts_tree.viewport().installEventFilter(self)
         self.conflicts_tree.viewport().setMouseTracking(True)
         self._preview = PreviewWidget(self)
-        QApplication.instance().applicationStateChanged.connect(
-            lambda state: (
-                self._preview.stop()
-                if state == Qt.ApplicationState.ApplicationInactive
-                else None
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            app.applicationStateChanged.connect(
+                lambda state: (
+                    self._preview.stop()
+                    if state == Qt.ApplicationState.ApplicationInactive
+                    else None
+                )
             )
-        )
         self.conflicts_tree.verticalScrollBar().valueChanged.connect(
             self._on_preview_tree_scroll
         )
@@ -407,7 +414,9 @@ class ModInfoPanel(QWidget):
         self.files_tree.clear()
         root_item = QTreeWidgetItem([mod_folder])
         root_item.setIcon(0, self._folder_icon)
-        root_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+        root_item.setChildIndicatorPolicy(
+            QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
+        )
         self.files_tree.addTopLevelItem(root_item)
         self._populate_mod_files(
             root_item, full_mod_path, "", mod_folder, overwritten_files
@@ -555,7 +564,7 @@ class ModInfoPanel(QWidget):
             reader = QImageReader(actual_path)
             img = reader.read()
             if not img.isNull():
-                img.save(cached_path, "PNG")
+                img.save(cached_path, b"PNG")
                 try:
                     os.remove(actual_path)
                 except OSError:
@@ -626,7 +635,7 @@ class ModInfoPanel(QWidget):
                 else:
                     color = config.workshop_badge_outdated
                     badge = " (OUTDATED)"
-            except (OSError, ValueError):
+            except OSError, ValueError:
                 pass
 
         self.updated_label.setText(
@@ -708,7 +717,9 @@ class ModInfoPanel(QWidget):
                 )
                 if child_subtree:
                     folder_item = QTreeWidgetItem([name, ""])
-                    folder_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+                    folder_item.setChildIndicatorPolicy(
+                        QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
+                    )
                     folder_item.setIcon(0, self._folder_icon)
                     parent.addChild(folder_item)
                     add_branches(child_subtree, folder_item, segment_path)
@@ -747,7 +758,9 @@ class ModInfoPanel(QWidget):
             if os.path.isdir(full_entry):
                 dir_item = QTreeWidgetItem([entry])
                 dir_item.setIcon(0, self._folder_icon)
-                dir_item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+                dir_item.setChildIndicatorPolicy(
+                    QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
+                )
                 parent_item.addChild(dir_item)
                 self._populate_mod_files(
                     dir_item, full_entry, rel_path, mod_folder, overwritten_files
@@ -792,19 +805,27 @@ class ModInfoPanel(QWidget):
                 logger.log("error", f"Failed to open file: {full_path}")
 
     def save_column_state(self) -> bytes:
-        return bytes(self.conflicts_tree.header().saveState())
+        return bytes(self.conflicts_tree.header().saveState().data())
 
     def restore_column_state(self, state_data: QByteArray) -> None:
         if state_data:
             self.conflicts_tree.header().restoreState(state_data)
-        self.conflicts_tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
-        self.conflicts_tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.conflicts_tree.header().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Interactive
+        )
+        self.conflicts_tree.header().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
 
     def _on_merge_requested(self, relative_path: str) -> None:
+        if not self._mod_path:
+            return
         images: list[str] = []
         found_mods: list[str] = []
         for i in range(self.conflicts_tree.topLevelItemCount()):
             mod_item = self.conflicts_tree.topLevelItem(i)
+            if mod_item is None:
+                continue
             mod_name = mod_item.text(0)
             if mod_name == "MERGED":
                 continue
@@ -820,7 +841,10 @@ class ModInfoPanel(QWidget):
         if os.path.isfile(selected_full):
             images.append(selected_full)
             found_mods.append(os.path.basename(self._mod_path))
-            logger.log("debug", f"Merge: added selected mod: {os.path.basename(self._mod_path)}")
+            logger.log(
+                "debug",
+                f"Merge: added selected mod: {os.path.basename(self._mod_path)}",
+            )
         else:
             logger.log(
                 "debug",
@@ -837,11 +861,13 @@ class ModInfoPanel(QWidget):
             logger.log("warning", "Need at least 2 versions of the image to merge")
             return
         loaded = [e[1] for e in config.loaded_mods]
-        images.sort(key=lambda p: (
-            loaded.index(os.path.basename(os.path.dirname(p)))
-            if os.path.basename(os.path.dirname(p)) in loaded
-            else len(loaded)
-        ))
+        images.sort(
+            key=lambda p: (
+                loaded.index(os.path.basename(os.path.dirname(p)))
+                if os.path.basename(os.path.dirname(p)) in loaded
+                else len(loaded)
+            )
+        )
         logger.log(
             "debug",
             f"Merge: sorted order: {[os.path.basename(os.path.dirname(p)) for p in images]}",
@@ -853,10 +879,12 @@ class ModInfoPanel(QWidget):
             try:
                 with open(meta_path, "w", encoding="utf-8") as f:
                     f.write('<?xml version="1.0" encoding="utf-8"?>\n')
-                    f.write('<metadata>\n')
-                    f.write('  <name>MERGED</name>\n')
-                    f.write('  <description>Output folder for imagediff merges</description>\n')
-                    f.write('</metadata>\n')
+                    f.write("<metadata>\n")
+                    f.write("  <name>MERGED</name>\n")
+                    f.write(
+                        "  <description>Output folder for imagediff merges</description>\n"
+                    )
+                    f.write("</metadata>\n")
             except OSError:
                 pass
         output = os.path.join(merged_dir, relative_path)
@@ -871,7 +899,7 @@ class ModInfoPanel(QWidget):
             stderr=subprocess.DEVNULL,
         )
         app = QApplication.instance()
-        palette = app.palette() if app else QPalette()
+        palette = app.palette() if isinstance(app, QApplication) else QPalette()
         text_color = palette.color(QPalette.ColorRole.Text)
         bg_color = palette.color(QPalette.ColorRole.Base)
         parts = relative_path.replace("\\", "/").split("/")
@@ -879,7 +907,9 @@ class ModInfoPanel(QWidget):
 
         def blend(factor: float) -> QColor:
             r = int(text_color.red() + (bg_color.red() - text_color.red()) * factor)
-            g = int(text_color.green() + (bg_color.green() - text_color.green()) * factor)
+            g = int(
+                text_color.green() + (bg_color.green() - text_color.green()) * factor
+            )
             b = int(text_color.blue() + (bg_color.blue() - text_color.blue()) * factor)
             return QColor(r, g, b)
 
@@ -890,7 +920,9 @@ class ModInfoPanel(QWidget):
         for i, part in enumerate(parts):
             prefix = "/" if i > 0 else ""
             if i < n_dirs:
-                step = min(int(i * len(fade_steps) / max(n_dirs, 1)), len(fade_steps) - 1)
+                step = min(
+                    int(i * len(fade_steps) / max(n_dirs, 1)), len(fade_steps) - 1
+                )
                 fmt = QTextCharFormat()
                 fmt.setForeground(blend(fade_steps[step]))
                 segments.append((f"{prefix}{part}", fmt))
@@ -952,7 +984,7 @@ class ModInfoPanel(QWidget):
         elif obj is self.files_tree.viewport():
             tree = self.files_tree
         if tree is not None:
-            if event.type() == QEvent.MouseMove:
+            if event.type() == QEvent.Type.MouseMove:
                 if config.preview_images:
                     item = tree.itemAt(event.pos())
                     if item and not item.childCount():
@@ -969,7 +1001,7 @@ class ModInfoPanel(QWidget):
                                     return False
                 self._preview.stop()
                 return False
-            if event.type() == QEvent.Leave:
+            if event.type() == QEvent.Type.Leave:
                 self._preview.stop()
                 return False
         return super().eventFilter(obj, event)

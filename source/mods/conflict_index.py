@@ -18,8 +18,7 @@ from ..core import config, database
 _CONFLICT_EXTS = {".png", ".anm2", ".wav", ".lua"}
 
 
-def _fingerprint_folder(mod_path: str,
-                        ignored_items: list) -> tuple[str, set[str]]:
+def _fingerprint_folder(mod_path: str, ignored_items: list) -> tuple[str, set[str]]:
     """Walk *mod_path* and return (blake2b_hexdigest, set_of_relative_paths)."""
     h = blake2b()
     files: set[str] = set()

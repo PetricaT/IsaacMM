@@ -590,9 +590,7 @@ QPushButton:focus {
                 self._base_qss + self._theme_qss + self.FOCUS_QSS
             )
         else:
-            QApplication.instance().setStyleSheet(
-                self._base_qss + self._theme_qss
-            )
+            QApplication.instance().setStyleSheet(self._base_qss + self._theme_qss)
 
     def _on_controller_connected(self, name: str, gp_type: int) -> None:
         self.log(f"Controller connected: {name}", "info")
