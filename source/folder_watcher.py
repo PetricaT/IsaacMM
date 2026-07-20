@@ -80,6 +80,11 @@ class ModFolderWatcher(QObject):
             self._changed.clear()
         self.is_active_changed.emit()
 
+    def clear_pending(self) -> None:
+        """Discard all buffered filesystem events without emitting."""
+        with self._lock:
+            self._changed.clear()
+
     @property
     def is_active(self) -> bool:
         return self._observer.is_alive()

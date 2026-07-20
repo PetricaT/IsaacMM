@@ -124,6 +124,7 @@ class ModListPanel(QWidget):
         self.pending_toggles: dict = {}
         self._mod_files_cache: dict = {}
         self._populating: bool = False
+        self._sort_applying: bool = False
         self._updating_conflicts: bool = False
         self._first_load: bool = True
         self._accent_color = config.accent_color
@@ -797,7 +798,7 @@ class ModListPanel(QWidget):
             watcher.folder_changed.connect(self._on_mod_folder_changed)
 
     def _on_mod_folder_changed(self, folder: str) -> None:
-        if self._populating or self._updating_conflicts:
+        if self._populating or self._updating_conflicts or self._sort_applying:
             return
         from ..conflict_index import invalidate
         invalidate(folder)
@@ -872,6 +873,7 @@ class ModListPanel(QWidget):
 
     def apply_mod_order(self) -> None:
         self._push_history()
+        self._sort_applying = True
         self.log_message.emit("Applying sort order...", "info")
         sort_index = 1
         ordered_folders = []
@@ -949,6 +951,9 @@ class ModListPanel(QWidget):
         self.listView.verticalScrollBar().setValue(scroll_pos)
         self.listView.update()
 
+        self._sort_applying = False
+        if self._watcher is not None:
+            self._watcher.clear_pending()
         self.log_message.emit(f"Applied order for {sort_index - 1} mods", "info")
 
     def restore_last_order(self) -> None:

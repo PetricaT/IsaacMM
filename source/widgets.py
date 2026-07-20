@@ -105,6 +105,22 @@ class ConflictTreeWidget(QTreeWidget):
         super().__init__(parent)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)
+        self._imagediff_path: str | None = None
+
+    def _find_imagediff(self) -> str | None:
+        if self._imagediff_path is not None:
+            return self._imagediff_path
+        candidates = [
+            shutil.which("imagediff"),
+            os.path.expanduser("~/.local/bin/imagediff"),
+            "/usr/local/bin/imagediff",
+            "/usr/bin/imagediff",
+        ]
+        for path in candidates:
+            if path and os.path.isfile(path):
+                self._imagediff_path = path
+                return path
+        return None
 
     def _on_context_menu(self, pos: QPoint) -> None:
         item = self.itemAt(pos)
@@ -116,8 +132,11 @@ class ConflictTreeWidget(QTreeWidget):
         _conflict_folder, relative_path = data
         if not relative_path.lower().endswith(".png"):
             return
-        if shutil.which("imagediff") is None:
+        imagediff = self._find_imagediff()
+        if imagediff is None:
+            logger.log("debug", "imagediff not found on PATH (checked PATH, ~/.local/bin, /usr/local/bin, /usr/bin)")
             return
+        logger.log("debug", f"imagediff found at {imagediff}")
         menu = QMenu(self)
         action = menu.addAction("Merge with imagediff")
         action.triggered.connect(lambda: self.merge_requested.emit(relative_path))
@@ -882,16 +901,16 @@ class ModInfoPanel(QWidget):
                 pass
         output = os.path.join(merged_dir, relative_path)
         os.makedirs(os.path.dirname(output), exist_ok=True)
-        try:
-            subprocess.Popen(
-                # ["imagediff", "--minimal", "--output", output, *images],
-                ["imagediff", "--output", output, *images],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            logger.log("info", f"Merge: launched imagediff for {relative_path}")
-        except FileNotFoundError:
+        imagediff = self.conflicts_tree._find_imagediff()
+        if imagediff is None:
             logger.log("error", "imagediff not found on PATH")
+            return
+        subprocess.Popen(
+            [imagediff, "--output", output, *images],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.log("info", f"Merge: launched imagediff for {relative_path}")
 
     @staticmethod
     def _walk_for_conflict_file(

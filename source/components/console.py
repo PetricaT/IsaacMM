@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QColor, QFont, QPalette, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -26,11 +28,22 @@ from .workshop import (
     _workshop_queue_length,
 )
 
+LEVEL_TAGS = {
+    "debug": ("[DBG]", QColor("#3B82F6")),
+    "info": ("[INF]", None),
+    "warning": ("[WRN]", QColor("#EAB308")),
+    "error": ("[ERR]", QColor("#EF4444")),
+}
+
 
 class ConsoleWidget(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._watcher = None
+        self._native_theme = config.active_theme == "System"
+        self._last_message: tuple | None = None
+        self._repeat_count: int = 0
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -40,33 +53,38 @@ class ConsoleWidget(QWidget):
         self.console.setFont(QFont("Courier New", 9))
         fm = self.console.fontMetrics()
         self.console.setMinimumHeight(fm.lineSpacing() * 3 + 4)
-        self.console.setStyleSheet(
-            f"background-color: {config.console_bg or 'palette(base)'}; color: {config.console_fg or 'palette(text)'}; border: 1px solid {config.console_border or 'palette(mid)'};"
-        )
+        if not self._native_theme:
+            self.console.setStyleSheet(
+                f"background-color: {config.console_bg or 'palette(base)'}; color: {config.console_fg or 'palette(text)'}; border: 1px solid {config.console_border or 'palette(mid)'};"
+            )
         logger.set_handler(lambda lvl, msg: self._write_console(msg, lvl))
 
         self.rate_bar = QFrame(self)
         rf = self.rate_bar.fontMetrics()
         self.rate_bar.setFixedHeight(rf.height() + 10)
-        self.rate_bar.setStyleSheet(
-            f"background-color: {config.rate_bar_bg or 'palette(window)'}; border: 1px solid {config.console_border or 'palette(mid)'}; border-top: none;"
-        )
+        if not self._native_theme:
+            self.rate_bar.setStyleSheet(
+                f"background-color: {config.rate_bar_bg or 'palette(window)'}; border: 1px solid {config.console_border or 'palette(mid)'}; border-top: none;"
+            )
         rate_layout = QHBoxLayout(self.rate_bar)
         margin = self.style().pixelMetric(QStyle.PM_LayoutLeftMargin)
         rate_layout.setContentsMargins(margin, 0, margin, 0)
         rate_layout.setSpacing(0)
         self.rate_label = QLabel(f"Workshop: 0/{WORKSHOP_RATE_LIMIT}")
-        self.rate_label.setStyleSheet(
-            f"color: {config.console_fg or 'palette(text)'};"
-        )
-        self.queue_label = QLabel("Queued: 0")
-        self.queue_label.setStyleSheet(
-            f"color: {config.console_fg or 'palette(text)'};"
-        )
-        self.rate_timer_label = QLabel("—")
-        self.rate_timer_label.setStyleSheet(
-            f"color: {config.console_fg or 'palette(text)'};"
-        )
+        if not self._native_theme:
+            self.rate_label.setStyleSheet(
+                f"color: {config.console_fg or 'palette(text)'};"
+            )
+        self.queue_label = QLabel(" Queued: 0")
+        if not self._native_theme:
+            self.queue_label.setStyleSheet(
+                f"color: {config.console_fg or 'palette(text)'};"
+            )
+        self.rate_timer_label = QLabel("\u2014")
+        if not self._native_theme:
+            self.rate_timer_label.setStyleSheet(
+                f"color: {config.console_fg or 'palette(text)'};"
+            )
         rate_layout.addWidget(self.rate_label)
         rate_layout.addWidget(self.queue_label)
         rate_layout.addStretch()
@@ -93,9 +111,12 @@ class ConsoleWidget(QWidget):
     def _on_watcher_state(self) -> None:
         active = self._watcher and self._watcher.is_active
         if active:
-            self._watcher_dot.setStyleSheet(
-                f"color: {config.win_color or 'palette(highlight)'};"
-            )
+            if self._native_theme:
+                self._watcher_dot.setStyleSheet("color: palette(highlight);")
+            else:
+                self._watcher_dot.setStyleSheet(
+                    f"color: {config.win_color or 'palette(highlight)'};"
+                )
             self._watcher_dot.setToolTip("Folder watcher: active")
         else:
             self._watcher_dot.setStyleSheet("color: palette(mid);")
@@ -104,62 +125,110 @@ class ConsoleWidget(QWidget):
     def log(self, message: str, level: str = "info") -> None:
         logger.log(level, message)
 
+    @staticmethod
+    def _mid_tone() -> QColor:
+        app = QApplication.instance()
+        if app is None:
+            return QColor(128, 128, 128)
+        p = app.palette()
+        tc = p.color(QPalette.ColorRole.Text)
+        bc = p.color(QPalette.ColorRole.Base)
+        return QColor(
+            int(tc.red() * 0.4 + bc.red() * 0.6),
+            int(tc.green() * 0.4 + bc.green() * 0.6),
+            int(tc.blue() * 0.4 + bc.blue() * 0.6),
+        )
+
+    def _insert_tag(self, cursor: QTextCursor, prefix: str, tag_color: QColor | None) -> None:
+        tag_fmt = QTextCharFormat()
+        tag_fmt.setFontWeight(QFont.Weight.Bold)
+        if tag_color:
+            tag_fmt.setForeground(tag_color)
+        cursor.insertText(f"{prefix} ", tag_fmt)
+
+    def _insert_timestamp(self, cursor: QTextCursor, timestamp: str) -> None:
+        ts_fmt = QTextCharFormat()
+        ts_fmt.setForeground(self._mid_tone())
+        cursor.insertText(f"[{timestamp}] ", ts_fmt)
+
+    def _dedup_key(self, level: str, message: str) -> tuple:
+        return (level, re.sub(r"\d+", "#", message))
+
     def _write_console(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
-        level_prefixes = {
-            "debug": "[DBG]",
-            "info": "[INF]",
-            "warning": "[WRN]",
-            "error": "[ERR]",
-        }
-        prefix = level_prefixes.get(level, "[INF]")
-        level_colors = {
+        prefix, tag_color = LEVEL_TAGS.get(level, ("[INF]", None))
+
+        level_msg_colors = {
             "info": config.log_info_color,
             "warning": config.log_warn_color,
             "error": config.log_error_color,
         }
-        log_color = level_colors.get(level, config.log_info_color)
-        text_cursor = self.console.textCursor()
-        text_cursor.movePosition(QTextCursor.MoveOperation.End)
-        char_format = QTextCharFormat()
-        if log_color:
-            char_format.setForeground(QColor(log_color))
-        text_cursor.insertText(f"{prefix} [{timestamp}] {message}\n", char_format)
-        self.console.setTextCursor(text_cursor)
+        msg_color = level_msg_colors.get(level, config.log_info_color)
+
+        current_key = self._dedup_key(level, message)
+        cursor = self.console.textCursor()
+
+        if current_key == self._last_message:
+            self._repeat_count += 1
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            cursor.movePosition(QTextCursor.MoveOperation.PreviousBlock, QTextCursor.MoveMode.MoveAnchor)
+            cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+            cursor.removeSelectedText()
+            self._insert_tag(cursor, prefix, tag_color)
+            self._insert_timestamp(cursor, timestamp)
+            msg_fmt = QTextCharFormat()
+            if not self._native_theme and msg_color:
+                msg_fmt.setForeground(QColor(msg_color))
+            cursor.insertText(f"{message} x{self._repeat_count + 1}", msg_fmt)
+            cursor.insertText("\n")
+        else:
+            self._last_message = current_key
+            self._repeat_count = 0
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            self._insert_tag(cursor, prefix, tag_color)
+            self._insert_timestamp(cursor, timestamp)
+            msg_fmt = QTextCharFormat()
+            if not self._native_theme and msg_color:
+                msg_fmt.setForeground(QColor(msg_color))
+            cursor.insertText(f"{message}\n", msg_fmt)
+
+        self.console.setTextCursor(cursor)
         self.console.ensureCursorVisible()
 
     def log_colored(self, segments: list[tuple[str, Optional[str]]]) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
-        text_cursor = self.console.textCursor()
-        text_cursor.movePosition(QTextCursor.MoveOperation.End)
-        char_format = QTextCharFormat()
-        if config.log_info_color:
-            char_format.setForeground(QColor(config.log_info_color))
-        text_cursor.insertText(f"[INF] [{timestamp}] ", char_format)
+        cursor = self.console.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self._insert_tag(cursor, "[INF]", None)
+        self._insert_timestamp(cursor, timestamp)
         for text, color in segments:
-            if color:
-                char_format.setForeground(QColor(color))
-            elif config.log_info_color:
-                char_format.setForeground(QColor(config.log_info_color))
+            fmt = QTextCharFormat()
+            if not self._native_theme and color:
+                fmt.setForeground(QColor(color))
+            elif not self._native_theme and config.log_info_color:
+                fmt.setForeground(QColor(config.log_info_color))
             else:
-                char_format.clearForeground()
-            text_cursor.insertText(text, char_format)
-        text_cursor.insertText("\n", char_format)
-        self.console.setTextCursor(text_cursor)
+                fmt.clearForeground()
+            cursor.insertText(text, fmt)
+        cursor.insertText("\n")
+        self.console.setTextCursor(cursor)
         self.console.ensureCursorVisible()
 
     def _update_rate_bar(self) -> None:
         count, next_available = _workshop_limiter_state()
         self.rate_label.setText(f"Workshop: {count}/{WORKSHOP_RATE_LIMIT}")
-        self.queue_label.setText(f"Queued: {_workshop_queue_length()}")
+        self.queue_label.setText(f" Queued: {_workshop_queue_length()}")
         if next_available is not None:
             remaining = int(next_available - time.time())
             if remaining > 0:
                 mins, secs = divmod(remaining, 60)
                 self.rate_timer_label.setText(f"Cooldown: {mins}m {secs}s")
-                self.rate_timer_label.setStyleSheet(
-                    f"color: {config.log_warn_color or 'palette(text)'};"
-                )
+                if self._native_theme:
+                    self.rate_timer_label.setStyleSheet("color: palette(text);")
+                else:
+                    self.rate_timer_label.setStyleSheet(
+                        f"color: {config.log_warn_color or 'palette(text)'};"
+                    )
                 self.rate_timer_label.show()
             else:
                 self.rate_timer_label.hide()
