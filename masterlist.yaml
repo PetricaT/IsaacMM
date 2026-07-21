@@ -52,7 +52,7 @@ groups:
 #   tag       — matched against <tag id="..."> in metadata.xml
 # ---------------------------------------------------------------------------
 mods:
-  # ── Framework ──────────────────────────────────────────────────────────
+  # -- Framework ----------------------------------------------------------
   - id: 1978904635
     name: "miniMAPI"
     group: framework
@@ -73,7 +73,7 @@ mods:
     after: [1978904635]
     before: [2681875787, 3701683951]
 
-  # ── Libraries ──────────────────────────────────────────────────────────
+  # -- Libraries ----------------------------------------------------------
   - id: 2491006386
     name: "Music Mod Callback [REP]"
     group: libraries
@@ -88,7 +88,7 @@ mods:
     group: libraries
     after: [2681875787, 3701683951]
 
-  # ── Content ────────────────────────────────────────────────────────────
+  # -- Content ------------------------------------------------------------
   - id: 3639995205
     name: "[RGON] Small Hairstyle Pack"
     preserve_name: true
@@ -155,7 +155,7 @@ mods:
     name: "Skill Issues (dev)"
     group: content
 
-  # ── Tweaks ─────────────────────────────────────────────────────────────
+  # -- Tweaks -------------------------------------------------------------
   - id: 3599664675
     name: "Animated Pickup Counter [RGON]"
     group: tweaks
@@ -220,7 +220,7 @@ mods:
     name: "Low Firerate Tear Chargebar"
     group: tweaks
 
-  # ── Graphics / UI ──────────────────────────────────────────────────────
+  # -- Graphics / UI ------------------------------------------------------
   - id: 3345262813
     name: "100% Accurate Character Select"
     group: graphics
@@ -394,12 +394,12 @@ mods:
     name: "Less Subtle Indicator for Tinted & Super Special Rocks"
     group: graphics
 
-  # ── Music / Sound ──────────────────────────────────────────────────────
+  # -- Music / Sound ------------------------------------------------------
   - id: 3417561024
     name: "Ethiopian jazz in shop"
     group: music
 
-  # ── Late / Compatibility ───────────────────────────────────────────────
+  # -- Late / Compatibility -----------------------------------------------
   - pattern: ".*external.*description.*"
     group: libraries
     name: "External Item Descriptions (pattern fallback)"
@@ -412,7 +412,7 @@ mods:
     group: framework
     name: "miniMAPI (pattern fallback)"
 
-  # ── Tag-based fallbacks ────────────────────────────────────────────────
+  # -- Tag-based fallbacks ------------------------------------------------
   - tag: "Player Characters"
     group: content
 
