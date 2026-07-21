@@ -235,6 +235,7 @@ QPushButton:focus {
 
         self.modInfoPanel = ModInfoPanel()
         self.modInfoPanel.log_message.connect(self.console_widget.log)
+        self.mod_list_panel.mods_loaded.connect(self.modInfoPanel.populate_data_tab)
 
         self._left_panel = QWidget()
         left_layout = QVBoxLayout(self._left_panel)

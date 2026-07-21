@@ -73,11 +73,16 @@ else:
 def initialize() -> None:
     global version
     try:
-        import toml
+        import tomllib
 
-        pyproject_path = os.path.join(BASE_DIR, "pyproject.toml")
-        if os.path.exists(pyproject_path):
-            version = toml.load(pyproject_path)["project"]["version"]
+        path = os.path.dirname(os.path.abspath(__file__))
+        for _ in range(4):
+            path = os.path.dirname(path)
+            pyproject_path = os.path.join(path, "pyproject.toml")
+            if os.path.exists(pyproject_path):
+                with open(pyproject_path, "rb") as f:
+                    version = tomllib.load(f)["project"]["version"]
+                return
     except Exception:
         pass
 

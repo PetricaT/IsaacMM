@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from loguru import logger
@@ -17,7 +18,25 @@ _LEVEL_MAP = {
     "error": "ERROR",
 }
 
+_HOME: str = os.path.expanduser("~")
+_USER: str = os.path.basename(_HOME)
+
+# Cross-platform: also match forward-slash variant (Windows) and lowercase (case-insensitive FS)
+_HOME_PATTERNS: list[str] = list(
+    dict.fromkeys(
+        [_HOME, _HOME.replace(os.sep, "/"), _HOME.lower()]
+    )
+)
+
 _current_handler = None
+
+
+def censor_pii(text: str) -> str:
+    """Replace the user's home path and username with {USER}."""
+    for pattern in _HOME_PATTERNS:
+        text = text.replace(pattern, "{USER}")
+    text = text.replace(_USER, "{USER}")
+    return text
 
 
 def set_handler(handler) -> None:
@@ -45,7 +64,7 @@ def set_level(level: str) -> None:
 
 
 def log(level: str, message: str) -> None:
-    logger.log(_LEVEL_MAP.get(level, "INFO"), message)
+    logger.log(_LEVEL_MAP.get(level, "INFO"), censor_pii(message))
 
 
 def _loguru_sink(user_handler):
@@ -53,7 +72,7 @@ def _loguru_sink(user_handler):
 
     def _sink(msg):
         record = msg.record
-        user_handler(record["level"].name.lower(), record["message"])
+        user_handler(record["level"].name.lower(), censor_pii(record["message"]))
 
     return _sink
 
