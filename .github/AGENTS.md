@@ -10,13 +10,18 @@
 ## Project structure
 
 - `main.py` — entrypoint. Creates `QApplication`, calls `config.load()`, shows `DragApp`.
-- `source/` — core logic and UI wiring.
-- `source/components/` — all UI widget code (separated from logic).
-- `source/window.py:DragApp` — main window (QWidget), owns all panels.
+- `source/core/` — config, database, logger, worker, paths, models, notifications.
+- `source/mods/` — backup, conflict_index, folder_watcher, game_versions, modlist_io, remote_cache, sorter, workshop.
+- `source/theme/` — theme loader (TOML + QSS), palette helpers.
+- `source/ui/dialogs/` — settings.py (SettingsPanel), delegates.py (ConflictDelegate + _colorize), separator.py.
+- `source/ui/panels/` — mod_list.py, mod_info.py, conflict_tree.py, console.py, preview.py.
+- `source/ui/window.py:DragApp` — main window (QWidget), owns all panels.
+- `source/controller/` — SDL3 gamepad input manager + controller UI overlay.
+- `source/updater/` — GitHub release self-update (AppImage/Windows).
 - `source/worker.py:ManagedWorker` — **must use this for ALL background tasks.** Wraps QThread with finished/error signals. Usage: `self._worker = ManagedWorker(parent=self); self._worker.start(fn, arg, name="Name")`. Workers must be waited in `closeEvent`.
-- `source/config.py` — dataclass + module-level `__getattr__`. Access: `config.field_name`.
-- `source/database.py` — SQLite (WAL mode). Schema migrations via `MIGRATIONS` dict. `PRAGMA user_version` tracks version.
-- `source/theme_helpers.py` — `palette_color(role, widget, alpha)` and `text_color_for_bg(bg_qcolor)` for palette-derived colors.
+- `source/core/config.py` — `_Config` dataclass + module-level `__getattr__`. Access: `config.field_name`.
+- `source/core/database.py` — SQLite (WAL mode). Schema migrations via `MIGRATIONS` dict. `PRAGMA user_version` tracks version.
+- `source/theme/theme_helpers.py` — `palette_color(role, widget, alpha)` and `text_color_for_bg(bg_qcolor)` for palette-derived colors.
 
 ## Developer commands
 
@@ -29,13 +34,24 @@ source .venv/bin/activate   # activate uv venv
 
 - Platform-specific code gated with `if sys.platform == "win32":` etc. Never import platform libs at module level.
 - Use `config.field_name` for all settings. Config defaults in the dataclass and in `config.load()`.
-- Logging via `logger.log(level, msg)` (loguru wrapper). Colored console output via `log_colored(segments)`.
+- Logging via `logger.log(level, msg)` (loguru wrapper). Colored console output via `log_colored(segments)` where segments are `(text, Optional[str | QTextCharFormat])`.
+- Console dedup via `_dedup_key()` which strips digits for pattern matching.
+- Backup automatically ignores: `.git`, `__pycache__`, `.DS_Store`, `Thumbs.db`, `MERGED`.
+- Use `isinstance(instance, QApplication)` guard to satisfy type checkers when calling `.palette()` on `QApplication.instance()`.
+- Use `QHeaderView.ResizeMode.Stretch` / `.Interactive` instead of legacy `QHeaderView.Stretch` / `.Interactive`.
+- Use `QEvent.Type.MouseMove` / `.Leave` instead of `QEvent.MouseMove` / `.Leave`.
+- Use `QAbstractItemView.SelectionMode.NoSelection` instead of legacy `.NoSelection`.
+- Use `QListWidget.Flow.LeftToRight` instead of legacy `.LeftToRight`.
+- Use `QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator` instead of legacy `.ShowIndicator`.
+- `QImage.save()` expects `bytes` format string: use `b"PNG"` not `"PNG"`.
+- `QByteArray` → `bytes` conversion: use `.data()` for type safety.
 
 ## Testing
 
 No test framework is set up. Verification steps:
 1. `python -c "import ast; ast.parse(open('file.py').read())"` — syntax check
-2. `uv run main.py` — launch, verify no crash within 5s, then kill it
+2. `pyright source/<file>.py` — type check (requires PySide6 stubs)
+3. `uv run main.py` — launch, verify no crash within 5s, then kill it
 
 ## PROGRESS.md
 
@@ -43,7 +59,10 @@ The file at `.github/PROGRESS.md` is the single source of truth for planned/comp
 
 ## Key backend patterns
 
-- **Conflict detection**: `source/conflict_index.py` — blake2b fingerprinting + quick tokens. `get_cached_files(mod_folder)` returns `dict[rel_path, list[mod_folder]]`.
-- **Folder watching**: `source/folder_watcher.py:ModFolderWatcher` wraps `watchdog.Observer`. Buffers events, flushes via QTimer (500ms).
+- **Conflict detection**: `source/mods/conflict_index.py` — blake2b fingerprinting + quick tokens. `get_cached_files(mod_folder)` returns `dict[rel_path, list[mod_folder]]`.
+- **Folder watching**: `source/mods/folder_watcher.py:ModFolderWatcher` wraps `watchdog.Observer`. Buffers events, flushes via QTimer (500ms).
 - **Undo/redo**: In-memory `_undo_stack`/`_redo_stack` in `ModListPanel` (max 50). Ctrl+Z/Y in eventFilter.
-- **Sorting**: `source/sorter.py` — auto-sort algorithm. Runs in `ManagedWorker`. Results emitted as mod list.
+- **Sorting**: `source/mods/sorter.py` — auto-sort algorithm. Runs in `ManagedWorker`. Results emitted as mod list.
+- **Backup**: `source/mods/backup.py` — `backup_all()` compares versions via `packaging.Version`, returns `(mod_name, old_ver, new_ver, magnitude)` results. Version text colorized via `_colorize()` in delegates.py.
+- **Theme engine**: `source/theme/theme.py` — discovers TOML theme files, builds `QPalette` + QSS, supports System/Native/File themes.
+- **Controller**: `source/controller/controller.py` — SDL3-based gamepad support, emits `button_down(int)` signal. `Button` IntEnum maps SDL constants.

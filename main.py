@@ -1,4 +1,5 @@
 import faulthandler
+import io
 import os
 import sys
 import traceback
@@ -9,8 +10,6 @@ if sys.stderr is None:
         # sys.stderr = open("crash.log", "w", 1)
         pass
     except Exception:
-        import io
-
         sys.stderr = io.StringIO()
 
 if sys.stdout is None:
@@ -29,8 +28,8 @@ from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from source import config
-from source.window import DragApp
+from source.core import config
+from source.ui.window import DragApp
 
 if __name__ == "__main__":
     trace_mode = "--trace" in sys.argv
@@ -71,7 +70,7 @@ if __name__ == "__main__":
 
     main_window = DragApp()
     if config.active_theme and config.active_theme != "System":
-        from source import theme as _theme
+        from source.theme import theme as _theme
 
         _t = _theme.get_theme(config.active_theme)
         if _t:

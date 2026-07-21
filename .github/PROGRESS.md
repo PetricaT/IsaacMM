@@ -300,19 +300,6 @@ New user-facing functionality. Implement after Section 1 is stable.
              Add "Lock UI when game is running" toggle in settings, default True.
       Blocked by: nothing
 
-- [ ] TRAY-ICON - System tray with background watcher mode
-      Lib: `pystray`
-      Files: new file `source/tray.py`, `source/window.py`,
-             `requirements.txt`, `pyproject.toml`
-      Notes: Show tray icon when window is minimized or closed-to-tray.
-             Right-click menu: Show Window, Sort Now, Backup Now, Quit.
-             Left-click: restore window.
-             Add "Close to tray" toggle in settings.
-             Pairs with WATCHDOG - in tray mode the watcher stays active so
-             Steam mod updates are detected and optionally auto-sorted.
-             Use `assets/icon.png` as tray icon.
-      Blocked by: WATCHDOG recommended first
-
 ---
 
 ## SECTION 3b - NATIVE UI INTEGRATION
@@ -552,18 +539,6 @@ must be able to override only colors, only widget styling, or both.
 ## SECTION 4 - OS-SPECIFIC INTEGRATIONS
 
 Implement last. Each is self-contained and platform-gated.
-
----
-
-### macOS
-
-- [ ] MACOS-DOCK-PROGRESS - Dock icon progress during operations
-      Lib: `pyobjc-framework-Cocoa`
-      Files: new file `source/integrations/macos_dock.py`, `source/window.py`
-      Notes: `NSApplication.sharedApplication().dockTile().setBadgeLabel_(str(n))`
-             to show progress count on dock icon during backup/sort.
-             Clear badge on completion.
-             Gate behind `sys.platform == "darwin"` check.
 
 ---
 
