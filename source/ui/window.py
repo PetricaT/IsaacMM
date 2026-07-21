@@ -344,14 +344,20 @@ QPushButton:focus {
     def _check_for_updates_silent(self) -> None:
         if self._update_worker.is_running:
             return
-        self._update_worker.start(get_latest_release, name="UpdateCheck")
+        self._update_worker.start(
+            lambda: get_latest_release(config.include_prereleases),
+            name="UpdateCheck",
+        )
 
     def _check_for_updates_interactive(self) -> None:
         if self._update_worker.is_running:
             return
         self.log("Checking for updates...")
         self._interactive_update_check = True
-        self._update_worker.start(get_latest_release, name="UpdateCheck")
+        self._update_worker.start(
+            lambda: get_latest_release(config.include_prereleases),
+            name="UpdateCheck",
+        )
 
     def _on_update_check_done(self, release: dict | None) -> None:
         interactive = getattr(self, "_interactive_update_check", False)

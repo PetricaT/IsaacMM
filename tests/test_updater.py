@@ -15,8 +15,8 @@ class TestParseVersion:
             ("1.2.3", (1, 2, 3)),
             ("v0.0.1", (0, 0, 1)),
             ("V5.10.0", (5, 10, 0)),
-            # pre-release: "3-beta" → "3-beta".isdigit() is False → 0
-            ("v1.2.3-beta", (1, 2, 0)),
+            # pre-release: "3-beta" → strip suffix → 3
+            ("v1.2.3-beta", (1, 2, 3)),
             ("1.0", (1, 0)),
             ("0", (0,)),
             # empty string: [""] → "".isdigit() is False → (0,)

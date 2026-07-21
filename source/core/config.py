@@ -74,6 +74,7 @@ class _Config:
     workshop_badge_default: str = ""
 
     check_updates_on_startup: bool = False
+    include_prereleases: bool = False
 
     console_bg: str = ""
     console_fg: str = ""
@@ -234,6 +235,9 @@ def load() -> None:
         _cfg.check_updates_on_startup = settings_section.get(
             "check_updates_on_startup", False
         )
+        _cfg.include_prereleases = settings_section.get(
+            "include_prereleases", False
+        )
         theme_section = config_data.get("theme", {})
         _cfg.use_system_icons = theme_section.get("use_system_icons", True)
         _cfg.theme_preset = theme_section.get("theme_preset", "")
@@ -323,6 +327,7 @@ def _do_save() -> None:
                 "controller_simple_icons": _v("controller_simple_icons"),
                 "notifications_enabled": _v("notifications_enabled"),
                 "check_updates_on_startup": _v("check_updates_on_startup"),
+                "include_prereleases": _v("include_prereleases"),
             },
             "theme": {
                 "accent": _v("accent_color"),

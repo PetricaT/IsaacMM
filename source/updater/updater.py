@@ -21,7 +21,8 @@ from tenacity import (
 from ..core import config, paths
 
 REPO = "PetricaT/IsaacMM"
-API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
+LATEST_API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
+RELEASES_API_URL = f"https://api.github.com/repos/{REPO}/releases?per_page=1"
 RELEASES_URL = f"https://github.com/{REPO}/releases"
 
 _HEADERS = {"User-Agent": "IsaacMM/1.0"}
@@ -33,7 +34,16 @@ _HEADERS = {"User-Agent": "IsaacMM/1.0"}
 def _parse_version(tag: str) -> tuple[int, ...]:
     cleaned = tag.lstrip("vV")
     parts = cleaned.split(".")
-    return tuple(int(p) if p.isdigit() else 0 for p in parts)
+    nums = []
+    for p in parts:
+        digits = ""
+        for ch in p:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        nums.append(int(digits) if digits else 0)
+    return tuple(nums)
 
 
 # -- public API (thread-safe, no Qt imports needed above here) ----------
@@ -52,10 +62,15 @@ def _fetch_json(url: str) -> Optional[dict]:
         return resp.json()
 
 
-def get_latest_release() -> Optional[dict]:
+def get_latest_release(include_prereleases: bool = False) -> Optional[dict]:
     """Fetch latest release info from GitHub API. Call in a worker thread."""
     try:
-        return _fetch_json(API_URL)
+        if include_prereleases:
+            data = _fetch_json(RELEASES_API_URL)
+            if isinstance(data, list) and data:
+                return data[0]
+            return None
+        return _fetch_json(LATEST_API_URL)
     except Exception:
         return None
 
