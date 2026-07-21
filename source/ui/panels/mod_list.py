@@ -264,6 +264,10 @@ class ModListPanel(QWidget):
             )
         self.load_mod_list()
 
+    def shutdown(self, timeout: int = 5000) -> None:
+        for w in (self._load_worker, self._sort_worker, self._scan_worker, self._restore_worker):
+            w.wait(timeout)
+
     def _save_column_widths(self) -> None:
         if self._restoring_widths:
             return

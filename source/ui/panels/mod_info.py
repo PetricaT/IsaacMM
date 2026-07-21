@@ -58,24 +58,17 @@ from ...core.worker import ManagedWorker
 from ...mods import game_versions
 from ...mods.workshop import (
     _check_workshop_rate_limit,
-    _dequeue_details,
-    _dequeue_workshop,
     _download_workshop_icon,
-    _enqueue_details,
-    _enqueue_workshop,
     _fetch_workshop_details,
     _get_details_from_cache,
     _is_permanent_failure,
     _is_recent_failure,
-    _mark_details_pending,
-    _mark_pending,
     _prune_failures,
     _record_failure,
-    _requeue_details,
-    _requeue_workshop,
     _set_details_in_cache,
-    _unmark_details_pending,
-    _unmark_pending,
+    details_queue,
+    icon_names,
+    icon_queue,
 )
 from ...controller.controller_ui import (
     AxisScroller,
@@ -85,6 +78,7 @@ from ...controller.controller_ui import (
     ICON_SIZE,
 )
 from ..file_utils import open_path, open_url
+from ..pixmap_utils import scaled_pixmap
 from ..text_utils import bbcode_to_html
 from .conflict_tree import ConflictTreeWidget
 from .mod_list import normalize_mod_name
@@ -99,7 +93,7 @@ def _format_date(ts: Optional[float]) -> str:
             return datetime.fromtimestamp(ts).strftime(config.date_format)
         qdt = QDateTime.fromSecsSinceEpoch(int(ts))
         return QLocale().toString(qdt, QLocale.FormatType.ShortFormat)
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return "?"
 
 
@@ -139,6 +133,7 @@ class ModInfoPanel(QWidget):
         self._details_queue_timer = QTimer(self)
         self._details_queue_timer.setSingleShot(True)
         self._details_queue_timer.timeout.connect(self._process_details_queue)
+
         self._init_icons()
         modinfo_label = QLabel("<b>Mod Info</b>")
         modinfo_label.setAlignment(
@@ -287,6 +282,10 @@ class ModInfoPanel(QWidget):
         layout.addWidget(self.tabs)
         layout.addWidget(self.folder_label)
 
+    def shutdown(self, timeout: int = 5000) -> None:
+        for w in (self._icon_worker, self._details_worker):
+            w.wait(timeout)
+
     def _init_icons(self) -> None:
         self._folder_icon = QIcon.fromTheme("folder")
         self._file_icon_provider = QFileIconProvider()
@@ -369,12 +368,7 @@ class ModInfoPanel(QWidget):
                 loaded_pixmap = QPixmap(icon_path)
                 if not loaded_pixmap.isNull():
                     self.icon_label.setPixmap(
-                        loaded_pixmap.scaled(
-                            128,
-                            128,
-                            Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.FastTransformation,
-                        )
+                        scaled_pixmap(loaded_pixmap, 128, Qt.TransformationMode.FastTransformation)
                     )
                 else:
                     self._show_placeholder()
@@ -467,7 +461,7 @@ class ModInfoPanel(QWidget):
         if self._workshop_id_str is not None:
             self._update_workshop_dates(self._workshop_id_str)
             if _get_details_from_cache(self._workshop_id_str) is None:
-                if _enqueue_details(self._workshop_id_str):
+                if details_queue.enqueue(self._workshop_id_str, key=self._workshop_id_str):
                     if not self._details_queue_timer.isActive():
                         self._process_details_queue()
         else:
@@ -476,12 +470,7 @@ class ModInfoPanel(QWidget):
     def _show_placeholder(self) -> None:
         self._stop_movie()
         self.icon_label.setPixmap(
-            self._placeholder.scaled(
-                128,
-                128,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.FastTransformation,
-            )
+            scaled_pixmap(self._placeholder, 128, Qt.TransformationMode.FastTransformation)
         )
 
     def _stop_movie(self) -> None:
@@ -500,12 +489,7 @@ class ModInfoPanel(QWidget):
             loaded = QPixmap(cached_path)
             if not loaded.isNull():
                 self.icon_label.setPixmap(
-                    loaded.scaled(
-                        128,
-                        128,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.FastTransformation,
-                    )
+                    scaled_pixmap(loaded, 128, Qt.TransformationMode.FastTransformation)
                 )
                 return True
 
@@ -515,7 +499,8 @@ class ModInfoPanel(QWidget):
         if _is_recent_failure(ws_id):
             return False
 
-        if _enqueue_workshop(ws_id, normalized_name):
+        icon_names[ws_id] = normalized_name
+        if icon_queue.enqueue(ws_id, key=ws_id):
             if not self._icon_queue_timer.isActive():
                 self._process_icon_queue()
         return False
@@ -526,13 +511,14 @@ class ModInfoPanel(QWidget):
         if self._icon_worker.is_running:
             return
 
-        item = _dequeue_workshop()
-        if item is None:
+        ws_id = icon_queue.dequeue()
+        if ws_id is None:
             return
-        ws_id, normalized_name = item
+        normalized_name = icon_names.get(ws_id, ws_id)
 
         if not _check_workshop_rate_limit():
-            _requeue_workshop(ws_id, normalized_name)
+            icon_names[ws_id] = normalized_name
+            icon_queue.requeue(ws_id)
             self._icon_queue_timer.start(2000)
             return
 
@@ -544,7 +530,7 @@ class ModInfoPanel(QWidget):
         cached_path = os.path.join(cache_dir, f"{ws_id}.png")
         self._icon_ws_id = ws_id
         self._icon_cached_path = cached_path
-        _mark_pending(ws_id)
+        icon_queue.mark_pending(ws_id)
 
         if not self._icon_worker.start(
             _download_workshop_icon,
@@ -552,13 +538,13 @@ class ModInfoPanel(QWidget):
             cached_path,
             name="IconDownload",
         ):
-            _unmark_pending(ws_id)
+            icon_queue.unmark_pending(ws_id)
             self._icon_queue_timer.start(2000)
 
     def _on_icon_done(self, actual_path: str) -> None:
         ws_id = self._icon_ws_id
         cached_path = self._icon_cached_path
-        _unmark_pending(ws_id)
+        icon_queue.unmark_pending(ws_id)
         img_loaded = False
         if actual_path and actual_path != cached_path:
             reader = QImageReader(actual_path)
@@ -572,12 +558,7 @@ class ModInfoPanel(QWidget):
         loaded = QPixmap(cached_path)
         if not loaded.isNull():
             self.icon_label.setPixmap(
-                loaded.scaled(
-                    128,
-                    128,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.FastTransformation,
-                )
+                scaled_pixmap(loaded, 128, Qt.TransformationMode.FastTransformation)
             )
             img_loaded = True
         if not img_loaded:
@@ -585,7 +566,7 @@ class ModInfoPanel(QWidget):
         self._icon_queue_timer.start(2000)
 
     def _on_icon_error(self, msg: str) -> None:
-        _unmark_pending(self._icon_ws_id)
+        icon_queue.unmark_pending(self._icon_ws_id)
         _record_failure(self._icon_ws_id, time.time())
         self.log_message.emit(msg, "warning")
         self._show_placeholder()
@@ -635,7 +616,7 @@ class ModInfoPanel(QWidget):
                 else:
                     color = config.workshop_badge_outdated
                     badge = " (OUTDATED)"
-            except OSError, ValueError:
+            except (OSError, ValueError):
                 pass
 
         self.updated_label.setText(
@@ -648,36 +629,36 @@ class ModInfoPanel(QWidget):
         if self._details_worker.is_running:
             return
 
-        ws_id = _dequeue_details()
+        ws_id = details_queue.dequeue()
         if ws_id is None:
             return
 
         if not _check_workshop_rate_limit():
-            _requeue_details(ws_id)
+            details_queue.requeue(ws_id)
             self._details_queue_timer.start(5000)
             return
 
         self._details_ws_id = ws_id
-        _mark_details_pending(ws_id)
+        details_queue.mark_pending(ws_id)
 
         if not self._details_worker.start(
             _fetch_workshop_details,
             ws_id,
             name="WorkshopDetails",
         ):
-            _unmark_details_pending(ws_id)
+            details_queue.unmark_pending(ws_id)
             self._details_queue_timer.start(2000)
 
     def _on_details_done(self, result: dict) -> None:
         ws_id = self._details_ws_id
-        _unmark_details_pending(ws_id)
+        details_queue.unmark_pending(ws_id)
         _set_details_in_cache(ws_id, result)
         if self._workshop_id_str == ws_id:
             self._update_workshop_dates(ws_id)
         self._details_queue_timer.start(2000)
 
     def _on_details_error(self, msg: str) -> None:
-        _unmark_details_pending(self._details_ws_id)
+        details_queue.unmark_pending(self._details_ws_id)
         self.log_message.emit(msg, "warning")
         self._details_queue_timer.start(10000)
 
@@ -1098,13 +1079,9 @@ class ModInfoPanel(QWidget):
             path = os.path.join(base, f"{name}.png")
             pm = QPixmap(path)
             if not pm.isNull():
-                scaled = pm.scaled(
-                    ICON_SIZE,
-                    ICON_SIZE,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.FastTransformation,
+                lbl.setPixmap(
+                    scaled_pixmap(pm, ICON_SIZE, Qt.TransformationMode.FastTransformation)
                 )
-                lbl.setPixmap(scaled)
             else:
                 lbl.clear()
 

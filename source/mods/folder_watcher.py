@@ -41,7 +41,7 @@ class ModFolderWatcher(QObject):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._observer = Observer()
+        self._observer: Observer | None = None
         self._handler = _Handler(self)
         self._changed: set[str] = set()
         self._lock = threading.Lock()
@@ -62,6 +62,7 @@ class ModFolderWatcher(QObject):
             self.stop()
         if not os.path.isdir(mods_path):
             return
+        self._observer = Observer()
         self._watch = self._observer.schedule(self._handler, mods_path, recursive=True)
         self._observer.start()
         self._debounce.start()
@@ -70,9 +71,10 @@ class ModFolderWatcher(QObject):
     def stop(self) -> None:
         """Stop watching and clean up the observer thread."""
         self._debounce.stop()
-        if self._observer.is_alive():
+        if self._observer is not None and self._observer.is_alive():
             self._observer.stop()
             self._observer.join(timeout=3)
+        self._observer = None
         self._watch = None
         with self._lock:
             self._changed.clear()
@@ -85,7 +87,7 @@ class ModFolderWatcher(QObject):
 
     @property
     def is_active(self) -> bool:
-        return self._observer.is_alive()
+        return self._observer is not None and self._observer.is_alive()
 
     # ------------------------------------------------------------------
     # Internal

@@ -13,7 +13,7 @@ def export_modlist_csv(file_path: str, items: List[Tuple[str, str]]) -> int:
         writer = csv.writer(csv_file)
         writer.writerow(["mod_order", "mod_id", "mod_name", "mod_workshop_link"])
         for sort_index, (folder_name, display_name) in enumerate(items, start=1):
-            workshop_id = paths._extract_workshop_id(folder_name) or ""
+            workshop_id = paths.extract_workshop_id(folder_name) or ""
             workshop_link = (
                 f"https://steamcommunity.com/sharedfiles/filedetails/?id={workshop_id}"
                 if workshop_id

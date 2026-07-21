@@ -10,6 +10,7 @@ from PySide6.QtGui import QAction, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QLabel, QMenu
 
 from ...core import config
+from ...ui.pixmap_utils import scaled_pixmap
 from ...core.worker import ManagedWorker
 
 
@@ -337,13 +338,9 @@ class PreviewWidget(QLabel):
             self._anm2_frames = [QPixmap.fromImage(img) for img in frames_qimage]
             self._anm2_delays = delays
             self._anm2_index = 0
-            scaled = self._anm2_frames[0].scaled(
-                200,
-                200,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.FastTransformation,
+            self.setPixmap(
+                scaled_pixmap(self._anm2_frames[0], 200, Qt.TransformationMode.FastTransformation)
             )
-            self.setPixmap(scaled)
             self.adjustSize()
             if len(self._anm2_frames) > 1:
                 self._anm2_timer.start(self._anm2_delays[0])
@@ -354,13 +351,9 @@ class PreviewWidget(QLabel):
         if not self._anm2_frames:
             return
         self._anm2_index = (self._anm2_index + 1) % len(self._anm2_frames)
-        scaled = self._anm2_frames[self._anm2_index].scaled(
-            200,
-            200,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.FastTransformation,
+        self.setPixmap(
+            scaled_pixmap(self._anm2_frames[self._anm2_index], 200, Qt.TransformationMode.FastTransformation)
         )
-        self.setPixmap(scaled)
         self.adjustSize()
         self._anm2_timer.setInterval(self._anm2_delays[self._anm2_index])
 

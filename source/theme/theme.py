@@ -130,7 +130,7 @@ def _read_toml(path: Path) -> dict:
     try:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)
-    except OSError, tomllib.TOMLDecodeError:
+    except (OSError, tomllib.TOMLDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
 

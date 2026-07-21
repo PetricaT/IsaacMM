@@ -1,4 +1,5 @@
 import faulthandler
+import io
 import os
 import sys
 import traceback
@@ -9,8 +10,6 @@ if sys.stderr is None:
         # sys.stderr = open("crash.log", "w", 1)
         pass
     except Exception:
-        import io
-
         sys.stderr = io.StringIO()
 
 if sys.stdout is None:

@@ -77,8 +77,9 @@ class WorkshopQueue:
         return self._pending
 
 
-_icon_queue = WorkshopQueue(_workshop_lock)
-_details_queue = WorkshopQueue(_workshop_lock)
+icon_queue = WorkshopQueue(_workshop_lock)
+details_queue = WorkshopQueue(_workshop_lock)
+icon_names: dict[str, str] = {}
 
 _WORKSHOP_LIMITER: deque = deque()
 WORKSHOP_RATE_LIMIT: int = 180
@@ -86,32 +87,6 @@ WORKSHOP_RATE_WINDOW: int = 300
 WORKSHOP_RETRY_COOLDOWN: int = 300
 _failed_workshop_ids: dict[str, float] = {}
 _permanent_failures: set[str] = set()
-_icon_names: dict[str, str] = {}
-
-
-def _workshop_queue_length() -> int:
-    return len(_icon_queue)
-
-
-def _enqueue_workshop(ws_id: str, normalized_name: str) -> bool:
-    _icon_names[ws_id] = normalized_name
-    return _icon_queue.enqueue(ws_id, key=ws_id)
-
-
-def _dequeue_workshop() -> Optional[tuple[str, str]]:
-    ws_id = _icon_queue.dequeue()
-    if ws_id is None:
-        return None
-    return (ws_id, _icon_names.get(ws_id, ws_id))
-
-
-def _discard_from_queue(ws_id: str) -> None:
-    _icon_queue.discard(ws_id)
-
-
-def _requeue_workshop(ws_id: str, normalized_name: str) -> None:
-    _icon_names[ws_id] = normalized_name
-    _icon_queue.requeue(ws_id)
 
 
 def _init_workshop_limiter() -> None:
@@ -141,14 +116,6 @@ def _prune_failures() -> None:
                 del _failed_workshop_ids[ws_id]
 
 
-def _mark_pending(ws_id: str) -> None:
-    _icon_queue.mark_pending(ws_id)
-
-
-def _unmark_pending(ws_id: str) -> None:
-    _icon_queue.unmark_pending(ws_id)
-
-
 def _record_failure(ws_id: str, timestamp: float) -> None:
     with _workshop_lock:
         _failed_workshop_ids[ws_id] = timestamp
@@ -164,18 +131,10 @@ def _is_recent_failure(ws_id: str) -> bool:
         return ws_id in _failed_workshop_ids
 
 
-def _init_details_cache() -> None:
-    pass
-
-
-def _save_details_cache() -> None:
-    pass
-
-
 def _get_details_from_cache(ws_id: str) -> Optional[dict]:
     try:
         item = database.get_workshop_item(int(ws_id))
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return None
     if item is None:
         return None
@@ -188,7 +147,7 @@ def _get_details_from_cache(ws_id: str) -> Optional[dict]:
 def _set_details_in_cache(ws_id: str, data: dict) -> None:
     try:
         ws_id_int = int(ws_id)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return
     fields = {
         "created_at": data.get("time_created"),
@@ -199,34 +158,6 @@ def _set_details_in_cache(ws_id: str, data: dict) -> None:
         fields["preview_url"] = data.get("preview_url", "")
         fields["description"] = data.get("description", "")
     database.upsert_workshop_item(ws_id_int, **fields)
-
-
-def _details_queue_length() -> int:
-    return len(_details_queue)
-
-
-def _enqueue_details(ws_id: str) -> bool:
-    return _details_queue.enqueue(ws_id, key=ws_id)
-
-
-def _dequeue_details() -> Optional[str]:
-    return _details_queue.dequeue()
-
-
-def _discard_details_from_queue(ws_id: str) -> None:
-    _details_queue.discard(ws_id)
-
-
-def _requeue_details(ws_id: str) -> None:
-    _details_queue.requeue(ws_id)
-
-
-def _mark_details_pending(ws_id: str) -> None:
-    _details_queue.mark_pending(ws_id)
-
-
-def _unmark_details_pending(ws_id: str) -> None:
-    _details_queue.unmark_pending(ws_id)
 
 
 def _check_workshop_rate_limit() -> bool:
@@ -308,7 +239,7 @@ def _scrape_workshop_dates(ws_id: str) -> dict:
         time_created = datetime.strptime(
             vals[1].strip(), "%d %b, %Y @ %I:%M%p"
         ).timestamp()
-    except IndexError, ValueError:
+    except (IndexError, ValueError):
         time_created = None
 
     time_updated = None

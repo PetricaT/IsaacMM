@@ -77,7 +77,7 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
             for ws_id_str, data in details.items():
                 try:
                     ws_id = int(ws_id_str)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     continue
                 conn.execute(
                     """INSERT OR IGNORE INTO workshop_items

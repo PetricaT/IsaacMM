@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPixmap, QTextCharFormat
 from PySide6.QtWidgets import QStyledItemDelegate
 
 from ...core import config
+from ..pixmap_utils import scaled_pixmap
 
 
 def _colorize(old: str, new: str) -> list[tuple[str, Optional[str]]]:
@@ -61,12 +62,7 @@ class ConflictDelegate(QStyledItemDelegate):
             if os.path.exists(path):
                 pm = QPixmap(path)
                 if not pm.isNull():
-                    cls._empty_pixmap = pm.scaled(
-                        16,
-                        16,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
+                    cls._empty_pixmap = scaled_pixmap(pm, 16)
         return cls._empty_pixmap
 
     def paint(self, painter, option, index) -> None:
@@ -83,8 +79,6 @@ class ConflictDelegate(QStyledItemDelegate):
         losses = index.data(LOSSES_ROLE)
         if not wins and not losses:
             return
-        from ...core import config
-
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         font = QFont()

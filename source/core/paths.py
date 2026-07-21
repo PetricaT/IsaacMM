@@ -73,11 +73,17 @@ else:
 def initialize() -> None:
     global version
     try:
-        import toml
+        import tomllib
 
-        pyproject_path = os.path.join(BASE_DIR, "pyproject.toml")
-        if os.path.exists(pyproject_path):
-            version = toml.load(pyproject_path)["project"]["version"]
+        path = os.path.dirname(os.path.abspath(__file__))
+        # Walk up until we find pyproject.toml (project root)
+        for _ in range(4):
+            path = os.path.dirname(path)
+            pyproject_path = os.path.join(path, "pyproject.toml")
+            if os.path.exists(pyproject_path):
+                with open(pyproject_path, "rb") as f:
+                    version = tomllib.load(f)["project"]["version"]
+                return
     except Exception:
         pass
 
@@ -86,7 +92,7 @@ version: str = "0.0.0"
 initialize()
 
 
-def _extract_workshop_id(folder_name: str) -> Optional[str]:
+def extract_workshop_id(folder_name: str) -> Optional[str]:
     match = WORKSHOP_ID_RE.search(folder_name)
     return match.group(1) if match else None
 
@@ -121,7 +127,7 @@ def _parse_vdf_path(steam_path: str) -> Optional[str]:
                     )
                     if os.path.exists(candidate_path):
                         return game_root_path
-    except FileNotFoundError, IndexError:
+    except (FileNotFoundError, IndexError):
         pass
     return None
 

@@ -65,7 +65,7 @@ def _load_user_rules() -> list:
         with open(USER_RULES_FILE) as rules_file:
             yaml_data = yaml.safe_load(rules_file)
             return yaml_data.get("rules", []) if yaml_data else []
-    except OSError, yaml.YAMLError:
+    except (OSError, yaml.YAMLError):
         return []
 
 
@@ -89,11 +89,6 @@ def _merge_user_rules(mod_lookup: dict, rules: list) -> None:
             if "before" in rule:
                 new_entry["before"] = list(rule["before"])
             mod_lookup[rule_id] = new_entry
-
-
-def _extract_workshop_id(folder_name: str) -> Optional[int]:
-    ws = paths._extract_workshop_id(folder_name)
-    return int(ws) if ws else None
 
 
 def _read_tags(mod_path: str) -> list:
@@ -137,7 +132,8 @@ def _match_mod(
     pattern_entries: list,
     tag_entries: list,
 ) -> Optional[dict]:
-    workshop_id = _extract_workshop_id(folder_name)
+    ws = paths.extract_workshop_id(folder_name)
+    workshop_id = int(ws) if ws else None
     if workshop_id is not None and workshop_id in mod_lookup:
         return mod_lookup[workshop_id]
 
@@ -198,7 +194,8 @@ def _topological_sort(
 
 
 def should_preserve_name(folder_name: str) -> bool:
-    ws_id = _extract_workshop_id(folder_name)
+    ws = paths.extract_workshop_id(folder_name)
+    ws_id = int(ws) if ws else None
     if ws_id is None:
         return False
     masterlist = get_masterlist()

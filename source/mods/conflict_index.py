@@ -14,7 +14,6 @@ from hashlib import blake2b
 
 from ..core import config, database
 
-# Must match modlist.py _CONFLICT_EXTS
 _CONFLICT_EXTS = {".png", ".anm2", ".wav", ".lua"}
 
 

@@ -37,6 +37,7 @@ from ...core.worker import ManagedWorker
 from ...mods.backup import backup_all, get_backup_root
 from ...controller.controller_ui import BUTTON_SIZE, ICON_SIZE
 from ..file_utils import open_path
+from ..pixmap_utils import scaled_pixmap
 from ...theme import theme
 
 try:
@@ -86,14 +87,7 @@ class SettingsPanel(QWidget):
         self._left_tab_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pm = QPixmap(os.path.join(base, "left_shoulder.png"))
         if not pm.isNull():
-            self._left_tab_icon.setPixmap(
-                pm.scaled(
-                    ICON_SIZE,
-                    ICON_SIZE,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
+            self._left_tab_icon.setPixmap(scaled_pixmap(pm, ICON_SIZE))
         self._left_tab_icon.hide()
         tabs.setCornerWidget(self._left_tab_icon, Qt.Corner.TopLeftCorner)
 
@@ -102,19 +96,22 @@ class SettingsPanel(QWidget):
         self._right_tab_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pm = QPixmap(os.path.join(base, "right_shoulder.png"))
         if not pm.isNull():
-            self._right_tab_icon.setPixmap(
-                pm.scaled(
-                    ICON_SIZE,
-                    ICON_SIZE,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
+            self._right_tab_icon.setPixmap(scaled_pixmap(pm, ICON_SIZE))
         self._right_tab_icon.hide()
         tabs.setCornerWidget(self._right_tab_icon, Qt.Corner.TopRightCorner)
 
-        behavior_tab = QWidget()
-        behavior_layout = QVBoxLayout(behavior_tab)
+        tabs.addTab(self._build_behavior_tab(), "Behavior")
+        tabs.addTab(self._build_theme_tab(), "Theme")
+        tabs.addTab(self._build_controller_tab(), "Controller")
+        tabs.addTab(self._build_accessibility_tab(), "Accessibility")
+
+        main_layout.addWidget(tabs)
+        self._update_open_buttons()
+        self._update_controller_info()
+
+    def _build_behavior_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
 
         setup_group = QGroupBox("Setup")
         setup_layout = QFormLayout(setup_group)
@@ -139,7 +136,7 @@ class SettingsPanel(QWidget):
         mods_path_layout.addWidget(browse_mods_btn)
         mods_path_layout.addWidget(self.open_mods_btn)
         setup_layout.addRow("Mods folder:", mods_path_layout)
-        behavior_layout.addWidget(setup_group)
+        layout.addWidget(setup_group)
 
         backup_group = QGroupBox("Backup")
         backup_layout = QFormLayout(backup_group)
@@ -171,7 +168,7 @@ class SettingsPanel(QWidget):
         run_backup_button = QPushButton("Run backup now")
         run_backup_button.clicked.connect(self._run_backup)
         backup_layout.addRow(run_backup_button)
-        behavior_layout.addWidget(backup_group)
+        layout.addWidget(backup_group)
 
         updates_group = QGroupBox("Updates")
         updates_layout = QVBoxLayout(updates_group)
@@ -196,7 +193,7 @@ class SettingsPanel(QWidget):
         self.notif_check.setChecked(config.notifications_enabled)
         self.notif_check.toggled.connect(self._save_settings)
         updates_layout.addWidget(self.notif_check)
-        behavior_layout.addWidget(updates_group)
+        layout.addWidget(updates_group)
 
         display_group = QGroupBox("Display")
         display_layout = QFormLayout(display_group)
@@ -239,7 +236,7 @@ class SettingsPanel(QWidget):
         date_format_layout.addStretch()
         display_layout.addRow("Date format:", date_format_layout)
         self._update_date_preview()
-        behavior_layout.addWidget(display_group)
+        layout.addWidget(display_group)
 
         paths_group = QGroupBox("Paths")
         paths_layout = QHBoxLayout(paths_group)
@@ -255,7 +252,7 @@ class SettingsPanel(QWidget):
         paths_layout.addWidget(self.open_config_btn)
         paths_layout.addWidget(self.open_data_btn)
         paths_layout.addWidget(self.open_cache_btn)
-        behavior_layout.addWidget(paths_group)
+        layout.addWidget(paths_group)
 
         logging_group = QGroupBox("Logging")
         logging_layout = QFormLayout(logging_group)
@@ -269,14 +266,15 @@ class SettingsPanel(QWidget):
             self.log_level_combo.setCurrentIndex(index)
         self.log_level_combo.currentIndexChanged.connect(self._save_settings)
         logging_layout.addRow("Log level:", self.log_level_combo)
-        behavior_layout.addWidget(logging_group)
+        layout.addWidget(logging_group)
 
-        behavior_layout.addStretch()
-        tabs.addTab(behavior_tab, "Behavior")
+        layout.addStretch()
+        return tab
 
-        theme_tab = QWidget()
-        theme_main_layout = QVBoxLayout(theme_tab)
-        theme_main_layout.setContentsMargins(0, 0, 0, 0)
+    def _build_theme_tab(self) -> QWidget:
+        tab = QWidget()
+        main_layout = QVBoxLayout(tab)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
         top_widget = QWidget()
         theme_layout = QFormLayout(top_widget)
@@ -311,7 +309,7 @@ class SettingsPanel(QWidget):
         self.system_icons_check.setEnabled(False)
         theme_layout.addRow(self.system_icons_check)
 
-        theme_main_layout.addWidget(top_widget)
+        main_layout.addWidget(top_widget)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -399,11 +397,12 @@ class SettingsPanel(QWidget):
 
         scroll_layout.addRow(QLabel(""))  # bottom spacer
         scroll.setWidget(scroll_inner)
-        theme_main_layout.addWidget(scroll, 1)
-        tabs.addTab(theme_tab, "Theme")
+        main_layout.addWidget(scroll, 1)
+        return tab
 
-        controller_tab = QWidget()
-        controller_layout = QVBoxLayout(controller_tab)
+    def _build_controller_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
 
         ctrl_group = QGroupBox("Controller")
         ctrl_form = QFormLayout(ctrl_group)
@@ -418,9 +417,9 @@ class SettingsPanel(QWidget):
         self.ctrl_type_label = QLabel("-")
         ctrl_info_layout.addRow("Name:", self.ctrl_name_label)
         ctrl_info_layout.addRow("Type:", self.ctrl_type_label)
-        controller_layout.addWidget(ctrl_group)
-        controller_layout.addWidget(ctrl_info_group)
-        controller_layout.addStretch()
+        layout.addWidget(ctrl_group)
+        layout.addWidget(ctrl_info_group)
+        layout.addStretch()
 
         ctrl_deadzone_group = QGroupBox("Dead Zone")
         ctrl_deadzone_layout = QFormLayout(ctrl_deadzone_group)
@@ -436,12 +435,13 @@ class SettingsPanel(QWidget):
         deadzone_layout.addWidget(self.ctrl_deadzone_slider, 1)
         deadzone_layout.addWidget(self.ctrl_deadzone_label)
         ctrl_deadzone_layout.addRow("Axis dead zone:", deadzone_layout)
-        controller_layout.addWidget(ctrl_deadzone_group)
+        layout.addWidget(ctrl_deadzone_group)
 
-        tabs.addTab(controller_tab, "Controller")
+        return tab
 
-        accessibility_tab = QWidget()
-        accessibility_layout = QVBoxLayout(accessibility_tab)
+    def _build_accessibility_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
 
         a11y_group = QGroupBox("Controller Icons")
         a11y_form = QFormLayout(a11y_group)
@@ -449,13 +449,9 @@ class SettingsPanel(QWidget):
         self.simple_icons_check.setChecked(config.controller_simple_icons)
         self.simple_icons_check.toggled.connect(self._save_settings)
         a11y_form.addRow(self.simple_icons_check)
-        accessibility_layout.addWidget(a11y_group)
-        accessibility_layout.addStretch()
-        tabs.addTab(accessibility_tab, "Accessibility")
-
-        main_layout.addWidget(tabs)
-        self._update_open_buttons()
-        self._update_controller_info()
+        layout.addWidget(a11y_group)
+        layout.addStretch()
+        return tab
 
     def _set_back_icon(self, gamepad_type: int) -> None:
         dir_map = {2: "xbox", 3: "xbox", 4: "ps", 5: "ps", 6: "ps"}
@@ -466,14 +462,7 @@ class SettingsPanel(QWidget):
             pm = QPixmap(os.path.join(base, "EAST.png"))
         if pm.isNull():
             pm = QPixmap(os.path.join(base, "select.png"))
-        self._back_icon.setPixmap(
-            pm.scaled(
-                ICON_SIZE,
-                ICON_SIZE,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        )
+        self._back_icon.setPixmap(scaled_pixmap(pm, ICON_SIZE))
 
     def connect_controller(self, controller_mgr) -> None:
         from ...controller.controller import Button

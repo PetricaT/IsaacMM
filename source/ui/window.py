@@ -24,19 +24,19 @@ from ..mods import game_versions, sorter
 from ..mods.backup import backup_all, get_backup_root
 from ..mods.folder_watcher import ModFolderWatcher
 from ..mods.workshop import (
-    _enqueue_details,
     _get_details_from_cache,
-    _init_details_cache,
     _init_workshop_limiter,
+    details_queue,
 )
 from ..controller.controller import (
     Button,
     ControllerManager,
 )
 from ..controller.controller_ui import ICON_SIZE, ControllerRouter, FocusOverlay
+from .pixmap_utils import scaled_pixmap
 from ..theme import theme
+from ..updater.update_dialog import UpdateDialog
 from ..updater.updater import (
-    UpdateDialog,
     get_download_asset,
     get_latest_release,
     is_appimage,
@@ -109,7 +109,6 @@ QPushButton:focus {
             self.resize(1161, 550)
 
         _init_workshop_limiter()
-        _init_details_cache()
         game_versions.fetch_initial()
         # Windows requires admin rights for symlinking
         if sys.platform != "win32":
@@ -210,13 +209,9 @@ QPushButton:focus {
         self._game_versions_worker.wait(5000)
         self._update_worker.wait(5000)
         if hasattr(self, "mod_list_panel"):
-            self.mod_list_panel._load_worker.wait(5000)
-            self.mod_list_panel._sort_worker.wait(5000)
-            self.mod_list_panel._scan_worker.wait(5000)
-            self.mod_list_panel._restore_worker.wait(5000)
+            self.mod_list_panel.shutdown()
         if hasattr(self, "modInfoPanel"):
-            self.modInfoPanel._icon_worker.wait(5000)
-            self.modInfoPanel._details_worker.wait(5000)
+            self.modInfoPanel.shutdown()
         super().closeEvent(close_event)
 
     def initUi(self) -> None:
@@ -458,7 +453,7 @@ QPushButton:focus {
             ws_id = ws_match.group(1)
             if _get_details_from_cache(ws_id) is not None:
                 continue
-            if _enqueue_details(ws_id):
+            if details_queue.enqueue(ws_id, key=ws_id):
                 enqueued += 1
 
         if enqueued > 0:
@@ -521,13 +516,7 @@ QPushButton:focus {
             path = os.path.join(base, f"{btn_name}.png")
             pm = QPixmap(path)
             if not pm.isNull():
-                scaled = pm.scaled(
-                    SH,
-                    SH,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                lbl.setPixmap(scaled)
+                lbl.setPixmap(scaled_pixmap(pm, SH))
             lbl.hide()
             panel.installEventFilter(self)
             self._shoulder_indicators.append((lbl, panel))

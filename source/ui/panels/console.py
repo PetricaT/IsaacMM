@@ -25,7 +25,7 @@ from ...mods.folder_watcher import ModFolderWatcher
 from ...mods.workshop import (
     WORKSHOP_RATE_LIMIT,
     _workshop_limiter_state,
-    _workshop_queue_length,
+    icon_queue,
 )
 
 LEVEL_TAGS = {
@@ -225,7 +225,7 @@ class ConsoleWidget(QWidget):
     def _update_rate_bar(self) -> None:
         count, next_available = _workshop_limiter_state()
         self.rate_label.setText(f"Workshop: {count}/{WORKSHOP_RATE_LIMIT}")
-        self.queue_label.setText(f" Queued: {_workshop_queue_length()}")
+        self.queue_label.setText(f" Queued: {len(icon_queue)}")
         if next_available is not None:
             remaining = int(next_available - time.time())
             if remaining > 0:

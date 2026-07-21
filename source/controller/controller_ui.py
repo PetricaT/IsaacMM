@@ -17,6 +17,7 @@ from .controller import (
     is_playstation_type,
 )
 from ..theme.theme_helpers import palette_color
+from ..ui.pixmap_utils import scaled_pixmap
 
 ICON_SIZE = 32
 BUTTON_SIZE = ICON_SIZE + 8
@@ -73,13 +74,7 @@ class ControllerButtonIcon:
             if os.path.exists(candidate):
                 pm = QPixmap(candidate)
                 if not pm.isNull():
-                    scaled = pm.scaled(
-                        ICON_SIZE,
-                        ICON_SIZE,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-                    self._icon = QIcon(scaled)
+                    self._icon = QIcon(scaled_pixmap(pm, ICON_SIZE))
                     return
 
         self._icon = QIcon()
