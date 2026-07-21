@@ -104,13 +104,6 @@ I don't expect people to have more than 999 mods for this game, but if that prov
 
 You can find themes for the manager here: [PetricaT/IsaacMM-themes](https://github.com/PetricaT/IsaacMM-themes)
 
-<details>
-  <summary>Dependency graph</summary>
-
-         (mermaid graph)
-
-</details>
-
 ## Known issues & TODO
 
 - [x] Add config file versioning & migration
