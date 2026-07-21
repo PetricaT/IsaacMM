@@ -76,7 +76,6 @@ def initialize() -> None:
         import tomllib
 
         path = os.path.dirname(os.path.abspath(__file__))
-        # Walk up until we find pyproject.toml (project root)
         for _ in range(4):
             path = os.path.dirname(path)
             pyproject_path = os.path.join(path, "pyproject.toml")

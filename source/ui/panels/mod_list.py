@@ -192,11 +192,6 @@ class ModListPanel(QWidget):
         modlist_header_layout.addWidget(menu_button)
         layout.addLayout(modlist_header_layout)
 
-        self._search_bar = QLineEdit(self)
-        self._search_bar.setPlaceholderText("Search mods (fuzzy)...")
-        self._search_bar.textChanged.connect(self._filter_mods)
-        layout.addWidget(self._search_bar)
-
         self.listView = QTreeView(self)
         self.listView.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.listView.setDragEnabled(True)
@@ -243,6 +238,11 @@ class ModListPanel(QWidget):
         self.listView.customContextMenuRequested.connect(self._on_context_menu)
 
         layout.addWidget(self.listView, 1)
+
+        self._search_bar = QLineEdit(self)
+        self._search_bar.setPlaceholderText("Search mods (fuzzy)...")
+        self._search_bar.textChanged.connect(self._filter_mods)
+        layout.addWidget(self._search_bar)
 
         button_row = QHBoxLayout()
         button_row.addWidget(self.applyOrder)

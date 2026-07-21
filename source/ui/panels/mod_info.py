@@ -37,10 +37,12 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QFileIconProvider,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -95,6 +97,51 @@ def _format_date(ts: Optional[float]) -> str:
         return QLocale().toString(qdt, QLocale.FormatType.ShortFormat)
     except (OSError, ValueError):
         return "?"
+
+
+class ConflictTreeWidget(QTreeWidget):
+    merge_requested = Signal(str)  # relative file path
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
+        self._imagediff_path: str | None = None
+
+    def _find_imagediff(self) -> str | None:
+        if self._imagediff_path is not None:
+            return self._imagediff_path
+        candidates = [
+            shutil.which("imagediff"),
+            os.path.expanduser("~/.local/bin/imagediff"),
+            "/usr/local/bin/imagediff",
+            "/usr/bin/imagediff",
+        ]
+        for path in candidates:
+            if path and os.path.isfile(path):
+                self._imagediff_path = path
+                logger.log("debug", f"imagediff found at {path}")
+                return path
+        logger.log("debug", "imagediff not found on PATH (checked PATH, ~/.local/bin, /usr/local/bin, /usr/bin)")
+        return None
+
+    def _on_context_menu(self, pos: QPoint) -> None:
+        item = self.itemAt(pos)
+        if item is None or item.childCount():
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data is None:
+            return
+        _conflict_folder, relative_path = data
+        if not relative_path.lower().endswith(".png"):
+            return
+        imagediff = self._find_imagediff()
+        if imagediff is None:
+            return
+        menu = QMenu(self)
+        action = menu.addAction("Merge with imagediff")
+        action.triggered.connect(lambda: self.merge_requested.emit(relative_path))
+        menu.exec(self.viewport().mapToGlobal(pos))
 
 
 class ModInfoPanel(QWidget):
@@ -270,6 +317,48 @@ class ModInfoPanel(QWidget):
         )
         self.tabs.addTab(self.files_tree, "Files")
 
+        self.data_tree = QTreeWidget()
+        self.data_tree.setHeaderLabels(["Name", "Mod", "Type", "Size"])
+        self.data_tree.setRootIsDecorated(True)
+        self.data_tree.setAlternatingRowColors(True)
+        self.data_tree.setColumnCount(4)
+        self.data_tree.header().setStretchLastSection(False)
+        self.data_tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.data_tree.header().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.data_tree.header().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.data_tree.header().setSectionResizeMode(3, QHeaderView.Interactive)
+        self.data_tree.header().resizeSection(1, 140)
+        self.data_tree.header().resizeSection(2, 70)
+        self.data_tree.header().resizeSection(3, 80)
+        self.data_tree.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.data_tree.itemDoubleClicked.connect(self._open_data_file)
+
+        self.data_container = QWidget()
+        data_layout = QVBoxLayout(self.data_container)
+        data_layout.setContentsMargins(0, 0, 0, 0)
+        data_layout.setSpacing(0)
+        data_layout.addWidget(self.data_tree)
+
+        self.data_filter_bar = QWidget()
+        filter_layout = QHBoxLayout(self.data_filter_bar)
+        filter_layout.setContentsMargins(4, 4, 4, 4)
+        self.data_conflicts_only = QCheckBox("Conflicts only")
+        self.data_filter_input = QLineEdit()
+        self.data_filter_input.setPlaceholderText("Filter\u2026")
+        filter_layout.addWidget(self.data_conflicts_only)
+        filter_layout.addStretch()
+        filter_layout.addWidget(self.data_filter_input)
+        data_layout.addWidget(self.data_filter_bar)
+
+        self._data_conflict_paths: set[str] = set()
+        self._data_source_paths: dict[str, str] = {}
+        self.data_conflicts_only.toggled.connect(self._apply_data_filters)
+        self.data_filter_input.textChanged.connect(self._apply_data_filters)
+
+        self.tabs.addTab(self.data_container, "Data")
+
         self.folder_label = QPushButton()
         self.folder_label.setFlat(True)
         self.folder_label.setStyleSheet(
@@ -304,6 +393,7 @@ class ModInfoPanel(QWidget):
         self._init_icons()
         self._update_tree_icons(self.files_tree.invisibleRootItem())
         self._update_tree_icons(self.conflicts_tree.invisibleRootItem())
+        self._update_tree_icons(self.data_tree.invisibleRootItem())
         self._show_placeholder()
 
     def _update_tree_icons(self, parent: QTreeWidgetItem) -> None:
@@ -312,6 +402,200 @@ class ModInfoPanel(QWidget):
             if item.childCount():
                 item.setIcon(0, self._folder_icon)
                 self._update_tree_icons(item)
+
+    def _data_ignored(self, name: str) -> bool:
+        return name in config.ignored_items or (
+            name.endswith(".xml") and name.startswith(("metadata", "separator"))
+        )
+
+    def _format_size(self, size_bytes: int) -> str:
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024**2:
+            return f"{size_bytes / 1024:.1f} KB"
+        elif size_bytes < 1024**3:
+            return f"{size_bytes / 1024**2:.1f} MB"
+        return f"{size_bytes / 1024**3:.2f} GB"
+
+    def populate_data_tab(self) -> None:
+        self.data_tree.clear()
+        if not config.mods_path:
+            return
+
+        sources: list[tuple[str, str]] = []
+
+        resources_path = os.path.join(os.path.dirname(config.mods_path), "resources")
+        if os.path.isdir(resources_path):
+            sources.append(("<Unmanaged>", resources_path))
+
+        try:
+            all_folders = [
+                f
+                for f in os.listdir(config.mods_path)
+                if os.path.isdir(os.path.join(config.mods_path, f))
+                and f not in config.ignored_items
+            ]
+        except OSError:
+            all_folders = []
+
+        loaded_folders = [e[1] for e in config.loaded_mods]
+        mod_map = {e[1]: e[0] for e in config.loaded_mods}
+
+        ordered = [f for f in loaded_folders if f in all_folders]
+        remainder = sorted(f for f in all_folders if f not in loaded_folders)
+        ordered.extend(remainder)
+
+        for folder in ordered:
+            source_name = mod_map.get(folder, folder)
+            sources.append((source_name, os.path.join(config.mods_path, folder)))
+
+        self._data_source_paths = dict(sources)
+
+        all_entries: dict[str, list[tuple[str, str, int]]] = {}
+        for source_name, source_path in sources:
+            for root, _dirs, filenames in os.walk(source_path):
+                for fn in filenames:
+                    if self._data_ignored(fn):
+                        continue
+                    full = os.path.join(root, fn)
+                    rel = os.path.relpath(full, source_path)
+                    rel_lower = rel.lower()
+                    try:
+                        size = os.path.getsize(full)
+                    except OSError:
+                        size = 0
+                    all_entries.setdefault(rel_lower, []).append((rel, source_name, size))
+
+        self._data_conflict_paths = {
+            k for k, v in all_entries.items() if len(v) > 1
+        }
+
+        merged: dict[str, tuple[str, str, int]] = {
+            k: v[-1] for k, v in all_entries.items()
+        }
+
+        paths_by_dir: dict[str, list[tuple[str, str, str, int]]] = {}
+        for rel_lower, (rel, src, sz) in merged.items():
+            parts = rel.split(os.sep)
+            key = os.sep.join(parts[:-1]) if len(parts) > 1 else ""
+            paths_by_dir.setdefault(key, []).append((parts[-1], src, sz, rel))
+
+        directory_items: dict[str, QTreeWidgetItem] = {}
+        root = self.data_tree.invisibleRootItem()
+        self.data_tree.setUpdatesEnabled(False)
+
+        sorted_dir_paths = sorted(paths_by_dir, key=lambda p: (p == "", p.count(os.sep), p))
+
+        for dir_path in sorted_dir_paths:
+            if not dir_path:
+                continue
+            parts = dir_path.split(os.sep)
+            for i in range(len(parts)):
+                partial = os.sep.join(parts[: i + 1])
+                if partial not in directory_items:
+                    parent_partial = os.sep.join(parts[:i]) if i > 0 else ""
+                    parent_item = directory_items.get(parent_partial, root)
+                    dir_item = QTreeWidgetItem(parent_item)
+                    dir_item.setText(0, parts[i])
+                    dir_item.setText(1, "")
+                    dir_item.setText(2, "")
+                    dir_item.setText(3, "")
+                    dir_item.setIcon(0, self._folder_icon)
+                    dir_item.setChildIndicatorPolicy(
+                        QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
+                    )
+                    dir_item.setExpanded(False)
+                    directory_items[partial] = dir_item
+
+        for dir_path in sorted_dir_paths:
+            files = paths_by_dir[dir_path]
+            files.sort(key=lambda x: x[0].lower())
+            container = directory_items.get(dir_path, root)
+
+            for name, src, sz, rel in files:
+                item = QTreeWidgetItem(container)
+                item.setText(0, name)
+                item.setText(1, src)
+                ext = os.path.splitext(name)[1]
+                item.setText(2, ext[1:].upper() if ext else "")
+                item.setText(3, self._format_size(sz))
+                item.setIcon(0, self._file_icon_provider.icon(QFileInfo(name)))
+                item.setData(0, Qt.ItemDataRole.UserRole, rel)
+
+        self.data_tree.setUpdatesEnabled(True)
+        self._apply_data_filters()
+
+    def _apply_data_filters(self) -> None:
+        filter_text = self.data_filter_input.text()
+        conflicts_only = self.data_conflicts_only.isChecked()
+        root = self.data_tree.invisibleRootItem()
+        self._filter_data_items(root, filter_text, conflicts_only)
+
+    def _filter_data_items(
+        self,
+        parent: QTreeWidgetItem,
+        filter_text: str,
+        conflicts_only: bool,
+    ) -> bool:
+        any_visible = False
+        for i in range(parent.childCount()):
+            child = parent.child(i)
+            if child is None:
+                continue
+            child_visible = self._filter_data_items(
+                child, filter_text, conflicts_only
+            )
+            if child_visible:
+                any_visible = True
+
+        if parent.childCount() > 0:
+            visible = any_visible
+        else:
+            rel_lower: str = parent.data(0, Qt.ItemDataRole.UserRole) or ""
+            visible = True
+            if conflicts_only and rel_lower not in self._data_conflict_paths:
+                visible = False
+            if visible and filter_text:
+                visible = parent.text(0).lower() == filter_text.lower()
+
+        parent.setHidden(not visible)
+        return visible
+
+    def _open_data_file(self, item: QTreeWidgetItem, column: int) -> None:
+        if column != 0:
+            return
+        rel: str = item.data(0, Qt.ItemDataRole.UserRole) or ""
+        if not rel:
+            return
+        source_name = item.text(1)
+        if not source_name:
+            return
+        source_path = self._data_source_paths.get(source_name)
+        if not source_path:
+            return
+        full_path = os.path.join(source_path, rel)
+        if not os.path.exists(full_path):
+            logger.log("warning", f"Path does not exist: {full_path}")
+            return
+        ext = os.path.splitext(full_path.lower())[1]
+        if sys.platform == "darwin" and ext in {".png", ".jpg", ".jpeg", ".gif"}:
+            subprocess.Popen(
+                ["qlmanage", "-p", full_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return
+        ctrl_pressed = (
+            QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
+        )
+        if ctrl_pressed:
+            if not open_path(os.path.dirname(full_path)):
+                logger.log(
+                    "error", f"Failed to open folder: {os.path.dirname(full_path)}"
+                )
+        else:
+            if not open_path(full_path):
+                logger.log("error", f"Failed to open file: {full_path}")
 
     def show_mod_info(
         self,
@@ -1192,6 +1476,7 @@ class ModInfoPanel(QWidget):
         self.tags_box.clear()
         self.dates_widget.setVisible(False)
         self.tabs.setEnabled(False)
+        self.data_tree.setEnabled(True)
 
     def stop_preview(self) -> None:
         if hasattr(self, "_preview"):
