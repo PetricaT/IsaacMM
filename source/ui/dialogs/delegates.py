@@ -48,6 +48,7 @@ NORMALIZED_NAME_ROLE = Qt.ItemDataRole.UserRole + 5  # 261
 WINS_ROLE = Qt.ItemDataRole.UserRole + 6  # 262
 LOSSES_ROLE = Qt.ItemDataRole.UserRole + 7  # 263
 EMPTY_ROLE = Qt.ItemDataRole.UserRole + 8  # 264
+FOLDED_ROLE = Qt.ItemDataRole.UserRole + 9  # 265
 
 
 class ConflictDelegate(QStyledItemDelegate):

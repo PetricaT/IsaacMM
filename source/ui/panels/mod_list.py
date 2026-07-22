@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 
 from PySide6.QtCore import QEvent, QModelIndex, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtGui import QBrush, QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QTreeView,
     QVBoxLayout,
     QWidget,
+    QInputDialog,
 )
 from rapidfuzz import process as fuzzy_process
 
@@ -43,6 +44,7 @@ from ...theme.theme_helpers import text_color_for_bg
 from ..dialogs.delegates import (
     CONFLICT_ROLE,
     EMPTY_ROLE,
+    FOLDED_ROLE,
     LOSSES_ROLE,
     NORMALIZED_NAME_ROLE,
     OVERWRITTEN_ROLE,
@@ -52,7 +54,7 @@ from ..dialogs.delegates import (
     ConflictDelegate,
 )
 from ..dialogs.separator import SeparatorDialog
-from ..file_utils import open_path
+from ..file_utils import open_path, open_url
 
 SEPARATOR_SUFFIX = "_separator"
 sorted_pattern = re.compile(r"[0-9]{3}\s.*")
@@ -172,6 +174,8 @@ class ModListPanel(QWidget):
         self._restoring_widths = False
         self._undo_stack: list[list[str]] = []
         self._redo_stack: list[list[str]] = []
+        self._folded_separators: set[str] = set()
+        self._load_fold_state()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -234,6 +238,7 @@ class ModListPanel(QWidget):
         self.settingsBtn = QPushButton("Settings")
         self.settingsBtn.clicked.connect(self.open_settings.emit)
         self.listView.doubleClicked.connect(self._on_item_double_clicked)
+        self.listView.clicked.connect(self._on_item_clicked)
         self.listView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.listView.customContextMenuRequested.connect(self._on_context_menu)
 
@@ -299,6 +304,79 @@ class ModListPanel(QWidget):
         self._conflict_timer.setInterval(150)
         self._conflict_timer.setSingleShot(True)
         self._conflict_timer.timeout.connect(self._update_conflict_indicators)
+
+    def _load_fold_state(self) -> None:
+        from ...core.config import get_settings
+
+        settings = get_settings()
+        folded = settings.value("modlist/folded_separators")
+        if isinstance(folded, list):
+            self._folded_separators = set(folded)
+        elif isinstance(folded, str) and folded:
+            self._folded_separators = set(folded.split(","))
+        else:
+            self._folded_separators = set()
+
+    def _save_fold_state(self) -> None:
+        from ...core.config import get_settings
+
+        settings = get_settings()
+        settings.setValue(
+            "modlist/folded_separators",
+            list(self._folded_separators)
+        )
+
+    def _get_fold_arrow_pixmap(self, folded: bool, fg_color: QColor) -> QPixmap:
+        size = 12
+        pm = QPixmap(size, size)
+        pm.fill(Qt.GlobalColor.transparent)
+        from PySide6.QtGui import QPainter
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(fg_color)
+        if folded:
+            painter.drawText(0, 0, size, size, Qt.AlignmentFlag.AlignCenter, "\u25b6")
+        else:
+            painter.drawText(0, 0, size, size, Qt.AlignmentFlag.AlignCenter, "\u25bc")
+        painter.end()
+        return pm
+
+    def _toggle_fold(self, separator_item) -> None:
+        sep_data = separator_item.data(SEPARATOR_ROLE)
+        if not sep_data:
+            return
+        sep_name = sep_data["name"]
+        if sep_name in self._folded_separators:
+            self._folded_separators.discard(sep_name)
+            separator_item.setData(False, FOLDED_ROLE)
+        else:
+            self._folded_separators.add(sep_name)
+            separator_item.setData(True, FOLDED_ROLE)
+        fg_color = separator_item.foreground().color()
+        separator_item.setIcon(QIcon(self._get_fold_arrow_pixmap(
+            sep_name in self._folded_separators, fg_color
+        )))
+        self._apply_fold_state()
+        self._save_fold_state()
+
+    def _apply_fold_state(self) -> None:
+        from PySide6.QtCore import QModelIndex
+        row = 0
+        total_rows = self.model.rowCount()
+        while row < total_rows:
+            item = self.model.item(row, 0)
+            if item and item.data(SEPARATOR_ROLE):
+                sep_data = item.data(SEPARATOR_ROLE)
+                is_folded = sep_data["name"] in self._folded_separators
+                row += 1
+                while row < total_rows:
+                    child = self.model.item(row, 0)
+                    if child and child.data(SEPARATOR_ROLE):
+                        break
+                    self.listView.setRowHidden(row, QModelIndex(), is_folded)
+                    row += 1
+            else:
+                row += 1
 
     def load_mod_list(self) -> None:
         if config.mods_path == "":
@@ -366,6 +444,10 @@ class ModListPanel(QWidget):
                 col0.setBackground(QColor(separator_color))
                 col0.setForeground(text_color_for_bg(QColor(separator_color)))
                 col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                is_folded = entry_name in self._folded_separators
+                col0.setData(is_folded, FOLDED_ROLE)
+                fg_color = col0.foreground().color()
+                col0.setIcon(QIcon(self._get_fold_arrow_pixmap(is_folded, fg_color)))
                 bg = QColor(separator_color)
                 col1.setBackground(bg)
                 col2.setBackground(bg)
@@ -398,6 +480,7 @@ class ModListPanel(QWidget):
         )
         self._restore_column_widths()
         self._populating = False
+        self._apply_fold_state()
         if self._first_load:
             self._first_load = False
             self.log_message.emit(
@@ -513,8 +596,6 @@ class ModListPanel(QWidget):
         if self._updating_conflicts:
             return
         self._updating_conflicts = True
-        t0 = time.perf_counter()
-
         row_count = self.model.rowCount()
 
         # Pass 1: build file-to-rows index (checked non-separator rows only)
@@ -623,12 +704,6 @@ class ModListPanel(QWidget):
             else:
                 col0.setData(None, Qt.ItemDataRole.ForegroundRole)
 
-        total_ms = (time.perf_counter() - t0) * 1000
-        if total_ms > 5 and config.log_level == "debug":
-            self.log_message.emit(
-                f"Conflict scan: {total_ms:.0f}ms ({row_count} mods)",
-                "debug",
-            )
         self._updating_conflicts = False
 
     def _prepopulate_cache(self) -> None:
@@ -1221,6 +1296,17 @@ class ModListPanel(QWidget):
             if not open_path(folder_path):
                 self.log_message.emit(f"Failed to open folder: {folder_path}", "error")
 
+    def _on_item_clicked(self, index) -> None:
+        col0 = self.model.item(index.row(), 0)
+        if col0 and col0.data(SEPARATOR_ROLE):
+            clicked_pos = self.listView.viewport().mapFromGlobal(
+                self.listView.cursor().pos()
+            )
+            item_rect = self.listView.visualRect(index)
+            icon_area = item_rect.adjusted(4, 0, -(item_rect.width() - 20), 0)
+            if icon_area.contains(clicked_pos):
+                self._toggle_fold(col0)
+
     def _edit_separator(self, col0) -> None:
         separator_data = col0.data(SEPARATOR_ROLE)
         old_separator_folder = col0.data(Qt.ItemDataRole.UserRole)
@@ -1262,17 +1348,210 @@ class ModListPanel(QWidget):
         self.load_mod_list()
 
     def _on_context_menu(self, position) -> None:
-
         index = self.listView.indexAt(position)
         if not index or not index.isValid():
             return
-        col0 = self.model.item(index.row(), 0)
-        if not col0 or not col0.data(SEPARATOR_ROLE):
+
+        selected_indexes = self.listView.selectedIndexes()
+        if not selected_indexes:
             return
+
+        col0 = self.model.item(index.row(), 0)
+        if not col0:
+            return
+
         context_menu = QMenu(self)
-        context_menu.addAction("Edit", lambda: self._edit_separator(col0))
-        context_menu.addAction("Delete", lambda: self._delete_separator(col0))
+        context_menu.setStyleSheet("""
+            QMenu {
+                background-color: palette(base);
+                border: 1px solid palette(mid);
+                border-radius: 4px;
+                padding: 4px 0;
+            }
+            QMenu::item {
+                padding: 6px 20px;
+            }
+            QMenu::item:selected {
+                background-color: palette(highlight);
+                color: palette(highlighted-text);
+            }
+            QMenu::separator {
+                height: 1px;
+                background: palette(mid);
+                margin: 4px 10px;
+            }
+            QMenu::item:disabled {
+                color: palette(mid);
+            }
+        """)
+
+        if col0.data(SEPARATOR_ROLE):
+            context_menu.addAction("Edit", lambda: self._edit_separator(col0))
+            context_menu.addAction("Delete", lambda: self._delete_separator(col0))
+        else:
+            submenu = QMenu("Change Separator", context_menu)
+            submenu.setStyleSheet(context_menu.styleSheet())
+            separators = []
+            for row in range(self.model.rowCount()):
+                item = self.model.item(row, 0)
+                if item and item.data(SEPARATOR_ROLE):
+                    separators.append(item)
+            for sep_item in separators:
+                sep_name = sep_item.data(SEPARATOR_ROLE)["name"]
+                submenu.addAction(
+                    sep_name, lambda s=sep_item: self._move_to_separator(s)
+                )
+            context_menu.addMenu(submenu)
+            context_menu.addSeparator()
+            context_menu.addAction(
+                "Enable Selected", lambda: self._toggle_selected(True)
+            )
+            context_menu.addAction(
+                "Disable Selected", lambda: self._toggle_selected(False)
+            )
+            context_menu.addSeparator()
+            context_menu.addAction("Rename Mod...", lambda: self._rename_selected_mod())
+            context_menu.addSeparator()
+            context_menu.addAction(
+                "Visit on Workshop", lambda: self._open_workshop_for_selected()
+            )
+            context_menu.addAction(
+                "Open in Explorer", lambda: self._open_explorer_for_selected()
+            )
+
         context_menu.exec(self.listView.viewport().mapToGlobal(position))
+
+    def _move_to_separator(self, separator_item) -> None:
+        selected_indexes = self.listView.selectedIndexes()
+        if not selected_indexes:
+            return
+
+        selected_rows = sorted(set(idx.row() for idx in selected_indexes))
+        separator_row = separator_item.row()
+
+        all_items = []
+        for row in selected_rows:
+            col0 = self.model.item(row, 0)
+            if col0 and not col0.data(SEPARATOR_ROLE):
+                row_items = [
+                    self.model.item(row, c) for c in range(4)
+                ]
+                all_items.append(row_items)
+
+        if not all_items:
+            return
+
+        for row in reversed(selected_rows):
+            self.model.takeRow(row)
+
+        target_row = separator_row
+        total_rows = self.model.rowCount()
+        while target_row + 1 < total_rows:
+            next_item = self.model.item(target_row + 1, 0)
+            if next_item and next_item.data(SEPARATOR_ROLE):
+                break
+            target_row += 1
+
+        insert_pos = target_row + 1
+        for row_items in all_items:
+            self.model.insertRow(insert_pos, row_items)
+            insert_pos += 1
+
+        self.log_message.emit(
+            f"Moved {len(all_items)} mod(s) after separator '{separator_item.text()}'",
+            "info"
+        )
+        self._save_current_order()
+        self._push_history()
+
+    def _toggle_selected(self, enable: bool) -> None:
+        selected_indexes = self.listView.selectedIndexes()
+        if not selected_indexes:
+            return
+
+        toggled = 0
+        for idx in selected_indexes:
+            item = self.model.item(idx.row(), 0)
+            if item and not item.data(SEPARATOR_ROLE):
+                new_state = (
+                    Qt.CheckState.Checked if enable
+                    else Qt.CheckState.Unchecked
+                )
+                if item.checkState() != new_state:
+                    item.setCheckState(new_state)
+                    toggled += 1
+
+        if toggled:
+            action = "Enabled" if enable else "Disabled"
+            self.log_message.emit(f"{action} {toggled} mod(s)", "info")
+
+    def _rename_selected_mod(self) -> None:
+        selected_indexes = self.listView.selectedIndexes()
+        if not selected_indexes:
+            return
+
+        first_idx = selected_indexes[0]
+        item = self.model.item(first_idx.row(), 0)
+        if not item or item.data(SEPARATOR_ROLE):
+            return
+
+        mod_folder = item.data(Qt.ItemDataRole.UserRole)
+        old_name = item.text()
+
+        new_name, ok = QInputDialog.getText(
+            self, "Rename Mod...", "New name:", text=old_name
+        )
+        if not ok or not new_name or new_name == old_name:
+            return
+
+        xml_path = os.path.join(config.mods_path, mod_folder, "metadata.xml")
+        try:
+            tree = ET.parse(xml_path)
+            root = tree.getroot()
+            name_el = root.find("name")
+            if name_el is not None:
+                name_el.text = new_name
+                tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+
+            item.setText(new_name)
+            self.log_message.emit(
+                f"Renamed '{old_name}' to '{new_name}'", "info"
+            )
+        except (ET.ParseError, FileNotFoundError) as e:
+            self.log_message.emit(f"Failed to rename: {e}", "error")
+
+    def _open_workshop_for_selected(self) -> None:
+        selected_indexes = self.listView.selectedIndexes()
+        if not selected_indexes:
+            return
+
+        first_idx = selected_indexes[0]
+        item = self.model.item(first_idx.row(), 0)
+        if not item or item.data(SEPARATOR_ROLE):
+            return
+
+        mod_folder = item.data(Qt.ItemDataRole.UserRole)
+        workshop_id = paths.extract_workshop_id(mod_folder)
+
+        if workshop_id:
+            url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={workshop_id}"
+            open_url(url)
+        else:
+            self.log_message.emit("No Workshop ID found for this mod", "warning")
+
+    def _open_explorer_for_selected(self) -> None:
+        selected_indexes = self.listView.selectedIndexes()
+        if not selected_indexes:
+            return
+
+        first_idx = selected_indexes[0]
+        item = self.model.item(first_idx.row(), 0)
+        if not item or item.data(SEPARATOR_ROLE):
+            return
+
+        mod_folder = item.data(Qt.ItemDataRole.UserRole)
+        mod_path = os.path.join(config.mods_path, mod_folder)
+        open_path(mod_path)
 
     def _delete_separator(self, col0) -> None:
         import shutil

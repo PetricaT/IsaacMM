@@ -75,6 +75,9 @@ class _Config:
 
     check_updates_on_startup: bool = False
     include_prereleases: bool = False
+    backup_archive_enabled: bool = False
+    backup_archive_format: str = "auto"
+    backup_max_keep: int = 2
 
     console_bg: str = ""
     console_fg: str = ""
@@ -88,6 +91,7 @@ class _Config:
     # Preview colors
     preview_border: str = ""
     preview_bg: str = ""
+    preview_bg_mode: str = "auto"
     _native_style: str = ""
 
 
@@ -199,6 +203,9 @@ def load() -> None:
         settings_section = config_data.get("settings", {})
         _cfg.backup_enabled = settings_section.get("backup_enabled", False)
         _cfg.backup_path = settings_section.get("backup_path") or None
+        _cfg.backup_archive_enabled = settings_section.get("backup_archive_enabled", False)
+        _cfg.backup_archive_format = settings_section.get("backup_archive_format", "auto")
+        _cfg.backup_max_keep = settings_section.get("backup_max_keep", 2)
         _cfg.theme = settings_section.get("theme", "native")
         _cfg.active_theme = settings_section.get("active_theme", "System")
         _cfg.animate_icons = settings_section.get("animate_icons", True)
@@ -265,6 +272,7 @@ def load() -> None:
         _cfg.separator_color = theme_section.get("separator", "")
         _cfg.preview_border = theme_section.get("preview_border", "")
         _cfg.preview_bg = theme_section.get("preview_bg", "")
+        _cfg.preview_bg_mode = theme_section.get("preview_bg_mode", "auto")
         database.init()
     except FileNotFoundError:
         os.makedirs(paths.config_dir, exist_ok=True)
@@ -313,6 +321,9 @@ def _do_save() -> None:
             "settings": {
                 "backup_enabled": _v("backup_enabled"),
                 "backup_path": _v("backup_path"),
+                "backup_archive_enabled": _v("backup_archive_enabled"),
+                "backup_archive_format": _v("backup_archive_format"),
+                "backup_max_keep": _v("backup_max_keep"),
                 "theme": _v("theme"),
                 "active_theme": _v("active_theme"),
                 "animate_icons": _v("animate_icons"),
@@ -356,6 +367,7 @@ def _do_save() -> None:
                 "separator": _v("separator_color"),
                 "preview_border": _v("preview_border"),
                 "preview_bg": _v("preview_bg"),
+                "preview_bg_mode": _v("preview_bg_mode"),
             },
         }
         os.makedirs(paths.config_dir, exist_ok=True)

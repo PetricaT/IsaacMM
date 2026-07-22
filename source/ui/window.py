@@ -47,6 +47,7 @@ from .dialogs.settings import SettingsPanel
 from .panels.console import ConsoleWidget
 from .panels.mod_info import ModInfoPanel
 from .panels.mod_list import SEPARATOR_SUFFIX, ModListPanel
+from .panels.status_bar import StatusBar
 
 
 class DragApp(QWidget):
@@ -218,6 +219,7 @@ QPushButton:focus {
         layout = QVBoxLayout(self)
 
         self.console_widget = ConsoleWidget()
+        self.status_bar = StatusBar()
 
         self.mod_list_panel = ModListPanel()
         self.mod_list_panel.mod_selected.connect(self._on_mod_selected)
@@ -228,7 +230,7 @@ QPushButton:focus {
 
         self._folder_watcher = ModFolderWatcher(self)
         self.mod_list_panel.set_watcher(self._folder_watcher)
-        self.console_widget.set_watcher(self._folder_watcher)
+        self.status_bar.set_watcher(self._folder_watcher)
         self._start_folder_watcher()
 
         self.modInfoPanel = ModInfoPanel()
@@ -265,6 +267,7 @@ QPushButton:focus {
         main_layout = QVBoxLayout(main_page)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(vertical_splitter)
+        main_layout.addWidget(self.status_bar)
 
         self._settings_panel = SettingsPanel(self)
         self._settings_panel.closed.connect(self._on_settings_closed)
@@ -316,15 +319,29 @@ QPushButton:focus {
         if not config.backup_enabled or not config.mods_path:
             return
         self.log("Backing up modified mods...")
+        self.status_bar._progress.start("Archiving mods...")
+
+        def _progress_cb(current, total, message):
+            if total > 0:
+                pct = int(current * 100 / total)
+                QTimer.singleShot(
+                    0, lambda p=pct: self.status_bar._progress.set_progress(p)
+                )
+            QTimer.singleShot(
+                0, lambda m=message: self.status_bar._progress.set_message(m)
+            )
+
         self._backup_worker.start(
             backup_all,
             config.mods_path,
             get_backup_root(config.mods_path),
             list(config.loaded_mods),
             name="Backup",
+            progress_cb=_progress_cb,
         )
 
     def _on_backup_finished(self, results: list[tuple[str, str, str, str]]) -> None:
+        self.status_bar._progress.finish()
         self.log("Backup complete")
         if not self._manual_backup:
             return

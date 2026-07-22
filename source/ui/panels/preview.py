@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import xml.etree.ElementTree as ET
 
-from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtGui import QAction, QImage, QPainter, QPixmap
-from PySide6.QtWidgets import QLabel, QMenu
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer
+from PySide6.QtGui import QAction, QBrush, QColor, QImage, QPainter, QPalette, QPixmap
+from PySide6.QtWidgets import QApplication, QLabel, QMenu
 
 from ...core import config
 from ...ui.pixmap_utils import scaled_pixmap
@@ -228,13 +228,44 @@ def _parse_anm2_frames(root, anm2_dir):
 
 
 class PreviewWidget(QLabel):
+    _checker_light: QPixmap | None = None
+    _checker_dark: QPixmap | None = None
+
+    _MODES = ("auto", "checker_dark", "checker_light", "solid")
+
+    @classmethod
+    def _make_checker(cls, c1: str, c2: str) -> QPixmap:
+        size = 8
+        pm = QPixmap(size * 2, size * 2)
+        pm.fill(QColor(c1))
+        painter = QPainter(pm)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(c2))
+        painter.drawRect(QRect(0, 0, size, size))
+        painter.drawRect(QRect(size, size, size, size))
+        painter.end()
+        return pm
+
+    @classmethod
+    def _get_checker_pix(cls, mode: str) -> QPixmap:
+        if mode == "checker_light":
+            if cls._checker_light is None:
+                cls._checker_light = cls._make_checker("#ffffff", "#cccccc")
+            return cls._checker_light
+        if mode == "checker_dark":
+            if cls._checker_dark is None:
+                cls._checker_dark = cls._make_checker("#3a3a3a", "#2e2e2e")
+            return cls._checker_dark
+        # auto: detect from palette luminance
+        bg = QApplication.palette().color(QPalette.ColorRole.Window)
+        lum = (bg.red() * 299 + bg.green() * 587 + bg.blue() * 114) / 1000
+        return cls._get_checker_pix("checker_dark" if lum < 128 else "checker_light")
+
     def __init__(self, parent=None):
         super().__init__(
             parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
         )
-        self.setStyleSheet(
-            f"border: 1px solid {config.preview_border or 'palette(mid)'}; background: {config.preview_bg or 'palette(base)'}; padding: 2px;"
-        )
+        self._apply_style()
         self.hide()
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
@@ -255,6 +286,27 @@ class PreviewWidget(QLabel):
         self._worker.error.connect(lambda err: None)
         self._pending_path: str | None = None
         self._pending_pos: QPoint | None = None
+
+    def _apply_style(self) -> None:
+        border = config.preview_border or "palette(mid)"
+        if config.preview_bg_mode == "solid":
+            bg = config.preview_bg or "palette(base)"
+            self.setStyleSheet(
+                f"border: 1px solid {border}; background: {bg}; padding: 2px;"
+            )
+        else:
+            self.setStyleSheet(
+                f"border: 1px solid {border}; padding: 2px;"
+            )
+
+    def paintEvent(self, event) -> None:
+        mode = config.preview_bg_mode
+        if mode != "solid":
+            checker = self._get_checker_pix(mode)
+            painter = QPainter(self)
+            painter.fillRect(self.rect(), QBrush(checker))
+            painter.end()
+        super().paintEvent(event)
 
     def stop(self) -> None:
         self._request_id += 1
