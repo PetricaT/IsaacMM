@@ -34,7 +34,13 @@ from PySide6.QtWidgets import (
 
 from ...core import config, logger, paths
 from ...core.worker import ManagedWorker
-from ...mods.backup import backup_all, get_backup_root
+from ...mods.backup import (
+    backup_all,
+    format_size,
+    get_available_formats,
+    get_backup_root,
+    get_backup_size,
+)
 from ...controller.controller_ui import BUTTON_SIZE, ICON_SIZE
 from ..file_utils import open_path
 from ..pixmap_utils import scaled_pixmap
@@ -165,10 +171,46 @@ class SettingsPanel(QWidget):
         backup_path_layout.addWidget(self.open_backup_btn)
         backup_layout.addRow("Backup location:", backup_path_layout)
 
+        archive_row = QHBoxLayout()
+        self.archive_check = QCheckBox("Enable compression")
+        self.archive_check.setChecked(config.backup_archive_enabled)
+        self.archive_check.toggled.connect(self._save_settings)
+        self.archive_check.toggled.connect(self._toggle_archive_controls)
+        archive_row.addWidget(self.archive_check)
+        archive_row.addStretch()
+        self.archive_format_combo = QComboBox()
+        for af in get_available_formats():
+            self.archive_format_combo.addItem(af, af)
+        idx = self.archive_format_combo.findData(config.backup_archive_format)
+        if idx >= 0:
+            self.archive_format_combo.setCurrentIndex(idx)
+        self.archive_format_combo.currentIndexChanged.connect(self._save_settings)
+        archive_row.addWidget(QLabel("Format:"))
+        archive_row.addWidget(self.archive_format_combo)
+        self.max_keep_spin = QSpinBox()
+        self.max_keep_spin.setRange(1, 99)
+        self.max_keep_spin.setValue(config.backup_max_keep)
+        self.max_keep_spin.valueChanged.connect(self._save_settings)
+        archive_row.addWidget(QLabel("Keep last:"))
+        archive_row.addWidget(self.max_keep_spin)
+        backup_layout.addRow("Archive:", archive_row)
+
+        size_row = QHBoxLayout()
+        self.backup_size_label = QLabel("Calculating...")
+        size_row.addWidget(self.backup_size_label)
+        size_row.addStretch()
+        refresh_size_btn = QPushButton("Refresh")
+        refresh_size_btn.clicked.connect(self._refresh_backup_size)
+        size_row.addWidget(refresh_size_btn)
+        backup_layout.addRow("Backup size:", size_row)
+
         run_backup_button = QPushButton("Run backup now")
         run_backup_button.clicked.connect(self._run_backup)
         backup_layout.addRow(run_backup_button)
         layout.addWidget(backup_group)
+
+        self._toggle_archive_controls()
+        self._refresh_backup_size()
 
         updates_group = QGroupBox("Updates")
         updates_layout = QVBoxLayout(updates_group)
@@ -391,6 +433,18 @@ class SettingsPanel(QWidget):
 
         p_label = QLabel("<b>\u2014 Preview \u2014</b>")
         scroll_layout.addRow(p_label)
+
+        self.preview_bg_mode_combo = QComboBox()
+        self.preview_bg_mode_combo.addItem("Auto (detect from theme)", "auto")
+        self.preview_bg_mode_combo.addItem("Checkerboard (light)", "checker_light")
+        self.preview_bg_mode_combo.addItem("Checkerboard (dark)", "checker_dark")
+        self.preview_bg_mode_combo.addItem("Solid color", "solid")
+        idx = self.preview_bg_mode_combo.findData(config.preview_bg_mode)
+        if idx >= 0:
+            self.preview_bg_mode_combo.setCurrentIndex(idx)
+        self.preview_bg_mode_combo.currentIndexChanged.connect(self._save_settings)
+        scroll_layout.addRow("Preview background:", self.preview_bg_mode_combo)
+
         self._add_colors(
             scroll_layout,
             [
@@ -757,6 +811,9 @@ class SettingsPanel(QWidget):
         config.backup_enabled = self.backup_check.isChecked()
         text = self.backup_path_edit.text().strip()
         config.backup_path = text if text else None
+        config.backup_archive_enabled = self.archive_check.isChecked()
+        config.backup_archive_format = self.archive_format_combo.currentData() or "auto"
+        config.backup_max_keep = self.max_keep_spin.value()
         config.animate_icons = self.animate_check.isChecked()
         config.animate_anm2_preview = self.animate_anm2_check.isChecked()
         config.preview_images = self.preview_check.isChecked()
@@ -771,6 +828,7 @@ class SettingsPanel(QWidget):
         config.controller_deadzone = self.ctrl_deadzone_slider.value()
         config.controller_simple_icons = self.simple_icons_check.isChecked()
         config.use_system_icons = self.system_icons_check.isChecked()
+        config.preview_bg_mode = self.preview_bg_mode_combo.currentData() or "auto"
         config.theme_preset = self.preset_combo.currentData()
         config.active_theme = self.preset_combo.currentData()
         self._update_date_preview()
@@ -816,6 +874,19 @@ class SettingsPanel(QWidget):
         self._update_controller_info()
         config.save()
 
+    def _refresh_backup_size(self) -> None:
+        root = get_backup_root(config.mods_path) if config.mods_path else ""
+        if root and os.path.isdir(root):
+            size = get_backup_size(root)
+            self.backup_size_label.setText(format_size(size))
+        else:
+            self.backup_size_label.setText("(no backup folder)")
+
+    def _toggle_archive_controls(self) -> None:
+        enabled = self.archive_check.isChecked()
+        self.archive_format_combo.setEnabled(enabled)
+        self.max_keep_spin.setEnabled(enabled)
+
     def _run_backup(self) -> None:
         if not config.mods_path:
             return
@@ -831,6 +902,19 @@ class SettingsPanel(QWidget):
         if callable(log):
             log("Running manual backup...", "debug")
 
+        progress = getattr(getattr(owner, "status_bar", None), "_progress", None)
+        if progress is not None:
+            progress.start("Archiving mods...")
+
+        def _progress_cb(current, total, message):
+            if progress is None:
+                return
+            from PySide6.QtCore import QTimer
+            if total > 0:
+                pct = int(current * 100 / total)
+                QTimer.singleShot(0, lambda p=pct: progress.set_progress(p))
+            QTimer.singleShot(0, lambda m=message: progress.set_message(m))
+
         owner._manual_backup = True
         bw.start(
             backup_all,
@@ -838,6 +922,7 @@ class SettingsPanel(QWidget):
             get_backup_root(config.mods_path),
             list(config.loaded_mods),
             name="Backup",
+            progress_cb=_progress_cb,
         )
 
     def _check_updates(self) -> None:

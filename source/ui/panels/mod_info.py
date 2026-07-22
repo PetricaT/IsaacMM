@@ -445,6 +445,10 @@ class ModInfoPanel(QWidget):
         remainder = sorted(f for f in all_folders if f not in loaded_folders)
         ordered.extend(remainder)
 
+        # Reverse so iteration goes lowest→highest priority;
+        # v[-1] in the merged dict then picks the top-of-list winner.
+        ordered.reverse()
+
         for folder in ordered:
             source_name = mod_map.get(folder, folder)
             sources.append((source_name, os.path.join(config.mods_path, folder)))

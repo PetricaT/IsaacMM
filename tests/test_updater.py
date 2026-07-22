@@ -1,10 +1,58 @@
-"""Tests for source/updater.py."""
+"""Tests for source/updater/updater.py."""
 
 from __future__ import annotations
 
+import sys
+import types
+
+# Mock third-party deps before any source import
+for mod in ("httpx", "tenacity", "toml", "loguru", "PySide6", "PySide6.QtCore"):
+    if mod not in sys.modules:
+        sys.modules[mod] = types.ModuleType(mod)
+
+httpx_m = sys.modules["httpx"]
+httpx_m.RequestError = type("RequestError", (Exception,), {})
+
+tenacity_m = sys.modules["tenacity"]
+tenacity_m.retry = lambda **kw: (lambda fn: fn)
+tenacity_m.retry_if_exception_type = lambda *a: None
+tenacity_m.stop_after_attempt = lambda *a: None
+tenacity_m.wait_exponential = lambda **kw: None
+
+loguru_m = sys.modules["loguru"]
+loguru_m.logger = type("L", (), {"opt": lambda s, **kw: s})()
+
+toml_m = sys.modules["toml"]
+toml_m.load = lambda f: {}
+toml_m.dump = lambda d, f: None
+
+pyside_m = sys.modules["PySide6"]
+pyside_qt = sys.modules["PySide6.QtCore"]
+pyside_qt.QSettings = type("QSettings", (), {})
+pyside_qt.Signal = type("Signal", (), {})
+
+# Ensure source.core subpackage is loadable
+for pkg in ("source", "source.core", "source.updater"):
+    if pkg not in sys.modules:
+        m = types.ModuleType(pkg)
+        m.__path__ = [pkg.replace(".", "/")]
+        m.__package__ = pkg
+        sys.modules[pkg] = m
+
+# Mock source.core submodules
+for sub in ("database", "paths", "logger", "config"):
+    mod = types.ModuleType(f"source.core.{sub}")
+    sys.modules[f"source.core.{sub}"] = mod
+
+sys.modules["source.core"].database = sys.modules["source.core.database"]
+sys.modules["source.core"].paths = sys.modules["source.core.paths"]
+
+# Provide version for is_newer_version
+sys.modules["source.core.paths"].version = "1.0.0"
+
 import pytest
 
-from source import updater
+from source.updater import updater  # noqa: E402
 
 
 class TestParseVersion:
