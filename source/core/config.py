@@ -92,6 +92,7 @@ class _Config:
     preview_border: str = ""
     preview_bg: str = ""
     preview_bg_mode: str = "auto"
+    double_click_interval: int = 250
     _native_style: str = ""
 
 
@@ -273,6 +274,7 @@ def load() -> None:
         _cfg.preview_border = theme_section.get("preview_border", "")
         _cfg.preview_bg = theme_section.get("preview_bg", "")
         _cfg.preview_bg_mode = theme_section.get("preview_bg_mode", "auto")
+        _cfg.double_click_interval = settings_section.get("double_click_interval", 250)
         database.init()
     except FileNotFoundError:
         os.makedirs(paths.config_dir, exist_ok=True)
@@ -339,6 +341,7 @@ def _do_save() -> None:
                 "notifications_enabled": _v("notifications_enabled"),
                 "check_updates_on_startup": _v("check_updates_on_startup"),
                 "include_prereleases": _v("include_prereleases"),
+                "double_click_interval": _v("double_click_interval"),
             },
             "theme": {
                 "accent": _v("accent_color"),

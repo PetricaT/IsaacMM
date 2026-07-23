@@ -175,6 +175,7 @@ class ModListPanel(QWidget):
         self._undo_stack: list[list[str]] = []
         self._redo_stack: list[list[str]] = []
         self._folded_separators: set[str] = set()
+        self._pressed_folded_sep: tuple | None = None
         self._load_fold_state()
 
         layout = QVBoxLayout(self)
@@ -239,6 +240,7 @@ class ModListPanel(QWidget):
         self.settingsBtn.clicked.connect(self.open_settings.emit)
         self.listView.doubleClicked.connect(self._on_item_double_clicked)
         self.listView.clicked.connect(self._on_item_clicked)
+        self.listView.viewport().installEventFilter(self)
         self.listView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.listView.customContextMenuRequested.connect(self._on_context_menu)
 
@@ -1224,6 +1226,24 @@ class ModListPanel(QWidget):
         self.mods_loaded.emit()
 
     def eventFilter(self, obj, event) -> bool:
+        if obj is self.listView.viewport():
+            if event.type() == QEvent.MouseButtonPress:
+                index = self.listView.indexAt(event.pos())
+                self._pressed_folded_sep = None
+                if index.isValid():
+                    col0 = self.model.item(index.row(), 0)
+                    if col0 and col0.data(SEPARATOR_ROLE):
+                        sep_data = col0.data(SEPARATOR_ROLE)
+                        if sep_data["name"] in self._folded_separators:
+                            self._pressed_folded_sep = (col0, event.pos())
+            elif event.type() == QEvent.MouseMove and self._pressed_folded_sep:
+                col0, press_pos = self._pressed_folded_sep
+                delta = event.pos() - press_pos
+                if abs(delta.x()) + abs(delta.y()) > QApplication.startDragDistance():
+                    self._pressed_folded_sep = None
+                    self._toggle_fold(col0)
+            elif event.type() in (QEvent.MouseButtonRelease, QEvent.MouseButtonDblClick):
+                self._pressed_folded_sep = None
         if obj is self.listView and event.type() == QEvent.KeyPress:
             if (
                 event.key() == Qt.Key_Z
@@ -1264,16 +1284,21 @@ class ModListPanel(QWidget):
             item_name = c0.text() if c0 else ""
             try:
                 shutil.rmtree(folder_path)
-                deleted.append(item_name)
+                deleted.append((c0.row(), item_name))
             except OSError as exc:
                 self.log_message.emit(
                     f"Deleting separator '{item_name}': {exc}", "error"
                 )
         if deleted:
-            self.log_message.emit(f"Deleted separators: {', '.join(deleted)}", "info")
+            for _, name in deleted:
+                self._folded_separators.discard(name)
+            self._save_fold_state()
+            for row, _ in sorted(deleted, key=lambda t: t[0], reverse=True):
+                self.model.removeRow(row)
+            names = [n for _, n in deleted]
+            self.log_message.emit(f"Deleted separators: {', '.join(names)}", "debug")
             self._save_current_order()
             self._push_history()
-            self.load_mod_list()
 
     def _on_item_double_clicked(self, index) -> None:
         col0 = self.model.item(index.row(), 0)
@@ -1310,10 +1335,13 @@ class ModListPanel(QWidget):
     def _edit_separator(self, col0) -> None:
         separator_data = col0.data(SEPARATOR_ROLE)
         old_separator_folder = col0.data(Qt.ItemDataRole.UserRole)
+        old_name = separator_data["name"]
         dialog = SeparatorDialog(
             "Edit Separator",
-            name=separator_data["name"],
+            name=old_name,
             color=separator_data["color"],
+            existing_names=self._existing_separator_names(),
+            allow_name=old_name,
             parent=self,
         )
         if dialog.exec() != QDialog.Accepted:
@@ -1342,10 +1370,31 @@ class ModListPanel(QWidget):
         ET.SubElement(xml_root, "color").text = new_separator_color
         xml_tree = ET.ElementTree(xml_root)
         xml_tree.write(separator_xml_path, encoding="utf-8", xml_declaration=True)
+
+        col0.setData(new_separator_folder, Qt.ItemDataRole.UserRole)
+        new_separator_data = {"name": new_separator_name, "color": new_separator_color}
+        col0.setData(new_separator_data, SEPARATOR_ROLE)
+        col0.setText(new_separator_name)
+        new_bg = QColor(new_separator_color)
+        col0.setBackground(new_bg)
+        col0.setForeground(text_color_for_bg(new_bg))
+        col0.setIcon(QIcon(self._get_fold_arrow_pixmap(
+            col0.data(FOLDED_ROLE), col0.foreground().color()
+        )))
+        for c in range(1, 4):
+            sibling = self.model.item(col0.row(), c)
+            if sibling:
+                sibling.setBackground(new_bg)
+
+        if old_name != new_separator_name:
+            if old_name in self._folded_separators:
+                self._folded_separators.discard(old_name)
+                self._folded_separators.add(new_separator_name)
+                self._save_fold_state()
+
         self.log_message.emit(f"Updated separator '{new_separator_name}'", "info")
         self._save_current_order()
         self._push_history()
-        self.load_mod_list()
 
     def _on_context_menu(self, position) -> None:
         index = self.listView.indexAt(position)
@@ -1387,7 +1436,7 @@ class ModListPanel(QWidget):
 
         if col0.data(SEPARATOR_ROLE):
             context_menu.addAction("Edit", lambda: self._edit_separator(col0))
-            context_menu.addAction("Delete", lambda: self._delete_separator(col0))
+            context_menu.addAction("Delete", lambda: self._delete_separators([col0]))
         else:
             submenu = QMenu("Change Separator", context_menu)
             submenu.setStyleSheet(context_menu.styleSheet())
@@ -1556,25 +1605,21 @@ class ModListPanel(QWidget):
         mod_path = os.path.join(config.mods_path, mod_folder)
         open_path(mod_path)
 
-    def _delete_separator(self, col0) -> None:
-        import shutil
-
-        separator_folder = col0.data(Qt.ItemDataRole.UserRole)
-        folder_path = os.path.join(config.mods_path, separator_folder)
-        item_name = col0.text() if col0 else ""
-        try:
-            shutil.rmtree(folder_path)
-            self.log_message.emit(f"Deleted separator '{item_name}'", "info")
-            self._save_current_order()
-            self._push_history()
-            self.load_mod_list()
-        except OSError as exception:
-            self.log_message.emit(f"Deleting separator: {exception}", "error")
+    def _existing_separator_names(self) -> set[str]:
+        names = set()
+        for row in range(self.model.rowCount()):
+            item = self.model.item(row, 0)
+            if item and item.data(SEPARATOR_ROLE):
+                names.add(item.text())
+        return names
 
     def _create_separator(self) -> None:
         from PySide6.QtWidgets import QDialog
 
-        dialog = SeparatorDialog("Create Separator", parent=self)
+        dialog = SeparatorDialog(
+            "Create Separator", existing_names=self._existing_separator_names(),
+            parent=self,
+        )
         if dialog.exec() != QDialog.Accepted:
             return
         separator_name = dialog.result_name
@@ -1595,9 +1640,32 @@ class ModListPanel(QWidget):
             self.log_message.emit(f"Created separator '{separator_name}'", "info")
         except OSError as exception:
             self.log_message.emit(f"Creating separator: {exception}", "error")
+
+        from PySide6.QtGui import QStandardItem
+        col0 = QStandardItem()
+        col1 = QStandardItem()
+        col2 = QStandardItem()
+        col3 = QStandardItem()
+        for item in (col1, col2, col3):
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        col0.setData(separator_folder, Qt.ItemDataRole.UserRole)
+        separator_data = {"name": separator_name, "color": separator_color}
+        col0.setData(separator_data, SEPARATOR_ROLE)
+        col0.setText(separator_name)
+        bg = QColor(separator_color)
+        col0.setBackground(bg)
+        col0.setForeground(text_color_for_bg(bg))
+        col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        is_folded = separator_name in self._folded_separators
+        col0.setData(is_folded, FOLDED_ROLE)
+        col0.setIcon(QIcon(self._get_fold_arrow_pixmap(is_folded, col0.foreground().color())))
+        col1.setBackground(bg)
+        col2.setBackground(bg)
+        col3.setBackground(bg)
+        self.model.appendRow([col0, col1, col2, col3])
+
         self._save_current_order()
         self._push_history()
-        self.load_mod_list()
 
     def _create_separator_at_selection(self) -> None:
         from PySide6.QtWidgets import QDialog
@@ -1611,7 +1679,10 @@ class ModListPanel(QWidget):
         if not selected_item or selected_item.data(SEPARATOR_ROLE):
             return
 
-        dialog = SeparatorDialog("Create Separator", parent=self)
+        dialog = SeparatorDialog(
+            "Create Separator", existing_names=self._existing_separator_names(),
+            parent=self,
+        )
         if dialog.exec() != QDialog.Accepted:
             return
         separator_name = dialog.result_name

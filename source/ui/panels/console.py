@@ -106,14 +106,16 @@ class ConsoleWidget(QWidget):
             cursor.movePosition(
                 QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor
             )
+            cursor.movePosition(
+                QTextCursor.MoveOperation.NextBlock, QTextCursor.MoveMode.KeepAnchor
+            )
             cursor.removeSelectedText()
             self._insert_tag(cursor, prefix, tag_color)
             self._insert_timestamp(cursor, timestamp)
             msg_fmt = QTextCharFormat()
             if not self._native_theme and msg_color:
                 msg_fmt.setForeground(QColor(msg_color))
-            cursor.insertText(f"{message} x{self._repeat_count + 1}", msg_fmt)
-            cursor.insertText("\n")
+            cursor.insertText(f"{message} x{self._repeat_count + 1}\n", msg_fmt)
         else:
             self._last_message = current_key
             self._repeat_count = 0

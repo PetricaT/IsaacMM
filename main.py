@@ -57,6 +57,7 @@ if __name__ == "__main__":
     config.load()
 
     application = QApplication(sys.argv)
+    application.setDoubleClickInterval(config.double_click_interval)
     config._native_style = application.style().name()
     if config.theme != "native":
         application.setStyle(config.theme)
