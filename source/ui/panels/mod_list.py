@@ -1402,6 +1402,9 @@ class ModListPanel(QWidget):
                     sep_name, lambda s=sep_item: self._move_to_separator(s)
                 )
             context_menu.addMenu(submenu)
+            context_menu.addAction(
+                "Create Separator", lambda: self._create_separator_at_selection()
+            )
             context_menu.addSeparator()
             context_menu.addAction(
                 "Enable Selected", lambda: self._toggle_selected(True)
@@ -1595,6 +1598,70 @@ class ModListPanel(QWidget):
         self._save_current_order()
         self._push_history()
         self.load_mod_list()
+
+    def _create_separator_at_selection(self) -> None:
+        from PySide6.QtWidgets import QDialog
+
+        selected_indexes = self.listView.selectedIndexes()
+        if not selected_indexes:
+            return
+
+        first_idx = selected_indexes[0]
+        selected_item = self.model.item(first_idx.row(), 0)
+        if not selected_item or selected_item.data(SEPARATOR_ROLE):
+            return
+
+        dialog = SeparatorDialog("Create Separator", parent=self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        separator_name = dialog.result_name
+        separator_color = dialog.result_color
+        if not separator_name:
+            return
+
+        separator_folder = f"{separator_name}{SEPARATOR_SUFFIX}"
+        try:
+            os.makedirs(os.path.join(config.mods_path, separator_folder), exist_ok=True)
+            separator_xml_path = os.path.join(
+                config.mods_path, separator_folder, "separator.xml"
+            )
+            xml_root = ET.Element("separator")
+            ET.SubElement(xml_root, "name").text = separator_name
+            ET.SubElement(xml_root, "color").text = separator_color
+            xml_tree = ET.ElementTree(xml_root)
+            xml_tree.write(separator_xml_path, encoding="utf-8", xml_declaration=True)
+            self.log_message.emit(f"Created separator '{separator_name}'", "info")
+        except OSError as exception:
+            self.log_message.emit(f"Creating separator: {exception}", "error")
+
+        from PySide6.QtGui import QStandardItem
+        col0 = QStandardItem()
+        col1 = QStandardItem()
+        col2 = QStandardItem()
+        col3 = QStandardItem()
+        for item in (col1, col2, col3):
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        col0.setData(separator_folder, Qt.ItemDataRole.UserRole)
+        separator_data = {"name": separator_name, "color": separator_color}
+        col0.setData(separator_data, SEPARATOR_ROLE)
+        col0.setText(separator_name)
+        col0.setBackground(QColor(separator_color))
+        col0.setForeground(text_color_for_bg(QColor(separator_color)))
+        col0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        is_folded = separator_name in self._folded_separators
+        col0.setData(is_folded, FOLDED_ROLE)
+        fg_color = col0.foreground().color()
+        col0.setIcon(QIcon(self._get_fold_arrow_pixmap(is_folded, fg_color)))
+        bg = QColor(separator_color)
+        col1.setBackground(bg)
+        col2.setBackground(bg)
+        col3.setBackground(bg)
+
+        insert_row = first_idx.row() + 1
+        self.model.insertRow(insert_row, [col0, col1, col2, col3])
+
+        self._save_current_order()
+        self._push_history()
 
     def _export_modlist(self) -> None:
 
